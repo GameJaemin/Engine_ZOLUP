@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Engine\Source\CameraViewInfo.cpp" />
+    <ClCompile Include="Engine\Source\Core\Math\Matrix4x4.cpp" />
+    <ClCompile Include="Engine\Source\Core\Math\Quaternion.cpp" />
+    <ClCompile Include="Engine\Source\Core\Math\Transform.cpp" />
+    <ClCompile Include="Game\Source\GameMain.cpp" />
+    <ClCompile Include="Engine\Source\AssetManager.cpp" />
+    <ClCompile Include="Engine\Source\Engine.cpp" />
+    <ClCompile Include="Engine\Source\Core\FileHelper.cpp" />
+    <ClCompile Include="Engine\Source\Core\FrameTimer.cpp" />
+    <ClCompile Include="Engine\Source\Core\Log.cpp" />
+    <ClCompile Include="Engine\Source\Paths.cpp" />
+    <ClCompile Include="Engine\Source\Input\InputState.cpp" />
+    <ClCompile Include="Engine\Source\Input\InputDispatcher.cpp" />
+    <ClCompile Include="Engine\Source\Component\InputComponent.cpp" />
+    <ClCompile Include="Engine\Source\Component\CameraComponent.cpp" />
+    <ClCompile Include="Engine\Source\Component\Component.cpp" />
+    <ClCompile Include="Engine\Source\Component\StaticMeshComponent.cpp" />
+    <ClCompile Include="Engine\Source\Component\TransformComponent.cpp" />
+    <ClCompile Include="Engine\Source\Core\Math\Vector3.cpp" />
+    <ClCompile Include="Engine\Source\GameObject.cpp" />
+    <ClCompile Include="Engine\Source\GLTFLoader.cpp" />
+    <ClCompile Include="Engine\Source\WindowsApplication.cpp" />
+    <ClCompile Include="Engine\Source\World.cpp" />
+    <ClCompile Include="Engine\Source\Renderer\RenderScene.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Engine\Source\CameraViewInfo.h" />
+    <ClInclude Include="Engine\Source\Core\Math\MathUtility.h" />
+    <ClInclude Include="Engine\Source\AssetManager.h" />
+    <ClInclude Include="Engine\Source\Engine.h" />
+    <ClInclude Include="Engine\Source\Core\FileHelper.h" />
+    <ClInclude Include="Engine\Source\Core\FrameTimer.h" />
+    <ClInclude Include="Engine\Source\Core\Log.h" />
+    <ClInclude Include="Engine\Source\Paths.h" />
+    <ClInclude Include="Engine\Source\Input\InputState.h" />
+    <ClInclude Include="Engine\Source\Input\Key.h" />
+    <ClInclude Include="Engine\Source\Input\InputDispatcher.h" />
+    <ClInclude Include="Engine\Source\Input\KeyBinding.h" />
+    <ClInclude Include="Engine\Source\Component\InputComponent.h" />
+    <ClInclude Include="Engine\Source\Component\CameraComponent.h" />
+    <ClInclude Include="Engine\Source\Component\Component.h" />
+    <ClInclude Include="Engine\Source\Component\StaticMeshComponent.h" />
+    <ClInclude Include="Engine\Source\Component\TransformComponent.h" />
+    <ClInclude Include="Engine\Source\Core\Math\EulerAngles.h" />
+    <ClInclude Include="Engine\Source\Core\Math\Matrix4x4.h" />
+    <ClInclude Include="Engine\Source\Core\Math\Quaternion.h" />
+    <ClInclude Include="Engine\Source\Core\Math\Transform.h" />
+    <ClInclude Include="Engine\Source\Core\Math\Vector2.h" />
+    <ClInclude Include="Engine\Source\Core\Math\Vector3.h" />
+    <ClInclude Include="Engine\Source\GameObject.h" />
+    <ClInclude Include="Engine\Source\GLTFDocument.h" />
+    <ClInclude Include="Engine\Source\GLTFLoader.h" />
+    <ClInclude Include="Engine\Source\WindowsApplication.h" />
+    <ClInclude Include="Engine\Source\World.h" />
+    <ClInclude Include="Engine\Source\Renderer\RenderScene.h" />
+    <ClInclude Include="Engine\Source\Renderer\RenderView.h" />
+    <ClInclude Include="Engine\Source\Renderer\SceneRenderData.h" />
+    <ClInclude Include="Engine\Source\Mesh\MeshVertex.h" />
+    <ClInclude Include="Engine\Source\Mesh\StaticMeshData.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Engine\ThirdParty\RapidJSON\README.md" />
+    <Text Include="Engine\ThirdParty\RapidJSON\license.txt" />
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>18.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{92f1cd33-eb0d-4d78-b698-943535cae418}</ProjectGuid>
+    <RootNamespace>SeonEngine</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>$(SEPlatformToolset)</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>$(SEPlatformToolset)</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalIncludeDirectories>$(ProjectDir)Engine\Source;$(ProjectDir)Engine\ThirdParty\RapidJSON\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+    <Manifest>
+      <EnableSegmentHeap>true</EnableSegmentHeap>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalIncludeDirectories>$(ProjectDir)Engine\Source;$(ProjectDir)Engine\ThirdParty\RapidJSON\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+    <Manifest>
+      <EnableSegmentHeap>true</EnableSegmentHeap>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

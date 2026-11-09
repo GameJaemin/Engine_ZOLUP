@@ -1,0 +1,224 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Engine">
+      <UniqueIdentifier>{f8b23e92-c7f9-412a-ace9-3c42c08fa714}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Game\Source">
+      <UniqueIdentifier>{0bc5d6c8-f10b-4c48-bd57-3298348ea81a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Game">
+      <UniqueIdentifier>{b8f07297-01c3-4ade-beaf-48c2a3dd78f5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Engine\Source">
+      <UniqueIdentifier>{2e324943-078b-4bc4-a761-e0331e6269d9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Engine\Source\Component">
+      <UniqueIdentifier>{6dd01cc8-6567-4af5-bf83-a8ad01ac577b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Engine\Source\Core">
+      <UniqueIdentifier>{2b431d6f-7eca-4fb1-9fca-2c51ec006850}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Engine\Source\Core\Math">
+      <UniqueIdentifier>{936c21e2-30ad-4a38-a249-5fcdfafbf5f3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Engine\Source\Input">
+      <UniqueIdentifier>{7d3a9c41-5e2b-4f86-9a1d-c2b8e6f04a57}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Engine\Source\Renderer">
+      <UniqueIdentifier>{3be6eb0d-16e0-42ae-8ffb-ddf98ddda2a4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Engine\Source\Mesh">
+      <UniqueIdentifier>{c4a1d7e9-5b23-4f86-a0d1-7e3b9c25f614}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Engine\ThirdParty">
+      <UniqueIdentifier>{2dcb4069-d326-49c4-bab3-b25f9bff6062}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Engine\ThirdParty\RapidJSON">
+      <UniqueIdentifier>{5524bed6-7f14-4614-95a1-1a4ad9a7ed87}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Game\Source\GameMain.cpp">
+      <Filter>Game\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\AssetManager.cpp">
+      <Filter>Engine\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Engine.cpp">
+      <Filter>Engine\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\World.cpp">
+      <Filter>Engine\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\WindowsApplication.cpp">
+      <Filter>Engine\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\CameraViewInfo.cpp">
+      <Filter>Engine\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Renderer\RenderScene.cpp">
+      <Filter>Engine\Source\Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Component\CameraComponent.cpp">
+      <Filter>Engine\Source\Component</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Component\Component.cpp">
+      <Filter>Engine\Source\Component</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Component\StaticMeshComponent.cpp">
+      <Filter>Engine\Source\Component</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Component\TransformComponent.cpp">
+      <Filter>Engine\Source\Component</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Core\Math\Matrix4x4.cpp">
+      <Filter>Engine\Source\Core\Math</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Core\Math\Quaternion.cpp">
+      <Filter>Engine\Source\Core\Math</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Core\Math\Transform.cpp">
+      <Filter>Engine\Source\Core\Math</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Core\Math\Vector3.cpp">
+      <Filter>Engine\Source\Core\Math</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\GameObject.cpp">
+      <Filter>Engine\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\GLTFLoader.cpp">
+      <Filter>Engine\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Core\FileHelper.cpp">
+      <Filter>Engine\Source\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Core\FrameTimer.cpp">
+      <Filter>Engine\Source\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Core\Log.cpp">
+      <Filter>Engine\Source\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Paths.cpp">
+      <Filter>Engine\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Input\InputState.cpp">
+      <Filter>Engine\Source\Input</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Input\InputDispatcher.cpp">
+      <Filter>Engine\Source\Input</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Component\InputComponent.cpp">
+      <Filter>Engine\Source\Component</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Engine\Source\AssetManager.h">
+      <Filter>Engine\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Engine.h">
+      <Filter>Engine\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\World.h">
+      <Filter>Engine\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Renderer\RenderScene.h">
+      <Filter>Engine\Source\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Renderer\RenderView.h">
+      <Filter>Engine\Source\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Renderer\SceneRenderData.h">
+      <Filter>Engine\Source\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\WindowsApplication.h">
+      <Filter>Engine\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\CameraViewInfo.h">
+      <Filter>Engine\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Component\CameraComponent.h">
+      <Filter>Engine\Source\Component</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Component\Component.h">
+      <Filter>Engine\Source\Component</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Component\StaticMeshComponent.h">
+      <Filter>Engine\Source\Component</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Component\TransformComponent.h">
+      <Filter>Engine\Source\Component</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Core\Math\EulerAngles.h">
+      <Filter>Engine\Source\Core\Math</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Core\Math\MathUtility.h">
+      <Filter>Engine\Source\Core\Math</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Core\Math\Matrix4x4.h">
+      <Filter>Engine\Source\Core\Math</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Core\Math\Quaternion.h">
+      <Filter>Engine\Source\Core\Math</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Core\Math\Transform.h">
+      <Filter>Engine\Source\Core\Math</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Core\Math\Vector2.h">
+      <Filter>Engine\Source\Core\Math</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Core\Math\Vector3.h">
+      <Filter>Engine\Source\Core\Math</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Mesh\MeshVertex.h">
+      <Filter>Engine\Source\Mesh</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Mesh\StaticMeshData.h">
+      <Filter>Engine\Source\Mesh</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\GameObject.h">
+      <Filter>Engine\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\GLTFDocument.h">
+      <Filter>Engine\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\GLTFLoader.h">
+      <Filter>Engine\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Core\FileHelper.h">
+      <Filter>Engine\Source\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Core\FrameTimer.h">
+      <Filter>Engine\Source\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Core\Log.h">
+      <Filter>Engine\Source\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Paths.h">
+      <Filter>Engine\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Input\InputState.h">
+      <Filter>Engine\Source\Input</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Input\Key.h">
+      <Filter>Engine\Source\Input</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Input\InputDispatcher.h">
+      <Filter>Engine\Source\Input</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Input\KeyBinding.h">
+      <Filter>Engine\Source\Input</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Component\InputComponent.h">
+      <Filter>Engine\Source\Component</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Engine\ThirdParty\RapidJSON\README.md">
+      <Filter>Engine\ThirdParty\RapidJSON</Filter>
+    </None>
+    <Text Include="Engine\ThirdParty\RapidJSON\license.txt">
+      <Filter>Engine\ThirdParty\RapidJSON</Filter>
+    </Text>
+  </ItemGroup>
+</Project>

@@ -9,6 +9,8 @@
 ipch/
 
 # C++ / MSVC build outputs
+/Binaries/
+/Intermediate/
 [Dd]ebug/
 [Rr]elease/
 x64/

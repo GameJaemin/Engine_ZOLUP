@@ -1,0 +1,15 @@
+<Project>
+  <PropertyGroup Condition="'$(MSBuildProjectExtension)' == '.vcxproj'">
+    <!-- VisualStudioVersion은 제품 연도가 아닌 내부 버전이다. -->
+    <SEPlatformToolset Condition="'$(VisualStudioVersion)' == '17.0'">v143</SEPlatformToolset>
+    <SEPlatformToolset Condition="'$(VisualStudioVersion)' == '18.0'">v145</SEPlatformToolset>
+
+    <OutDir>$(MSBuildThisFileDirectory)Binaries\$(SEPlatformToolset)\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(MSBuildThisFileDirectory)Intermediate\$(SEPlatformToolset)\$(MSBuildProjectName)\$(Platform)\$(Configuration)\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(MSBuildProjectExtension)' == '.vcxproj'">
+    <ClCompile>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+</Project>
