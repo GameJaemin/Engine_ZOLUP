@@ -9,10 +9,8 @@
 #include "Mesh/StaticMesh.h"
 #include "Renderer/Material.h"
 
-#include "DataHub_DataBoxCustomizer.h"
-#include "DataHub_RenderIdProvider.h"
-#include "DataHub_Resource.h"
-#include "DataHub_RTB.h"
+#include "DataHub.h"
+#include "DataHub_Interface.h"
 
 #include <algorithm>
 #include <cstring>
@@ -37,7 +35,8 @@ void RenderScene::RemoveStaticMeshComponent(StaticMeshComponent* component)
 	const auto objectData = objectDataIds.find(component);
 	if (objectData != objectDataIds.end())
 	{
-		Hakko::DataHub::DataBoxCustomizer::RemoveDataBox<Hakko::DataHub::DataBox_Render3DGeneral>(objectData->second);
+		// 빌트인 타입은 enum 인자로도 가능
+		Hakko::DataHub::RemoveDataBox(Hakko::DataHub::DataBoxType_DtB_3DGeneral, objectData->second);
 		objectDataIds.erase(objectData);
 	}
 
@@ -109,7 +108,12 @@ bool RenderScene::PrepareStaticMeshes()
 			return false;
 		}
 
-		Hakko::DataHub::flag_updateResources_Upload = true;
+		// 사양 변경 (비트 조합식)
+		Hakko::DataHub::RTB_UpdateResources upload = {};
+		upload.command = Hakko::DataHub::RTBCMD_Upload_Resource;
+
+		// 인터페이스
+		Hakko::DataHub::SendRTB(upload);
 	}
 
 	return true;
@@ -132,26 +136,31 @@ bool RenderScene::PrepareCamera(const CameraViewInfo& cameraViewInfo, float aspe
 		return DirectX::XMMatrixTranspose(DirectX::XMLoadFloat4x4(&values));
 	};
 
-	auto& condition = Hakko::DataHub::LayerList[0].condition;
-	condition.camera_View = toShaderMatrix(viewMatrix);
-	condition.camera_Proj = toShaderMatrix(projectionMatrix);
-	condition.camera_ViewProj = toShaderMatrix(viewProjectionMatrix);
-	condition.camera_EyePos = {
+	// 신기능 (인터페이스)
+	Hakko::DataHub::RTB_SetCamera camera = {};
+	camera.view = toShaderMatrix(viewMatrix);
+	camera.proj = toShaderMatrix(projectionMatrix);
+	camera.viewProj = toShaderMatrix(viewProjectionMatrix);
+	camera.eyePos = {
 		cameraViewInfo.position.x,
 		cameraViewInfo.position.y,
 		cameraViewInfo.position.z
 	};
+
+	Hakko::DataHub::SendRTB(camera);
 
 	return true;
 }
 
 void RenderScene::PrepareDirectionalLight()
 {
-	auto& condition = Hakko::DataHub::LayerList[0].condition;
+	// 신기능 (인터페이스)
+	Hakko::DataHub::RTB_SetGlobalLight light = {};
 
 	// 사용할 조명이 없어도 이전 프레임의 빛이 남지 않게 한다.
-	condition.global_LightDirection = { 0.0f, 0.0f, 1.0f };
-	condition.global_LightColor = { 0.0f, 0.0f, 0.0f, 1.0f };
+	light.ambient = { 0.0f, 0.0f, 0.0f, 1.0f };
+	light.direction = { 0.0f, 0.0f, 1.0f };
+	light.color = { 0.0f, 0.0f, 0.0f, 1.0f };
 
 	for (const DirectionalLightComponent* component : directionalLightComponents)
 	{
@@ -163,18 +172,20 @@ void RenderScene::PrepareDirectionalLight()
 		const Vector3 color = component->GetColor();
 		const float intensity = component->GetIntensity();
 
-		condition.global_LightDirection = { direction.x, direction.y, direction.z };
+		light.direction = { direction.x, direction.y, direction.z };
 
-		condition.global_LightColor = { color.x * intensity, color.y * intensity, color.z * intensity, 1.0f };
+		light.color = { color.x * intensity, color.y * intensity, color.z * intensity, 1.0f };
 
-		return;
+		break;
 	}
+
+	Hakko::DataHub::SendRTB(light);
 }
 
 bool RenderScene::PrepareDrawRequests()
 {
-	auto& requests = Hakko::DataHub::LayerList[0].actionOPQ.drawReqList;
-	requests.clear();
+	// 신기능 (인터페이스)
+	Hakko::DataHub::ClearOpaqueDrawRequests();
 
 	for (const StaticMeshComponent* component : staticMeshComponents)
 	{
@@ -190,7 +201,8 @@ bool RenderScene::PrepareDrawRequests()
 		if (meshId == 0)
 		{
 			Log::Write(LogLevel::Error, "RenderScene", "Static mesh is not registered: " + path);
-			requests.clear();
+
+			Hakko::DataHub::ClearOpaqueDrawRequests();
 			return false;
 		}
 
@@ -220,7 +232,7 @@ bool RenderScene::PrepareDrawRequests()
 		const auto found = objectDataIds.find(component);
 		if (found == objectDataIds.end())
 		{
-			const Hakko::DataHub::DataBoxID dataId = Hakko::DataHub::DataBoxCustomizer::AddDataBox(std::move(objectData));
+			const Hakko::DataHub::DataBoxID dataId = Hakko::DataHub::AddDataBox(objectData);
 			if (dataId == 0)
 			{
 				Log::Write(LogLevel::Error, "RenderScene", "Failed to register static mesh object data");
@@ -231,24 +243,21 @@ bool RenderScene::PrepareDrawRequests()
 		}
 		else
 		{
-			auto& dataBoxes = Hakko::DataHub::DataBoxCustomizer::GetDataBoxList<Hakko::DataHub::DataBox_Render3DGeneral>();
-			dataBoxes[found->second] = objectData;
+			// 신기능 (하나 바꿀때는 리스트 안가져와도 됨)
+			Hakko::DataHub::UpdateDataBox(found->second, objectData);
 		}
 
 		const Hakko::DataHub::DataBoxID objectDataId = objectDataIds.at(component);
 
-		Hakko::DataHub::RenderIdOpaque renderId;
-		renderId.drawProp = RESERVED_DRAWPROP_OPAQUE_ID;
-		renderId.texProp = 0; // 임시 대체 조합. 정상적인 기본 표면 연결은 후속 단계다.
-		renderId.meshId = meshId;
-
-		Hakko::DataHub::RTB_DrawRequest request{};
-		request.renderId = renderId;
+		// 간결한 사용법 (추천) ...이지만 뭐 기호에 맞춰서 사용하세요
+		Hakko::DataHub::RTB_DrawOPQ request = {};
+		request.drawProp = RESERVED_DRAWPROP_OPAQUE_ID;
+		request.texProp = 0; // 임시 대체 조합. 정상적인 기본 표면 연결은 후속 단계다.
 		request.meshId = meshId;
 		request.subMeshId = 0;
-		request.dataBoxIds[0] = objectDataId;
+		request.generalId = objectDataId;
 
-		requests.push_back(request);
+		Hakko::DataHub::SendRTB(request);
 	}
 
 	return true;

@@ -8,6 +8,7 @@
 
 #include "D3D12Renderer.h"
 #include "DataHub.h"
+#include "DataHub_Interface.h"
 
 #include <memory>
 #include <utility>
@@ -58,7 +59,9 @@ int Engine::Run()
 		return 1;
 	}
 
-	Hakko::DataHub::LayerList[0].backGround = { RESERVED_TEX_NONE_DIFFUSE_ID, { 0.3f, 0.05f, 0.1f, 1.0f } };
+	// 신기능 (인터페이스)
+	Hakko::DataHub::SetLayerBackground(RESERVED_TEX_NONE_DIFFUSE_ID);
+	Hakko::DataHub::SetLayerBackgroundColor(0.3f, 0.05f, 0.1f, 1.0f);
 
 	Log::Write(LogLevel::Info, "Engine", "Run loop started");
 
