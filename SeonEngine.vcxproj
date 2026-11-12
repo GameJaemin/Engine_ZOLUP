@@ -91,9 +91,11 @@
     <ClInclude Include="Engine\Renderer\Core\private\D3D12\D3D12Core.h" />
     <ClInclude Include="Engine\Renderer\Core\private\D3D12\D3D12Includes.h" />
     <ClCompile Include="Engine\Renderer\Data\private\DataHub.cpp" />
+    <ClCompile Include="Engine\Renderer\Data\private\DataHub_Interface.cpp" />
     <ClCompile Include="Engine\Renderer\Data\private\DataHub_Resource.cpp" />
     <ClInclude Include="Engine\Renderer\Data\public\DataHub.h" />
     <ClInclude Include="Engine\Renderer\Data\public\DataHub_DataBoxCustomizer.h" />
+    <ClInclude Include="Engine\Renderer\Data\public\DataHub_Interface.h" />
     <ClInclude Include="Engine\Renderer\Data\public\DataHub_RTB.h" />
     <ClInclude Include="Engine\Renderer\Data\public\DataHub_RenderIdProvider.h" />
     <ClInclude Include="Engine\Renderer\Data\public\DataHub_Resource.h" />
@@ -117,6 +119,9 @@
     <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultWorldOPQ_PS.hlsl" />
     <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultWorldTP_PS.hlsl" />
     <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultWorld_VS.hlsl" />
+    <ClCompile Include="Engine\Renderer\Render\private\RenderFactory.cpp" />
+    <ClInclude Include="Engine\Renderer\Render\public\RenderAdapter.h" />
+    <ClInclude Include="Engine\Renderer\Render\public\RenderFactory.h" />
     <ClInclude Include="Engine\Renderer\Render\public\RenderOption.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">

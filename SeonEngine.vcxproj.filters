@@ -273,6 +273,9 @@
     <ClCompile Include="Engine\Renderer\Data\private\DataHub.cpp">
       <Filter>Engine\Renderer</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Renderer\Data\private\DataHub_Interface.cpp">
+      <Filter>Engine\Renderer</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Renderer\Data\private\DataHub_Resource.cpp">
       <Filter>Engine\Renderer</Filter>
     </ClCompile>
@@ -280,6 +283,9 @@
       <Filter>Engine\Renderer</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Renderer\Data\public\DataHub_DataBoxCustomizer.h">
+      <Filter>Engine\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Renderer\Data\public\DataHub_Interface.h">
       <Filter>Engine\Renderer</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Renderer\Data\public\DataHub_RTB.h">
@@ -351,6 +357,15 @@
     <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultWorld_VS.hlsl">
       <Filter>Engine\Renderer</Filter>
     </None>
+    <ClCompile Include="Engine\Renderer\Render\private\RenderFactory.cpp">
+      <Filter>Engine\Renderer</Filter>
+    </ClCompile>
+    <ClInclude Include="Engine\Renderer\Render\public\RenderAdapter.h">
+      <Filter>Engine\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Renderer\Render\public\RenderFactory.h">
+      <Filter>Engine\Renderer</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\Renderer\Render\public\RenderOption.h">
       <Filter>Engine\Renderer</Filter>
     </ClInclude>
