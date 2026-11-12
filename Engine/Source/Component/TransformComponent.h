@@ -11,6 +11,9 @@ public:
 	/** 위치, 회전, 크기 묶음의 복사본을 반환한다. 행렬이 필요하면 ToMatrix()를 호출한다. */
 	Transform GetTransform() const;
 
+	/** 위치, 회전, 크기를 한 번에 월드 기준으로 설정한다. 회전은 유한한 단위 쿼터니언이어야 하며 그대로 저장한다. */
+	void SetTransform(const Transform& newTransform);
+
 	/** 월드 위치의 복사본을 반환한다. */
 	Vector3 GetPosition() const;
 
@@ -24,6 +27,12 @@ public:
 
 	/** 월드 기준 회전을 오일러 각으로 설정한다. 각 값은 유한해야 하며 내부에서 쿼터니언으로 바꿔 저장한다. */
 	void SetRotation(const EulerAngles& newRotation);
+
+	/**
+	 * 저장된 월드 회전으로 로컬 +Z를 회전한 단위 전방 벡터를 반환한다. 위치와 크기는 무시한다.
+	 * 저장된 회전은 유한한 단위 쿼터니언이어야 하며 부모의 Transform은 합성하지 않는다.
+	 */
+	Vector3 GetForwardVector() const;
 
 	/** 월드 기준 축별 배율의 복사본을 반환한다. */
 	Vector3 GetScale() const;

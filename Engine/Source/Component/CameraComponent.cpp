@@ -4,6 +4,19 @@
 #include "Component/TransformComponent.h"
 #include "Core/Math/Transform.h"
 #include "GameObject.h"
+#include "World.h"
+
+CameraComponent::~CameraComponent()
+{
+	const GameObject* owner = GetGameObject();
+	if (owner == nullptr) { return; }
+
+	World& world = owner->GetWorld();
+	if (world.GetActiveCamera() == this)
+	{
+		world.SetActiveCamera(nullptr);
+	}
+}
 
 bool CameraComponent::SetVerticalFovDegrees(float newVerticalFovDegrees)
 {

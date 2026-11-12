@@ -1,11 +1,15 @@
 #pragma once
 
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 
-struct StaticMeshData;
+class StaticMesh;
+class Texture;
+enum class TextureFormat;
 
 /**
  * 불러온 CPU 자산을 경로별로 보관하고 재사용한다. Engine이 값으로 소유하며 Get으로 어디서든 빌려 쓴다.
@@ -41,10 +45,23 @@ public:
 	 * 메인 스레드에서 저장소 루트 기준 UTF-8 경로로 정적 메시를 요청한다.
 	 * 파일명과 폴더명의 대소문자는 실제 자산 경로에 맞춘다.
 	 * 로드한 메시를 이 매니저의 수명 동안 보관하고, 같은 경로 요청에 재사용한다.
+	 * 표시 이름은 파일 확장자를 뺀 이름이며 에셋 경로는 정규화한 저장소 상대 경로다.
 	 * 경로를 구하거나 메시를 읽는 데 실패하면 nullptr를 반환한다.
 	 */
-	std::shared_ptr<const StaticMeshData> LoadStaticMesh(std::string_view relativePath);
+	std::shared_ptr<const StaticMesh> LoadStaticMesh(std::string_view relativePath);
 
 private:
-	std::unordered_map<std::filesystem::path, std::shared_ptr<const StaticMeshData>> staticMeshes;
+	std::unordered_map<std::filesystem::path, std::shared_ptr<const StaticMesh>> staticMeshes;
+
+	// 텍스처
+public:
+	/**
+	 * 저장소 루트 기준 UTF-8 경로의 PNG를 불러오며, 같은 경로와 형식은 캐시해 재사용한다.
+	 * format은 RGBA8UNorm 또는 RGBA8SRGB이다. GPU 준비는 렌더링 단계에서 수행한다.
+	 * 잘못된 형식이나 로딩 실패는 nullptr를 반환하며, 경로 변환과 할당 예외는 전파한다.
+	 */
+	std::shared_ptr<const Texture> LoadTexture(std::string_view relativePath, TextureFormat format);
+
+private:
+	std::map<std::pair<std::filesystem::path, TextureFormat>, std::shared_ptr<const Texture>> textures;
 };
