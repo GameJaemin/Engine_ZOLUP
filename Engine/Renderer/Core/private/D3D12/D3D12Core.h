@@ -33,6 +33,7 @@ private:
 	ComPtr<IDXGIFactory4> factory;
 	ComPtr<IDXGIAdapter1> adapter;
 	ComPtr<ID3D12Device> device;
+	ComPtr<ID3D12CommandQueue> directQueue;
 
 
 	void GetHardwareAdapter(
@@ -44,6 +45,7 @@ public:
     IDXGIFactory4* GetFactory();
     IDXGIAdapter1* GetAdapter();
     ID3D12Device* GetDevice();
+    ID3D12CommandQueue* GetDirectQueue();
 
 };
 

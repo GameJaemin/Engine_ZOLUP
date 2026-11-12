@@ -9,22 +9,21 @@ namespace Hakko::DataHub
     {
         RenderId_ParseFlag_OK = 0,
         RenderId_ParseFlag_NotUse = 1,
-        RenderId_ParseFlag_OnHanded = 2,    // DtB칸 활용, GetMask시 리턴으로 슬롯 인덱스
+        RenderId_ParseFlag_OnHanded = 2,    // (미구현) DtB칸 활용, GetMask시 리턴으로 슬롯 인덱스
     };
     
 
     class RenderIdProvider
     {
     protected:
-        RenderIdProvider(uint64_t dpm, uint64_t tpm, uint64_t mm, uint64_t tm) : 
-            DRAWPROP_MASK(dpm), TEXPROP_MASK(tpm), MESH_MASK(mm), TEX_MASK(tm) {}
+        RenderIdProvider(uint64_t dpm, uint64_t tpm, uint64_t tm) : 
+            DRAWPROP_MASK(dpm), TEXPROP_MASK(tpm), TEX_MASK(tm) {}
     public:
         virtual ~RenderIdProvider() = default;
 
     protected:
         const uint64_t DRAWPROP_MASK;
         const uint64_t TEXPROP_MASK;
-        const uint64_t MESH_MASK;
         const uint64_t TEX_MASK;
 
     public:
@@ -33,7 +32,6 @@ namespace Hakko::DataHub
         virtual bool IsAscendingSort() const { return true; }
         virtual uint64_t GetDrawPropIdMask(RenderId_ParseFlag& flag) const { flag = RenderId_ParseFlag_OK; return DRAWPROP_MASK; }
         virtual uint64_t GetTexPropIdMask(RenderId_ParseFlag& flag) const { flag = RenderId_ParseFlag_OK; return TEXPROP_MASK; }
-        virtual uint64_t GetMeshIdMask(RenderId_ParseFlag& flag) const { flag = RenderId_ParseFlag_OK; return MESH_MASK; }
         virtual uint64_t GetTexIdMask(RenderId_ParseFlag& flag) const { flag = RenderId_ParseFlag_OK; return TEX_MASK; }
     };
 
@@ -41,19 +39,13 @@ namespace Hakko::DataHub
     class RenderIdNone : public RenderIdProvider
     {
     public:
-        RenderIdNone() : RenderIdProvider(0xFFFF000000000000, 0x0000FFFF00000000, 0, 0) {}
+        RenderIdNone() : RenderIdProvider(0xFFFF000000000000, 0x0000FFFF00000000, 0) {}
 
         // psoBody(16) 텍스처조합(16) iid(32!) 지만 마스크만 제공합니다 에딧용
     public:
         
         operator RenderID() const override
         {
-            return 0;
-        }
-
-        uint64_t GetMeshIdMask(RenderId_ParseFlag& flag) const
-        {
-            flag = RenderId_ParseFlag_NotUse;
             return 0;
         }
 
@@ -67,7 +59,7 @@ namespace Hakko::DataHub
     class RenderIdOpaque : public RenderIdProvider
     {
     public:
-        RenderIdOpaque() : RenderIdProvider(0x00FFFF0000000000, 0x000000FFFF000000, 0x0000000000FFFF00, 0), 
+        RenderIdOpaque() : RenderIdProvider(0x00FFFF0000000000, 0x000000FFFF000000, 0), 
             alphaClip(0), layer(0), drawProp(0), texProp(0), meshId(0), depth(0) {}
 
         // 알파(1) 레이어(7) psoBody(16) 텍스처조합(16) 메쉬(16) 뎁스(8)
@@ -103,7 +95,7 @@ namespace Hakko::DataHub
     class RenderIdTranslucent : public RenderIdProvider
     {
     public:
-        RenderIdTranslucent() : RenderIdProvider(0x0000FFFF00000000, 0x00000000FFFF0000, 0, 0), 
+        RenderIdTranslucent() : RenderIdProvider(0x0000FFFF00000000, 0x00000000FFFF0000, 0), 
             depth(0), drawProp(0), texProp(0), iid(0) {}
 
         // 뎁스(16) psoBody(16) 텍스처조합(16) 잉여(16)
@@ -127,12 +119,6 @@ namespace Hakko::DataHub
 
         bool IsAscendingSort() const { return false; }
 
-        uint64_t GetMeshIdMask(RenderId_ParseFlag& flag) const
-        {
-            flag = RenderId_ParseFlag_OnHanded;
-            return 0;
-        }
-
         uint64_t GetTexIdMask(RenderId_ParseFlag& flag) const
         {
             flag = RenderId_ParseFlag_NotUse;
@@ -145,7 +131,7 @@ namespace Hakko::DataHub
     class RenderIdShadow : public RenderIdProvider
     {
     public:
-        RenderIdShadow() : RenderIdProvider((0xFFFF000000000000 >> 1), (0x0000FFFF00000000 >> 1), (0x00000000FFFF0000 >> 1), 0), 
+        RenderIdShadow() : RenderIdProvider((0xFFFF000000000000 >> 1), (0x0000FFFF00000000 >> 1), 0), 
             alphaClip(0), drawProp(0), texProp(0), meshId(0), depth(0) {}
 
         // 알파(1) psoBody(16) 텍스처조합(16) 메쉬(16) 뎁스(8) 잉여(7)
@@ -181,15 +167,15 @@ namespace Hakko::DataHub
     class RenderIdScreen : public RenderIdProvider
     {
     public:
-        RenderIdScreen() : RenderIdProvider((0x0000FFFF00000000 >> 1), 0, 0, (0x00000000FFFF0000 >> 1)), 
-            layer(0), translucent(0), texture(0), drawProp(0), iid(0) {}
+        RenderIdScreen() : RenderIdProvider((0x0000FFFF00000000 >> 1), 0, (0x00000000FFFF0000 >> 1)), 
+            layer(0), translucent(0), drawProp(0), texture(0), iid(0) {}
 
-        // 레이어(16) 반투명(1) 텍스처(16) psoBody(16) 잉여(15)
+        // 레이어(16) 반투명(1) psoBody(16) 텍스처(16) 잉여(15)
     public:
         uint16_t layer;
         bool translucent;
-        TexID texture;
         DrawPropID drawProp;
+        TexID texture;
         uint16_t iid;
 
 
@@ -198,20 +184,14 @@ namespace Hakko::DataHub
 			RenderID id = 
 				(RenderID)layer << 48 |
 				(RenderID)translucent << 47 |
-				(RenderID)texture << 31 |
-				(RenderID)drawProp << 15 |
+				(RenderID)drawProp << 31 |
+				(RenderID)texture << 15 |
 				(RenderID)(iid & 0b0111111111111111);
 
             return id;
         }
 
         uint64_t GetTexPropIdMask(RenderId_ParseFlag& flag) const
-        {
-            flag = RenderId_ParseFlag_NotUse;
-            return 0;
-        }
-
-        uint64_t GetMeshIdMask(RenderId_ParseFlag& flag) const
         {
             flag = RenderId_ParseFlag_NotUse;
             return 0;

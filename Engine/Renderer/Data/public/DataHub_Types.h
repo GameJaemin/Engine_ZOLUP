@@ -30,7 +30,7 @@ namespace Hakko::DataHub
 
     enum RenderIDType
     {
-        RenderIdType_None,          // ActionEdit 에서 활용
+        RenderIdType_None,          // ActionEdit / Compute 에서 활용
         RenderIdType_Opaque,
         RenderIdType_Translucent,
         RenderIdType_Shadow,
@@ -54,34 +54,19 @@ namespace Hakko::DataHub
         DirectX::XMFLOAT3 Pos;
     };
 
-    struct VertexStatic
+    struct VertexStatic : VertexSimple
     {
-        DirectX::XMFLOAT3 Pos;
         DirectX::XMFLOAT2 UV;
         DirectX::XMFLOAT3 Normal;
         DirectX::XMFLOAT3 Tangent;
         DirectX::XMFLOAT4 Color;
     };
 
-    struct VertexSkinned
+    struct VertexSkinned : VertexStatic
     {
-        DirectX::XMFLOAT3 Pos;
-        DirectX::XMFLOAT2 UV;
-        DirectX::XMFLOAT3 Normal;
-        DirectX::XMFLOAT3 Tangent;
-        DirectX::XMFLOAT4 Color;
         uint16_t BoneIdx[4];
         float BoneWeight[4];
     };
-
-    // 접두 호환 잠금
-    static_assert(offsetof(VertexStatic, Pos) == offsetof(VertexSimple, Pos), "VertexStatic 은 VertexSimple 을 접두로 가져야 함");
-    static_assert(offsetof(VertexSkinned, Pos) == offsetof(VertexStatic, Pos)
-               && offsetof(VertexSkinned, UV) == offsetof(VertexStatic, UV)
-               && offsetof(VertexSkinned, Normal) == offsetof(VertexStatic, Normal)
-               && offsetof(VertexSkinned, Tangent) == offsetof(VertexStatic, Tangent)
-               && offsetof(VertexSkinned, Color) == offsetof(VertexStatic, Color), "VertexSkinned 는 VertexStatic 을 접두로 가져야 함");
-    static_assert(offsetof(VertexSkinned, BoneIdx) == sizeof(VertexStatic), "VertexSkinned 의 추가 필드는 VertexStatic 바로 뒤여야 함");
 
     typedef uint32_t VIndex;
 
@@ -124,13 +109,27 @@ namespace Hakko::DataHub
         TextureFileFormat_DDS,
     };
 
+    // 텍스처 차원 (v0.1-alpha 변경: 색공간 분리, Diffuse / CubeMap 이 sRGB 로 올려주던 동작 제거)
     enum TextureType
     {
-        TextureType_Default,
-        TextureType_Diffuse,
-        TextureType_CubeMap,
-        TextureType_LUT,
-        TextureType_VolumeMap,
+        TextureType_2D,
+        TextureType_Cube,       // 2D 6장 묶음 (arraySize 는 6의 배수)
+        TextureType_1D,
+        TextureType_3D,
+
+        TextureType_Default = TextureType_2D,
+        TextureType_Diffuse = TextureType_2D,
+        TextureType_CubeMap = TextureType_Cube,
+        TextureType_LUT = TextureType_1D,
+        TextureType_VolumeMap = TextureType_3D,
+    };
+
+    // 파일로드 용, 색공간 해석
+    enum TextureColorSpace
+    {
+        TextureColorSpace_Auto,     // 파일에 적힌 대로
+        TextureColorSpace_SRGB,     // 색 (알베도 / 스카이박스 / UI) sRGB 변형이 없는 UNORM 은 RGBA8_SRGB 로
+        TextureColorSpace_Linear,   // 데이터 (노멀 / ORM / 마스크)
     };
 
     // 텍스처의 압축포맷
@@ -153,6 +152,16 @@ namespace Hakko::DataHub
         R32_Float,
         RG32_Float,
         RGBA32_Float,
+        R16_UNorm,
+        RG16_UNorm,
+        RGBA16_UNorm,
+        RG8_SNorm,
+        RGBA8_SNorm,
+        RG16_SNorm,
+        R8_UInt,                // 정수 (피킹 id / 마스크), 블렌드 / 필터링 불가
+        R16_UInt,
+        R32_UInt,
+        RGB9E5_SharedExp,       // HDR 읽기 전용 (RT / Compute 불가)
 
         // 블록 압축 (파일 텍스처용)
         BC1_UNorm,  BC1_SRGB,
@@ -189,16 +198,25 @@ namespace Hakko::DataHub
     enum TextureUsage
     {
         TextureUsage_ReadOnly,
-        TextureUsage_RT,
-        TextureUsage_DS,
+        TextureUsage_RT,        // 미구현: 아직 검증 전이라 생성 막아놓음
+        TextureUsage_DS,        // 미구현
+        TextureUsage_Compute,   // 미구현
     };
 
+
+    struct TextureClearValue
+    {
+        float color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+        float depth = 1.0f;
+        uint8_t stencil = 0;
+    };
 
     struct Texture {
         TextureData data;
         std::vector<SubresourceData> subresources;
         std::vector<std::byte> rawData;
-        TextureUsage usage;
+        TextureUsage usage = TextureUsage_ReadOnly;
+        TextureClearValue clearValue;
     };
 
     typedef uint16_t TexID;
@@ -212,6 +230,8 @@ namespace Hakko::DataHub
     {
         ShaderType_VS,
         ShaderType_PS,
+        
+        ShaderType_CS,
     };
 
 	typedef std::pair<std::wstring, ShaderType> ShaderInfo;
@@ -222,36 +242,34 @@ namespace Hakko::DataHub
 
 
     // 미구현 (컴퓨트 자원)
-    #pragma region ComputeResource
+    #pragma region ComputeBuffer
 
-    enum ComputeDimension
+    struct ComputeBuffer
     {
-        ComputeDimension_Buffer,
-        ComputeDimension_Texture1D,
-        ComputeDimension_Texture2D,
-        ComputeDimension_Texture3D,
-    };
-
-    struct ComputeResource
-    {
-        ComputeDimension dimension = ComputeDimension_Buffer;
-        TextureReadFormat format = TextureReadFormat::Unknown;
         uint32_t stride = 0;
-        uint32_t width = 1;
-        uint32_t height = 1;
-        uint32_t depth = 1;
         uint32_t count = 0;
+        std::vector<uint8_t> data;
     };
-    typedef ComputeResource CSRes;
+    typedef ComputeBuffer CSBuffer;
 
-    typedef uint16_t CSResID;
+    typedef uint16_t CSBufferID;
+
+
+    struct CSMeshLinkData
+    {
+        MeshID linkMeshId;
+
+        CSBufferID csBufferId;
+        std::vector<VIndex> indices;
+        std::vector<SubMesh> subMeshes;
+    };
 
     #pragma endregion
 
 
     #pragma region Prop
 
-    // (RTB)Action.dsOpt = ForceDepthRead 설정 시 쓰기 강제 꺼짐
+    // (RTB)Action.depthOpt = ForceDepthRead 설정 시 쓰기 강제 꺼짐
     // DS 없는 출력 시 무시
     enum DrawProp_DepthUsage
     {
@@ -259,8 +277,8 @@ namespace Hakko::DataHub
         DrawProp_DepthUsage_Translucent,    // 깊이 LESS / 쓰기 없음
         DrawProp_DepthUsage_Screen,         // 깊이 테스트 / 쓰기 모두 끔
         DrawProp_DepthUsage_Background,     // 깊이 LESS_EQUAL / 쓰기 없음
-        DrawProp_DepthUsage_Equal,          // 미구현: 깊이 EQUAL / 쓰기 없음
-        DrawProp_DepthUsage_Always,         // 미구현: 깊이 ALWAYS / 쓰기 있음
+        DrawProp_DepthUsage_Equal,          // 깊이 EQUAL / 쓰기 없음
+        DrawProp_DepthUsage_Always,         // 깊이 ALWAYS / 쓰기 있음
     };
 
     enum DrawProp_CullType
@@ -279,20 +297,25 @@ namespace Hakko::DataHub
         DrawProp_BlendType_Multiply,
     };
 
-    // 미구현
     enum DrawProp_FillType
     {
         DrawProp_FillType_Solid,
         DrawProp_FillType_Wireframe,
     };
 
-    // 미구현
     enum DrawProp_DepthBias
     {
         DrawProp_DepthBias_None,
         DrawProp_DepthBias_ShadowCaster,
         DrawProp_DepthBias_Decal,
     };
+
+    #define DEPTHBIAS_SHADOWCASTER_BIAS 1000
+    #define DEPTHBIAS_SHADOWCASTER_SLOPE 1.5f
+    #define DEPTHBIAS_SHADOWCASTER_CLAMP 0.0f
+    #define DEPTHBIAS_DECAL_BIAS -1000
+    #define DEPTHBIAS_DECAL_SLOPE -1.0f
+    #define DEPTHBIAS_DECAL_CLAMP 0.0f
 
     // 미구현
     struct DrawProp_StencilOption
@@ -314,8 +337,8 @@ namespace Hakko::DataHub
         DrawProp_DepthUsage depthUsage;
         DrawProp_CullType cullType;
         DrawProp_BlendType blendType;
-        DrawProp_FillType fillType;         // 미구현
-        DrawProp_DepthBias depthBias;       // 미구현
+        DrawProp_FillType fillType;
+        DrawProp_DepthBias depthBias;
         DrawProp_StencilOption stecilOpt;
         DrawProp_Topology topology;
 
@@ -402,14 +425,16 @@ namespace Hakko::DataHub
     enum DataBoxType
     {
         DataBoxType_None = 0,
-        DataBoxType_DataBox_RenderCondition = 1,
-        DataBoxType_DataBox_RenderLight = 2,
-        DataBoxType_DataBox_RenderLightMatrix = 3,
-        DataBoxType_DataBox_Render3DGeneral = 4,
-        DataBoxType_DataBox_Render3DOptional = 5,
-        DataBoxType_DataBox_Render2DScreen = 6,
+        DataBoxType_CSBuffer = 1,               // 드로우 데이터 칸에 컴퓨트 버퍼 (id = CSBufferID, 구조버퍼로 바인딩), 프로바이더 없음, 액션당 한 칸
+        DataBoxType_DataBox_RenderCondition = 2,
+        DataBoxType_DataBox_RenderLight = 3,
+        DataBoxType_DataBox_RenderLightMatrix = 4,
+        DataBoxType_DataBox_RenderShadowView = 5,
+        DataBoxType_DataBox_Render3DGeneral = 6,
+        DataBoxType_DataBox_Render3DOptional = 7,
+        DataBoxType_DataBox_Render2DScreen = 8,
 
-        DataBoxType_CustomizableBegin = 7,
+        DataBoxType_CustomizableBegin = 9,
 
         DataBoxType_DtB_Condition = DataBoxType_DataBox_RenderCondition,
         DataBoxType_DtB_Light = DataBoxType_DataBox_RenderLight,
@@ -417,6 +442,7 @@ namespace Hakko::DataHub
         DataBoxType_DtB_3DGeneral = DataBoxType_DataBox_Render3DGeneral,
         DataBoxType_DtB_3DOptional = DataBoxType_DataBox_Render3DOptional,
         DataBoxType_DtB_2DScreen = DataBoxType_DataBox_Render2DScreen,
+        DataBoxType_DtB_ShadowView = DataBoxType_DataBox_RenderShadowView,
     };
 
     typedef uint32_t DataBoxTID;
@@ -438,6 +464,8 @@ namespace Hakko::DataHub
     // 특수화된 데이터 (커스터마이즈 불가)
     #pragma region ConditionData
 
+    #define RENDER_BUILTIN_CSM_MAX 4
+
     struct alignas(256) DataBox_RenderCondition : DataBox
     {
         DirectX::XMMATRIX camera_View;
@@ -448,7 +476,9 @@ namespace Hakko::DataHub
         DirectX::XMFLOAT4 global_LightAmbient;
         DirectX::XMFLOAT4 global_LightColor;
         DirectX::XMFLOAT3 global_LightDirection;
-        DirectX::XMMATRIX global_LightViewProj;
+        DirectX::XMMATRIX global_LightViewProj[RENDER_BUILTIN_CSM_MAX];     // 전역조명 캐스케이드별 뷰프로젝션 (하나만 쓰면 [0])
+        DirectX::XMFLOAT4 global_LightCascadeSplit;                         // 캐스케이드 i 가 덮는 뷰 깊이의 끝 (안 쓰는 칸 0)
+        DirectX::XMFLOAT4 global_LightCascadeTile[RENDER_BUILTIN_CSM_MAX];  // 섀도우 아틀라스 타일 (xy = uv 스케일, zw = uv 오프셋)
     };
     typedef DataBox_RenderCondition RenderCondition, DtB_Condition;
 
@@ -504,7 +534,7 @@ namespace Hakko::DataHub
 
 
     // 스크린 쿼드 사용, 좌표는 뷰포트 비율 0~1, 원점 좌상단
-    // 렌더러 스크린 드로우 경로 미구현
+    // 미구현: 렌더러 스크린 드로우 경로 셰이더가 없음
     struct alignas(256) DataBox_Render2DScreen : DataBox_Custom
     {
         DirectX::XMFLOAT4 rect;
@@ -515,6 +545,15 @@ namespace Hakko::DataHub
         DirectX::XMFLOAT4 blendColor;
     };
     typedef DataBox_Render2DScreen DtB_2DScreen;
+
+
+    // 미구현 (기본 섀도우 셰이더 / 드로우프롭 전)
+    // 섀도우 패스가 그리는 용도의 조명행렬, 읽는 쪽 (OPQ 등) 은 레이어 전역 컨디션 / 조명행렬 데이터로
+    struct alignas(256) DataBox_RenderShadowView : DataBox_Custom
+    {
+        DirectX::XMMATRIX viewProj;
+    };
+    typedef DataBox_RenderShadowView DtB_ShadowView;
 
     #pragma endregion
 

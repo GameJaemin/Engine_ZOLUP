@@ -24,16 +24,16 @@ inline static UINT ConvertReleaseListToMask(std::vector<uint16_t>& list, std::ve
 }
 
 
-inline static DXGI_FORMAT GetDSVFormat(DXGI_FORMAT resFormat)
+inline static bool HasUploadWork()
 {
-	switch (resFormat)
-	{
-	case DXGI_FORMAT_R24G8_TYPELESS:		return DXGI_FORMAT_D24_UNORM_S8_UINT;
-	case DXGI_FORMAT_R32_TYPELESS:			return DXGI_FORMAT_D32_FLOAT;
-	case DXGI_FORMAT_R32G8X24_TYPELESS:		return DXGI_FORMAT_D32_FLOAT_S8X24_UINT;
-	case DXGI_FORMAT_R16_TYPELESS:			return DXGI_FORMAT_D16_UNORM;
-	default:								return resFormat;
-	}
+	using namespace Hakko::DataHub;
+
+	const bool upload = (flag_updateResources & RTBCMD_Upload_Resource) != 0
+		&& (!uploadMeshList.empty() || !uploadTextureList.empty() || !uploadCSBufferList.empty() || !linkCSBufferAsMeshList.empty());
+	const bool update = (flag_updateResources & RTBCMD_Update_Resource) != 0
+		&& (!updateMeshList.empty() || !updateTextureList.empty() || !updateCSBufferList.empty());
+
+	return upload || update;
 }
 
 
@@ -50,6 +50,19 @@ inline bool IsEmpty(const DataHub::Action_Viewport& v)
 inline bool IsEmpty(const DataHub::Action_Rect& v)
 {
     return v.width <= 0 || v.height <= 0;
+}
+
+inline bool IsEmpty(const DataHub::Action_Output& v)
+{
+    if (v.useDS)
+        return false;
+
+    for (uint8_t r = 0; r < RENDER_TARGET_MAX; r++)
+    {
+        if (v.useRT[r])
+            return false;
+    }
+    return true;
 }
 
 inline D3D12_VIEWPORT ToD3D12Viewport(const DataHub::Layer_Viewport& v)
@@ -123,27 +136,29 @@ inline static void FillRenderActionBase(DX12_RenderAction& action, DX12_RenderAc
 
 	action.outputSigId = OUTPUT_SIGNATURE_INVALID;
 
-	action.rtTexIds.fill(0);
-	action.dsTexId = 0;
-	action.rtInstantIdx.fill(TEX_INSTANT_NONE);
-	action.dsInstantIdx = TEX_INSTANT_NONE;
+	action.slotIds.fill(0);
+	action.slotFlags = 0;
 	action.srInstantIdx.fill(TEX_INSTANT_NONE);
 	action.copySrcInstantIdx.fill(TEX_INSTANT_NONE);
+	action.rtLoadOpts.fill(DataHub::Action_Output_LoadOption_Default);
+	action.dsLoadOpt = DataHub::Action_Output_LoadOption_Default;
 
 	for (uint8_t i = 0; i < RENDER_TARGET_MAX; i++)
 	{
 		if (src.output.useRT[i])
 		{
-			action.rtTexIds[i] = src.output.RTTex[i];
+			SetOutTex(action, i, src.output.RTTex[i]);
+			action.rtLoadOpts[i] = src.output.loadOpt[i];
 			if (src.output.RTTex[i] == 0)
-				action.rtInstantIdx[i] = TEX_INSTANT_WANT;
+				SetOutInstant(action, i, TEX_INSTANT_WANT);
 		}
 	}
 	if (src.output.useDS)
 	{
-		action.dsTexId = src.output.DSTex;
+		SetOutTex(action, INSTANT_SLOT_DS, src.output.DSTex);
+		action.dsLoadOpt = src.output.dsLoadOpt;
 		if (src.output.DSTex == 0)
-			action.dsInstantIdx = TEX_INSTANT_WANT;
+			SetOutInstant(action, INSTANT_SLOT_DS, TEX_INSTANT_WANT);
 	}
 
 	action.dsReadOnly = src.output.depthOpt == DataHub::Action_Output_DepthOption_ForceDepthRead;
@@ -187,9 +202,27 @@ inline static void FillRenderAction(DX12_RenderAction& action, const DataHub::RT
 	action.renderIdType = src.renderIdType;
 	action.dataTids = src.dataBoxTypeIds;
 
+	bool sbTaken = false;
+
 	for (size_t k = 0; k < DRAWREQ_DATABOX_MAX; k++)
 	{
-		if (action.dataTids[k] != 0 && DataHub::DataBoxCustomizer::GetProvider(action.dataTids[k]) == nullptr)
+		const DataHub::DataBoxTID tid = action.dataTids[k];
+
+		if (tid == 0)
+			continue;
+
+		if (tid == DataHub::DataBoxType_CSBuffer)
+		{
+			if (sbTaken)
+			{
+				DebugReport(DataHub::RenderReport_Contract, L"[Read] 컴퓨트 버퍼 칸은 액션당 하나 (추가 칸 무시됨)");
+				action.dataTids[k] = 0;
+			}
+			sbTaken = true;
+			continue;
+		}
+
+		if (DataHub::DataBoxCustomizer::GetProvider(tid) == nullptr)
 		{
 			DebugReport(DataHub::RenderReport_Contract, L"[Read] 드로우 데이터 칸 tid 에 프로바이더 없음 (칸 무시됨)");
 			action.dataTids[k] = 0;
@@ -205,8 +238,28 @@ inline static void FillRenderAction(DX12_RenderAction& action, const DataHub::RT
 inline static void FillRenderAction(DX12_RenderAction& action, const DataHub::RTB_ActionCompute& src, const DataHub::Layer_Viewport& layerVp)
 {
 	FillRenderActionBase(action, DX12_RenderActionType_Compute, src, layerVp);
-	// 미구현 (컴퓨트 경로): 액션 자리만, 디스패치 안함
-	DebugReport(DataHub::RenderReport_Contract, L"[Read] 컴퓨트 액션 미구현 (무시)");
+
+	bool outputSet = action.slotFlags != 0;
+	for (uint8_t s = 0; s < INSTANT_SLOT_MAX && !outputSet; s++)
+		outputSet = action.slotIds[s] != 0;
+
+	if (outputSet)
+		DebugReport(DataHub::RenderReport_Contract, L"[Read] 컴퓨트 액션의 output 은 무시됨 (쓰기는 writes 로)");
+
+	action.slotIds.fill(0);
+	action.slotFlags = 0;
+
+	for (size_t k = 0; k < COMPUTE_BINDING_MAX; k++)
+	{
+		const DataHub::ActionCompute_Binding& write = src.writes[k];
+		const DataHub::ActionCompute_Binding& read = src.reads[k];
+
+		if (write.type != DataHub::ActionCompute_Binding_Type_None)
+			SetCSBinding(action, CS_SLOT_WRITE0 + k, write.resId, write.type == DataHub::ActionCompute_Binding_Type_Texture);
+
+		if (read.type != DataHub::ActionCompute_Binding_Type_None)
+			SetCSBinding(action, CS_SLOT_READ0 + k, read.resId, read.type == DataHub::ActionCompute_Binding_Type_Texture);
+	}
 }
 
 inline static void FillRenderAction(DX12_RenderAction& action, const DataHub::RTB_ActionBuiltin& src, const DataHub::Layer_Viewport& layerVp)
@@ -214,6 +267,76 @@ inline static void FillRenderAction(DX12_RenderAction& action, const DataHub::RT
 	FillRenderActionBase(action, DX12_RenderActionType_Builtin, src, layerVp);
 	action.builtinType = src.builtinType;
 }
+
+
+inline static void LinkActionNode(DX12_RenderLayer& layer, uint32_t node, uint32_t slot, uint32_t frontNode)
+{
+	const DX12_RenderActionNode& front = layer.renderActionNodeList[frontNode];
+	DX12_RenderActionNode& dst = layer.renderActionNodeList[node];
+
+	layer.renderActionList[node].frontNodeIdx[slot] = frontNode;
+	dst.frontIds[slot] = front.actionId;
+
+	if (dst.nodeDepth <= front.nodeDepth)
+		dst.nodeDepth = front.nodeDepth + 1;
+}
+
+inline static void LinkActionNodeFronts(DX12_RenderLayer& layer, uint32_t node, const std::array<ActionID, RENDER_ACTION_NODE_MAX>* frontTable, uint32_t* nodeOfId)
+{
+	const ActionID id = layer.renderActionNodeList[node].actionId;
+
+	for (uint32_t k = 0; k < RENDER_ACTION_NODE_MAX; k++)
+	{
+		ActionID frontId = frontTable[id][k];
+
+		while (frontId != 0 && nodeOfId[frontId] == 0)
+			frontId = frontTable[frontId][0];
+
+		LinkActionNode(layer, node, k, nodeOfId[frontId]);
+	}
+
+	nodeOfId[id] = node;
+}
+
+
+#if RENDER_PIPELINE_MODE == RENDER_USE_PIPELINE_BUILTIN
+
+static std::array<ActionID, RENDER_ACTION_NODE_MAX> builtinFrontTables[2][DX12_BuiltinActionId_Count];
+static bool builtinFrontTablesReady = false;
+
+inline static void BuildBuiltinFrontTables()
+{
+	for (uint32_t t = 0; t < 2; t++)
+	{
+		const bool deferred = t == 1;
+		std::array<ActionID, RENDER_ACTION_NODE_MAX>* table = builtinFrontTables[t];
+
+		for (uint32_t id = 0; id < DX12_BuiltinActionId_Count; id++)
+			table[id].fill(0);
+
+		table[DX12_BuiltinActionId_AO][0] = deferred ? DX12_BuiltinActionId_GBuffer : DX12_BuiltinActionId_EarlyZ;
+		table[DX12_BuiltinActionId_AOBlur][0] = DX12_BuiltinActionId_AO;
+
+		table[DX12_BuiltinActionId_OPQ][0] = DX12_BuiltinActionId_EarlyZ;
+		table[DX12_BuiltinActionId_OPQ][1] = DX12_BuiltinActionId_AOBlur;
+		table[DX12_BuiltinActionId_Lighting][0] = DX12_BuiltinActionId_GBuffer;
+		table[DX12_BuiltinActionId_Lighting][1] = DX12_BuiltinActionId_AOBlur;
+
+		table[DX12_BuiltinActionId_Background][0] = deferred ? DX12_BuiltinActionId_Lighting : DX12_BuiltinActionId_OPQ;
+		table[DX12_BuiltinActionId_TP][0] = DX12_BuiltinActionId_Background;
+
+		table[DX12_BuiltinActionId_PP0][0] = DX12_BuiltinActionId_TP;
+		for (uint32_t i = 1; i < RENDER_BUILTIN_PP_MAX; i++)
+			table[DX12_BuiltinActionId_PP0 + i][0] = DX12_BuiltinActionId_PP0 + i - 1;
+
+		table[DX12_BuiltinActionId_SC][0] = DX12_BuiltinActionId_PP0 + RENDER_BUILTIN_PP_MAX - 1;
+		table[DX12_BuiltinActionId_Debug][0] = DX12_BuiltinActionId_SC;
+	}
+
+	builtinFrontTablesReady = true;
+}
+
+#endif
 
 #pragma endregion
 
@@ -279,15 +402,24 @@ inline static void TransitionInstant(std::vector<DX12_ActionBarrier>& barriers, 
 	state = after;
 }
 
-inline static void TransitionLoaded(DX12_RenderAction& action, TexID texId, const DX12_Texture& tex, D3D12_RESOURCE_STATES use)
+inline static void TransitionLoaded(DX12_RenderAction& action, TexID texId, DX12_TextureUsage usage, D3D12_RESOURCE_STATES use)
 {
-	const D3D12_RESOURCE_STATES home = GetLoadedHomeState(tex.usage);
+	const D3D12_RESOURCE_STATES home = GetLoadedHomeState(usage);
 
 	if (IsStateCovered(home, use))
 		return;
 
 	action.beginBarriers.push_back(DX12_ActionBarrier{texId, DX12_BarrierTarget_Loaded, home, use});
 	action.endBarriers.push_back(DX12_ActionBarrier{texId, DX12_BarrierTarget_Loaded, use, home});
+}
+
+inline static void TransitionBuffer(DX12_RenderAction& action, CSBufferID csBufferId, D3D12_RESOURCE_STATES use)
+{
+	if (IsStateCovered(CSBUFFER_HOME_STATE, use))
+		return;
+
+	action.beginBarriers.push_back(DX12_ActionBarrier{csBufferId, DX12_BarrierTarget_Buffer, CSBUFFER_HOME_STATE, use});
+	action.endBarriers.push_back(DX12_ActionBarrier{csBufferId, DX12_BarrierTarget_Buffer, use, CSBUFFER_HOME_STATE});
 }
 
 
@@ -335,6 +467,37 @@ inline static void ReadActionEditRequest(const DataHub::RTB_ActionEdit& src, DX1
 	layer.actionSortedRenderDataList[node].assign(1, {});
 }
 
+inline static void ReadActionComputeRequest(const DataHub::RTB_ActionCompute& src, DX12_RenderLayer& layer, uint32_t node)
+{
+	auto& requestList = layer.actionRenderRequestList[node];
+
+	requestList.resize(1);
+
+	uint32_t dispatch[3] = { src.dispatchX, src.dispatchY, src.dispatchZ };
+
+	for (uint32_t& d : dispatch)
+	{
+		if (d > D3D12_CS_DISPATCH_MAX_THREAD_GROUPS_PER_DIMENSION)
+		{
+			DebugReport(DataHub::RenderReport_Contract, L"[Read] 컴퓨트 디스패치 수가 한 차원 최댓값 (65535) 초과 (잘라냄)");
+			d = D3D12_CS_DISPATCH_MAX_THREAD_GROUPS_PER_DIMENSION;
+		}
+	}
+
+	ShaderID csId = src.csId;
+
+	if (csId > UINT16_MAX)
+	{
+		DebugReport(DataHub::RenderReport_Contract, L"[Read] 컴퓨트 셰이더 id 가 16비트 밖 (디스패치 안함)");
+		csId = 0;
+	}
+
+	requestList[0].renderId = ((RenderID)csId << 48) | ((RenderID)dispatch[0] << 32) | ((RenderID)dispatch[1] << 16) | (RenderID)dispatch[2];
+	requestList[0].requestIdx = 0;
+
+	layer.actionSortedRenderDataList[node].assign(1, {});
+}
+
 #pragma endregion
 
 #pragma endregion
@@ -346,16 +509,25 @@ inline static void ReadActionEditRequest(const DataHub::RTB_ActionEdit& src, DX1
 void D3D12Renderer::ReadTransferBox()
 {
 	// --- 패스 / 리소스 관련 요청 (프레임 별) ---
-	ReadUploadRequest();
+	{
+		vector<ComPtr<ID3D12Resource>> uploadBufferList;
+		const bool gpuWork = HasUploadWork();
+
+		if (gpuWork)
+			BeginUploadCommands();
+
+		ReadUploadRequest(uploadBufferList);
+		ReadUpdateRequest(uploadBufferList);
+
+		if (gpuWork)
+			FlushUploadCommands();
+	}
 
 	// --- 그리기 관련 요청 (레이어/패스 별) ---
 	ReadLayerOption();
 
 	if (renderFrames[cpuFrameIndex].frameInvalidated)
-	{
-		DebugReport(DataHub::RenderReport_Contract, L"[Frame] 무효 프레임 (이번 프레임 요청 전부 버림)");
 		return;
-	}
 
 
 	ReadActionNode();
@@ -373,7 +545,12 @@ void D3D12Renderer::ReadLayerOption()
 		auto bgTexIdNew = LayerList[i].backGround.bgTexId;
 		const auto& color = LayerList[i].backGround.color;
 
-        if (releaseTexIdMask[bgTexIdNew])
+		if (bgTexIdNew >= textureList.size())
+		{
+			DebugReport(DataHub::RenderReport_Contract, L"[Layer] 배경 texId 범위 밖 (무시됨)");
+			bgTexIdNew = 0;
+		}
+		else if (bgTexIdNew < releaseTexIdMask.size() && releaseTexIdMask[bgTexIdNew])
         {
             DebugReport(DataHub::RenderReport_Contract, L"[Layer] 삭제된 텍스처를 배경으로 지정 (무시됨)");
             bgTexIdNew = 0;
@@ -394,7 +571,12 @@ void D3D12Renderer::ReadLayerOption()
 
 		auto envTexIdNew = LayerList[i].envTexId;
 
-		if (releaseTexIdMask[envTexIdNew])
+		if (envTexIdNew >= textureList.size())
+		{
+			DebugReport(DataHub::RenderReport_Contract, L"[Layer] 환경맵 texId 범위 밖 (무시됨)");
+			envTexIdNew = 0;
+		}
+		else if (envTexIdNew < releaseTexIdMask.size() && releaseTexIdMask[envTexIdNew])
 		{
 			DebugReport(DataHub::RenderReport_Contract, L"[Layer] 삭제된 텍스처를 환경맵으로 지정 (무시됨)");
 			envTexIdNew = 0;
@@ -435,7 +617,10 @@ void D3D12Renderer::ReadActionNode()
 	renderFrame.rtInstantNeedCount = 0;
 	renderFrame.dsInstantNeedCount = 0;
 
-	const size_t BUILTIN_ACTION_NODE_MAX = RENDER_LIGHT_MAX + 24;
+	const size_t BUILTIN_ACTION_NODE_MAX = DX12_BuiltinActionId_Count;
+
+	if (!builtinFrontTablesReady)
+		BuildBuiltinFrontTables();
 
 	for (size_t l = 0; l < layerCount; l++)
 	{
@@ -457,113 +642,215 @@ void D3D12Renderer::ReadActionNode()
 		sortedList.resize(BUILTIN_ACTION_NODE_MAX);
 
 		uint32_t n = 0;
-		ActionID id = 0;
 
 
 		nodeList[n] = DX12_RenderActionNode{};
 		{
 			DX12_RenderAction& base = actionList[n];
 			base = {};
-			base.rtInstantIdx.fill(TEX_INSTANT_NONE);
-			base.dsInstantIdx = TEX_INSTANT_NONE;
 			base.srInstantIdx.fill(TEX_INSTANT_NONE);
 			base.copySrcInstantIdx.fill(TEX_INSTANT_NONE);
 			base.outputSigId = OUTPUT_SIGNATURE_INVALID;
 		}
 		requestList[n].clear();
 		sortedList[n].clear();
-		n++;	id++;
+		n++;
 
-		nodeList[n] = DX12_RenderActionNode{1, {0}, id};
-		FillRenderAction(actionList[n], layerDesc.actionEarlyZ, layerVp);
-		ReadActionDrawRequests(layerDesc.actionEarlyZ, layer, n);
-		n++;	id++;
 
-		nodeList[n] = DX12_RenderActionNode{1, {0}, id};
-		FillRenderAction(actionList[n], layerDesc.actionGlobalSDW, layerVp);
-		ReadActionDrawRequests(layerDesc.actionGlobalSDW, layer, n);
-		n++;	id++;
+		bool deferred = layerDesc.pipelineType == Layer_PipelineType_Deferred;
 
-		nodeList[n] = DX12_RenderActionNode{1, {0}, id};
-		FillRenderAction(actionList[n], layerDesc.actionLocalSDWs[0], layerVp);
-		ReadActionDrawRequests(layerDesc.actionLocalSDWs[0], layer, n);
-		actionList[n].frontNodeIdx[0] = 0;
-		n++;	id++;
-
-		for (uint32_t i = 1; i < RENDER_LIGHT_MAX; i++)
+		if (deferred)
 		{
-			nodeList[n] = DX12_RenderActionNode{1+i, {id-1,}, id};
-			FillRenderAction(actionList[n], layerDesc.actionLocalSDWs[i], layerVp);
-			ReadActionDrawRequests(layerDesc.actionLocalSDWs[i], layer, n);
-			actionList[n].frontNodeIdx[0] = n - 1;
-			n++;	id++;
+			DebugReport(RenderReport_Contract, L"[미지원] 디퍼드 파이프라인은 이 버전에서 막혀 있음 (Forward 로 처리)");
+			deferred = false;
 		}
 
-		nodeList[n] = DX12_RenderActionNode{RENDER_LIGHT_MAX+1, {1,2,2+RENDER_LIGHT_MAX,}, id};
-		FillRenderAction(actionList[n], layerDesc.actionOPQ, layerVp);
-		ReadActionDrawRequests(layerDesc.actionOPQ, layer, n);
-		actionList[n].frontNodeIdx[0] = 1;
-		actionList[n].frontNodeIdx[1] = 2;
-		actionList[n].frontNodeIdx[2] = n - 1;
-		n++;	id++;
+		if (layerDesc.globalShadowTexId != 0 || layerDesc.localShadowTexId != 0)
+			DebugReport(RenderReport_Contract, L"[미지원] 레이어 섀도우맵 칸은 이 버전에서 막혀 있음 (무시됨)");
 
-		nodeList[n] = DX12_RenderActionNode{RENDER_LIGHT_MAX+2, {id-1,}, id};
-		FillRenderAction(actionList[n], layerDesc.actionBackground, layerVp);
-		requestList[n].clear();
-		sortedList[n].clear();
-		actionList[n].frontNodeIdx[0] = n - 1;
-		n++;	id++;
+		bool blockedPreCompute = false;
+		bool blockedShadow = false;
 
-		nodeList[n] = DX12_RenderActionNode{RENDER_LIGHT_MAX+3, {id-1,}, id};
-		FillRenderAction(actionList[n], layerDesc.actionTP, layerVp);
-		ReadActionDrawRequests(layerDesc.actionTP, layer, n);
-		actionList[n].frontNodeIdx[0] = n - 1;
-		n++;	id++;
+		const std::array<ActionID, RENDER_ACTION_NODE_MAX>* frontTable = builtinFrontTables[deferred ? 1 : 0];
 
-		for (uint32_t i = 0; i < 16; i++)
+		uint32_t nodeOfId[DX12_BuiltinActionId_Count] = {};
+
+
+		for (uint32_t i = 0; i < RENDER_BUILTIN_PRECOMPUTE_MAX; i++)
 		{
-			const RTB_ActionEdit& pp = layerDesc.actionPPs[i];
-			if (pp.drawProp == 0)
-			{
-				id++;
+			const RTB_ActionCompute& src = layerDesc.actionPreComputes[i];
+			if (src.csId == 0)
 				continue;
-			}
 
-			nodeList[n] = DX12_RenderActionNode{RENDER_LIGHT_MAX+4+i, {id-1,}, id};
-			FillRenderAction(actionList[n], pp, layerVp);
-			ReadActionEditRequest(pp, layer, n);
-			actionList[n].frontNodeIdx[0] = n - 1;
-			n++;	id++;
+			blockedPreCompute = true;
+			continue;
+
+			nodeList[n] = DX12_RenderActionNode{1, {0}, DX12_BuiltinActionId_PreCompute0 + i};
+			FillRenderAction(actionList[n], src, layerVp);
+			ReadActionComputeRequest(src, layer, n);
+			LinkActionNodeFronts(layer, n, frontTable, nodeOfId);
+			n++;
 		}
 
-		nodeList[n] = DX12_RenderActionNode{RENDER_LIGHT_MAX+20, {id-1,}, id};
-		FillRenderAction(actionList[n], layerDesc.actionSC, layerVp);
-		ReadActionDrawRequests(layerDesc.actionSC, layer, n);
-		actionList[n].frontNodeIdx[0] = n - 1;
-		n++;	id++;
+		{
+			const RTB_ActionDraw& src = deferred ? layerDesc.actionGBuffer : layerDesc.actionEarlyZ;
 
-		nodeList[n] = DX12_RenderActionNode{RENDER_LIGHT_MAX+21, {id-1,}, id};
-		FillRenderAction(actionList[n], layerDesc.actionDebug, layerVp);
-		ReadActionDrawRequests(layerDesc.actionDebug, layer, n);
-		actionList[n].frontNodeIdx[0] = n - 1;
-		n++;	id++;
+			if (!IsEmpty(src.output))
+			{
+				nodeList[n] = DX12_RenderActionNode{1, {0}, deferred ? DX12_BuiltinActionId_GBuffer : DX12_BuiltinActionId_EarlyZ};
+				FillRenderAction(actionList[n], src, layerVp);
+				ReadActionDrawRequests(src, layer, n);
+				LinkActionNodeFronts(layer, n, frontTable, nodeOfId);
+				n++;
+			}
+		}
+
+		if (layerDesc.actionAO.drawProp != 0)
+		{
+			nodeList[n] = DX12_RenderActionNode{1, {0}, DX12_BuiltinActionId_AO};
+			FillRenderAction(actionList[n], layerDesc.actionAO, layerVp);
+			ReadActionEditRequest(layerDesc.actionAO, layer, n);
+			LinkActionNodeFronts(layer, n, frontTable, nodeOfId);
+			n++;
+		}
+
+		if (layerDesc.actionAOBlur.drawProp != 0)
+		{
+			nodeList[n] = DX12_RenderActionNode{1, {0}, DX12_BuiltinActionId_AOBlur};
+			FillRenderAction(actionList[n], layerDesc.actionAOBlur, layerVp);
+			ReadActionEditRequest(layerDesc.actionAOBlur, layer, n);
+			LinkActionNodeFronts(layer, n, frontTable, nodeOfId);
+			n++;
+		}
+
+		for (uint32_t i = 0; i < RENDER_BUILTIN_CSM_MAX; i++)
+		{
+			const RTB_ActionDraw& src = layerDesc.actionGlobalSDWs[i];
+			if (IsEmpty(src.output))
+				continue;
+
+			blockedShadow = true;
+			continue;
+
+			nodeList[n] = DX12_RenderActionNode{1, {0}, DX12_BuiltinActionId_GlobalSDW0 + i};
+			FillRenderAction(actionList[n], src, layerVp);
+			ReadActionDrawRequests(src, layer, n);
+			LinkActionNodeFronts(layer, n, frontTable, nodeOfId);
+			n++;
+		}
+
+		for (uint32_t i = 0; i < RENDER_LIGHT_MAX; i++)
+		{
+			const RTB_ActionDraw& src = layerDesc.actionLocalSDWs[i];
+			if (IsEmpty(src.output))
+				continue;
+
+			blockedShadow = true;
+			continue;
+
+			nodeList[n] = DX12_RenderActionNode{1, {0}, DX12_BuiltinActionId_LocalSDW0 + i};
+			FillRenderAction(actionList[n], src, layerVp);
+			ReadActionDrawRequests(src, layer, n);
+			LinkActionNodeFronts(layer, n, frontTable, nodeOfId);
+			n++;
+		}
+
+		if (deferred)
+		{
+			const RTB_ActionEdit& src = layerDesc.actionLighting;
+
+			if (src.drawProp != 0)
+			{
+				nodeList[n] = DX12_RenderActionNode{1, {0}, DX12_BuiltinActionId_Lighting};
+				FillRenderAction(actionList[n], src, layerVp);
+				ReadActionEditRequest(src, layer, n);
+				LinkActionNodeFronts(layer, n, frontTable, nodeOfId);
+				n++;
+			}
+		}
+		else
+		{
+			const RTB_ActionDraw& src = layerDesc.actionOPQ;
+
+			if (!IsEmpty(src.output))
+			{
+				nodeList[n] = DX12_RenderActionNode{1, {0}, DX12_BuiltinActionId_OPQ};
+				FillRenderAction(actionList[n], src, layerVp);
+				ReadActionDrawRequests(src, layer, n);
+				LinkActionNodeFronts(layer, n, frontTable, nodeOfId);
+				n++;
+			}
+		}
+
+		if (!IsEmpty(layerDesc.actionBackground.output))
+		{
+			nodeList[n] = DX12_RenderActionNode{1, {0}, DX12_BuiltinActionId_Background};
+			FillRenderAction(actionList[n], layerDesc.actionBackground, layerVp);
+			requestList[n].clear();
+			sortedList[n].clear();
+			LinkActionNodeFronts(layer, n, frontTable, nodeOfId);
+			n++;
+		}
+
+		if (!IsEmpty(layerDesc.actionTP.output))
+		{
+			nodeList[n] = DX12_RenderActionNode{1, {0}, DX12_BuiltinActionId_TP};
+			FillRenderAction(actionList[n], layerDesc.actionTP, layerVp);
+			ReadActionDrawRequests(layerDesc.actionTP, layer, n);
+			LinkActionNodeFronts(layer, n, frontTable, nodeOfId);
+			n++;
+		}
+
+		for (uint32_t i = 0; i < RENDER_BUILTIN_PP_MAX; i++)
+		{
+			const RTB_ActionEdit& src = layerDesc.actionPPs[i];
+			if (src.drawProp == 0)
+				continue;
+
+			nodeList[n] = DX12_RenderActionNode{1, {0}, DX12_BuiltinActionId_PP0 + i};
+			FillRenderAction(actionList[n], src, layerVp);
+			ReadActionEditRequest(src, layer, n);
+			LinkActionNodeFronts(layer, n, frontTable, nodeOfId);
+			n++;
+		}
+
+		if (!IsEmpty(layerDesc.actionSC.output))
+		{
+			nodeList[n] = DX12_RenderActionNode{1, {0}, DX12_BuiltinActionId_SC};
+			FillRenderAction(actionList[n], layerDesc.actionSC, layerVp);
+			ReadActionDrawRequests(layerDesc.actionSC, layer, n);
+			LinkActionNodeFronts(layer, n, frontTable, nodeOfId);
+			n++;
+		}
+
+		if (!IsEmpty(layerDesc.actionDebug.output))
+		{
+			nodeList[n] = DX12_RenderActionNode{1, {0}, DX12_BuiltinActionId_Debug};
+			FillRenderAction(actionList[n], layerDesc.actionDebug, layerVp);
+			ReadActionDrawRequests(layerDesc.actionDebug, layer, n);
+			LinkActionNodeFronts(layer, n, frontTable, nodeOfId);
+			n++;
+		}
 
 		nodeList.resize(n);
 		actionList.resize(n);
 		requestList.resize(n);
 		sortedList.resize(n);
 
+		if (blockedPreCompute)
+			DebugReport(RenderReport_Contract, L"[미지원] PreCompute 액션은 이 버전에서 막혀 있음 (노드 건너뜀)");
+		if (blockedShadow)
+			DebugReport(RenderReport_Contract, L"[미지원] 섀도우 액션은 이 버전에서 막혀 있음 (노드 건너뜀)");
+
 
 		BuildActionGraph(layer, layerDesc);
 
 
-		layer.rtInstantOffset = 0;
-		layer.dsInstantOffset = 0;
+		layer.rtInstantOffset = renderFrame.rtInstantNeedCount;
+		layer.dsInstantOffset = renderFrame.dsInstantNeedCount;
 
-		if (renderFrame.rtInstantNeedCount < layer.rtInstantCount)
-			renderFrame.rtInstantNeedCount = layer.rtInstantCount;
-		if (renderFrame.dsInstantNeedCount < layer.dsInstantCount)
-			renderFrame.dsInstantNeedCount = layer.dsInstantCount;
+		renderFrame.rtInstantNeedCount += layer.rtInstantCount;
+		renderFrame.dsInstantNeedCount += layer.dsInstantCount;
 	}
 
 	
@@ -575,65 +862,101 @@ void D3D12Renderer::ReadActionNode()
 	#endif
 }
 
-void D3D12Renderer::ReadUploadRequest()
+void D3D12Renderer::ReadUploadRequest(vector<ComPtr<ID3D12Resource>>& uploadBufferList)
 {
 	using namespace DataHub;
 
 
-	if (flag_updateResources_Upload)
+	if (flag_updateResources & RTBCMD_Upload_Resource)
 	{
-		UploadMesh();
-		UploadTexture();
+		UploadMesh(uploadBufferList);
+		UploadTexture(uploadBufferList);
+		UploadCSBuffer(uploadBufferList);
+		LinkCSBufferMesh(uploadBufferList);
 		GetShaderInfo();
-
-		flag_updateResources_Upload = false;
 	}
-	
-	if (flag_updateProps_FindOrBuild)
+
+	if (flag_updateResources & RTBCMD_Upload_Prop)
 	{
 		BuildPSOBody();
 		BuildCombinedTexture();
-
-		flag_updateProps_FindOrBuild = false;
 	}
+
+	flag_updateResources &= ~(uint32_t)RTBCMD_Upload;
+}
+
+void D3D12Renderer::ReadUpdateRequest(vector<ComPtr<ID3D12Resource>>& uploadBufferList)
+{
+	using namespace DataHub;
+
+
+	if (flag_updateResources & RTBCMD_Update_Resource)
+	{
+		UpdateMesh(uploadBufferList);
+		UpdateTexture(uploadBufferList);
+		UpdateCSBuffer(uploadBufferList);
+	}
+
+	if (flag_updateResources & RTBCMD_Update_Prop)
+	{
+		UpdatePSOBody();
+		UpdateCombinedTexture();
+	}
+
+	flag_updateResources &= ~(uint32_t)RTBCMD_Update;
 }
 
 void D3D12Renderer::ReadReleaseRequest()
 {
 	using namespace DataHub;
 
-	auto& renderFrame = renderFrames[cpuFrameIndex];
-
-
-	if (flag_updateResources_Release)
+	if (flag_updateResources & RTBCMD_Release_Resource)
 	{
-		if (ConvertReleaseListToMask(ReleaseMeshList, releaseMeshIdMask, (uint16_t)meshList.size()) > 0)
-			DebugReport(RenderReport_Contract, L"[Release] meshId 범위 밖 (업로드 전 해제?), 무시");
-		if (ConvertReleaseListToMask(ReleaseTextureList, releaseTexIdMask, (uint16_t)textureList.size()) > 0)
-			DebugReport(RenderReport_Contract, L"[Release] texId 범위 밖 (업로드 전 해제?), 무시");
-		meshReleaseCount = FRAME_COUNT;
-		texReleaseCount = FRAME_COUNT;
+		if (!ReleaseMeshList.empty())
+		{
+			if (ConvertReleaseListToMask(ReleaseMeshList, releaseMeshIdMask, (uint16_t)meshList.size()) > 0)
+				DebugReport(RenderReport_Contract, L"[Release] meshId 범위 밖 (업로드 전 해제?), 무시");
+			meshReleaseCount = FRAME_COUNT;
+			ReleaseMeshList.clear();
+		}
 
-		ReleaseMeshList.clear();
-		ReleaseTextureList.clear();
+		if (!ReleaseTextureList.empty())
+		{
+			if (ConvertReleaseListToMask(ReleaseTextureList, releaseTexIdMask, (uint16_t)textureList.size()) > 0)
+				DebugReport(RenderReport_Contract, L"[Release] texId 범위 밖 (업로드 전 해제?), 무시");
+			texReleaseCount = FRAME_COUNT;
+			ReleaseTextureList.clear();
+		}
 
-		flag_updateResources_Release = false;
+		if (!ReleaseCSBufferList.empty())
+		{
+			if (ConvertReleaseListToMask(ReleaseCSBufferList, releaseCSBufferIdMask, (uint16_t)csBufferList.size()) > 0)
+				DebugReport(RenderReport_Contract, L"[Release] csBufferId 범위 밖 (업로드 전 해제?), 무시");
+			csBufferReleaseCount = FRAME_COUNT;
+			ReleaseCSBufferList.clear();
+		}
 	}
 
-	if (flag_updateProps_Release)
+	if (flag_updateResources & RTBCMD_Release_Prop)
 	{
-		if (ConvertReleaseListToMask(ReleaseDrawPropList, releasePSOIdMask, (uint16_t)psoGeneratorList.size()) > 0)
-			DebugReport(RenderReport_Contract, L"[Release] drawPropId 범위 밖 (빌드 전 해제?), 무시");
-		if (ConvertReleaseListToMask(ReleaseTexPropList, releaseCTexIdMask, (uint16_t)combinedTextureList.size()) > 0)
-			DebugReport(RenderReport_Contract, L"[Release] texPropId 범위 밖 (빌드 전 해제?), 무시");
-		psoReleaseCount = FRAME_COUNT;
-		cTexReleaseCount = FRAME_COUNT;
+		if (!ReleaseDrawPropList.empty())
+		{
+			if (ConvertReleaseListToMask(ReleaseDrawPropList, releasePSOIdMask, (uint16_t)psoGeneratorList.size()) > 0)
+				DebugReport(RenderReport_Contract, L"[Release] drawPropId 범위 밖 (빌드 전 해제?), 무시");
+			psoReleaseCount = FRAME_COUNT;
+			ReleaseDrawPropList.clear();
+		}
 
-		ReleaseDrawPropList.clear();
-		ReleaseTexPropList.clear();
-
-		flag_updateProps_Release = false;
+		if (!ReleaseTexPropList.empty())
+		{
+			if (ConvertReleaseListToMask(ReleaseTexPropList, releaseCTexIdMask, (uint16_t)combinedTextureList.size()) > 0)
+				DebugReport(RenderReport_Contract, L"[Release] texPropId 범위 밖 (빌드 전 해제?), 무시");
+			cTexReleaseCount = FRAME_COUNT;
+			ReleaseTexPropList.clear();
+		}
 	}
+
+	flag_updateResources &= ~(uint32_t)RTBCMD_Release;
 }
 
 
@@ -648,13 +971,14 @@ DX12_OutputSignature D3D12Renderer::MakeOutputSignature(const DX12_RenderAction&
 	for (uint8_t r = 0; r < RENDER_TARGET_MAX; r++)
 	{
 		DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
+		const TexID texId = OutTexId(action, r);
 
-		if (action.rtTexIds[r] != 0)
+		if (texId != 0)
 		{
-			if (action.rtTexIds[r] < textureList.size())
-				format = textureList[action.rtTexIds[r]].Format;
+			if (texId < textureList.size())
+				format = textureList[texId].Format;
 		}
-		else if (action.rtInstantIdx[r] != TEX_INSTANT_NONE)
+		else if (IsOutInstant(action, r))
 		{
 			format = DXGI_FORMAT_R16G16B16A16_FLOAT;
 		}
@@ -668,13 +992,14 @@ DX12_OutputSignature D3D12Renderer::MakeOutputSignature(const DX12_RenderAction&
 	}
 
 	DXGI_FORMAT dsFormat = DXGI_FORMAT_UNKNOWN;
+	const TexID dsTexId = OutTexId(action, INSTANT_SLOT_DS);
 
-	if (action.dsTexId != 0)
+	if (dsTexId != 0)
 	{
-		if (action.dsTexId < textureList.size())
-			dsFormat = GetDSVFormat(textureList[action.dsTexId].Format);
+		if (dsTexId < textureList.size())
+			dsFormat = GetDSVFormat(textureList[dsTexId].Format);
 	}
-	else if (action.dsInstantIdx != TEX_INSTANT_NONE)
+	else if (IsOutInstant(action, INSTANT_SLOT_DS))
 	{
 		dsFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
 	}
@@ -697,22 +1022,29 @@ DX12_OutputSignature D3D12Renderer::MakeOutputSignature(const DX12_RenderAction&
 const DataHub::RTB_Action& D3D12Renderer::GetActionSource(const DataHub::RTB_Layer& layerDesc, ActionID id)
 {
 #if RENDER_PIPELINE_MODE == RENDER_USE_PIPELINE_BUILTIN
-	if (id == 1)
-		return layerDesc.actionEarlyZ;
-	if (id == 2)
-		return layerDesc.actionGlobalSDW;
-	if (id < 3 + RENDER_LIGHT_MAX)
-		return layerDesc.actionLocalSDWs[id - 3];
-	if (id == 3 + RENDER_LIGHT_MAX)
-		return layerDesc.actionOPQ;
-	if (id == 4 + RENDER_LIGHT_MAX)
-		return layerDesc.actionBackground;
-	if (id == 5 + RENDER_LIGHT_MAX)
-		return layerDesc.actionTP;
-	if (id < 6 + RENDER_LIGHT_MAX + 16)
-		return layerDesc.actionPPs[id - (6 + RENDER_LIGHT_MAX)];
-	if (id == 6 + RENDER_LIGHT_MAX + 16)
-		return layerDesc.actionSC;
+	switch (id)
+	{
+	case DX12_BuiltinActionId_EarlyZ:		return layerDesc.actionEarlyZ;
+	case DX12_BuiltinActionId_GBuffer:		return layerDesc.actionGBuffer;
+	case DX12_BuiltinActionId_AO:			return layerDesc.actionAO;
+	case DX12_BuiltinActionId_AOBlur:		return layerDesc.actionAOBlur;
+	case DX12_BuiltinActionId_OPQ:			return layerDesc.actionOPQ;
+	case DX12_BuiltinActionId_Lighting:		return layerDesc.actionLighting;
+	case DX12_BuiltinActionId_Background:	return layerDesc.actionBackground;
+	case DX12_BuiltinActionId_TP:			return layerDesc.actionTP;
+	case DX12_BuiltinActionId_SC:			return layerDesc.actionSC;
+	default:								break;
+	}
+
+	if (id >= DX12_BuiltinActionId_PreCompute0 && id < DX12_BuiltinActionId_EarlyZ)
+		return layerDesc.actionPreComputes[id - DX12_BuiltinActionId_PreCompute0];
+	if (id >= DX12_BuiltinActionId_GlobalSDW0 && id < DX12_BuiltinActionId_LocalSDW0)
+		return layerDesc.actionGlobalSDWs[id - DX12_BuiltinActionId_GlobalSDW0];
+	if (id >= DX12_BuiltinActionId_LocalSDW0 && id < DX12_BuiltinActionId_OPQ)
+		return layerDesc.actionLocalSDWs[id - DX12_BuiltinActionId_LocalSDW0];
+	if (id >= DX12_BuiltinActionId_PP0 && id < DX12_BuiltinActionId_SC)
+		return layerDesc.actionPPs[id - DX12_BuiltinActionId_PP0];
+
 	return layerDesc.actionDebug;
 #else
 	const auto& v = layerDesc.actionList[id];
@@ -737,6 +1069,12 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 	if (layer.renderActionNodeList.size() != actionCount)
 		DebugReport(DataHub::RenderReport_Invariant, L"[Graph] 노드 리스트랑 액션 리스트 갯수 다름");
 
+	static vector<DX12_InstantLogical> rtInstantLogicalList;
+	static vector<DX12_InstantLogical> dsInstantLogicalList;
+	static vector<uint16_t> instantFreeList;
+	static vector<D3D12_RESOURCE_STATES> rtInstantSimStateList;
+	static vector<D3D12_RESOURCE_STATES> dsInstantSimStateList;
+
 	rtInstantLogicalList.clear();
 	dsInstantLogicalList.clear();
 
@@ -746,26 +1084,6 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 	for (uint32_t i = 1; i < actionCount; i++)
 	{
 		DX12_RenderAction& action = actionList[i];
-		const bool isCompute = action.actionType == DX12_RenderActionType_Compute;
-
-		if (isCompute)
-		{
-			for (uint8_t r = 0; r < RENDER_TARGET_MAX; r++)
-			{
-				if (action.rtInstantIdx[r] == TEX_INSTANT_WANT)
-				{
-					DebugReport(DataHub::RenderReport_Contract, L"[Graph] 컴퓨트 액션 인스턴트 출력 미지원 (무시)");
-					action.rtInstantIdx[r] = TEX_INSTANT_NONE;
-				}
-			}
-
-			if (action.dsTexId != 0 || action.dsInstantIdx != TEX_INSTANT_NONE)
-			{
-				DebugReport(DataHub::RenderReport_Contract, L"[Graph] 컴퓨트 액션에 DS 지정됨 (무시)");
-				action.dsTexId = 0;
-				action.dsInstantIdx = TEX_INSTANT_NONE;
-			}
-		}
 
 		uint16_t outClaim[INSTANT_SLOT_MAX];
 		uint16_t srClaim[INSTANT_SLOT_MAX];
@@ -809,8 +1127,8 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 				if ((type & Action_InputType_ClearSR) == 0 && front.srInstantIdx[s] != TEX_INSTANT_NONE && inheritClaim[s] == TEX_INSTANT_NONE)
 					inheritClaim[s] = front.srInstantIdx[s];
 
-				const TexID frontTexId = isDS ? front.dsTexId : front.rtTexIds[s];
-				const uint16_t logicalIdx = isDS ? front.dsInstantIdx : front.rtInstantIdx[s];
+				const TexID frontTexId = OutTexId(front, s);
+				const uint16_t logicalIdx = OutInstantIdx(front, s);
 
 				if (frontTexId != 0 || logicalIdx == TEX_INSTANT_NONE)
 					continue;
@@ -876,8 +1194,8 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 			const bool readOnly = isDS && action.dsReadOnly;
 			auto& logicalList = isDS ? dsInstantLogicalList : rtInstantLogicalList;
 
-			const TexID texId = isDS ? action.dsTexId : action.rtTexIds[s];
-			uint16_t& outIdx = isDS ? action.dsInstantIdx : action.rtInstantIdx[s];
+			const TexID texId = OutTexId(action, s);
+			const uint16_t outIdx = OutInstantIdx(action, s);
 
 			if (texId != 0)
 			{
@@ -907,14 +1225,14 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 				else if (logical.readAfterWrite && !readOnly)
 					DebugReport(DataHub::RenderReport_Contract, L"[Graph] 다른 액션이 읽은 인스턴트에 이어 그림 (형제 노드 순서에 따라 결과 달라짐)");
 
-				outIdx = logicalIdx;
+				SetOutInstant(action, s, logicalIdx);
 			}
 			else
 			{
 				if (readOnly)
 					DebugReport(DataHub::RenderReport_Contract, L"[Graph] 읽기전용 DS 인데 이어받을 DS 없음");
 
-				outIdx = (uint16_t)logicalList.size();
+				SetOutInstant(action, s, (uint16_t)logicalList.size());
 				logicalList.push_back(DX12_InstantLogical{i, i, i, false, TEX_INSTANT_NONE});
 			}
 		}
@@ -930,7 +1248,8 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 
 			if (srClaim[s] != TEX_INSTANT_NONE)
 			{
-				logicalList[srClaim[s]].readAfterWrite = true;
+				if (OutInstantIdx(action, s) != srClaim[s])
+					logicalList[srClaim[s]].readAfterWrite = true;
 				logicalList[srClaim[s]].lastUse = i;
 			}
 
@@ -940,7 +1259,7 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 				logicalList[copySrc[s]].lastUse = i;
 			}
 
-			const uint16_t outIdx = isDS ? action.dsInstantIdx : action.rtInstantIdx[s];
+			const uint16_t outIdx = OutInstantIdx(action, s);
 
 			if (outIdx != TEX_INSTANT_NONE)
 			{
@@ -1002,8 +1321,8 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 
 		for (uint8_t r = 0; r < RENDER_TARGET_MAX; r++)
 		{
-			if (action.rtInstantIdx[r] != TEX_INSTANT_NONE)
-				action.rtInstantIdx[r] = rtInstantLogicalList[action.rtInstantIdx[r]].physicalIdx;
+			if (IsOutInstant(action, r))
+				action.slotIds[r] = rtInstantLogicalList[action.slotIds[r]].physicalIdx;
 
 			if (action.srInstantIdx[r] != TEX_INSTANT_NONE)
 				action.srInstantIdx[r] = rtInstantLogicalList[action.srInstantIdx[r]].physicalIdx;
@@ -1012,8 +1331,8 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 				action.copySrcInstantIdx[r] = rtInstantLogicalList[action.copySrcInstantIdx[r]].physicalIdx;
 		}
 
-		if (action.dsInstantIdx != TEX_INSTANT_NONE)
-			action.dsInstantIdx = dsInstantLogicalList[action.dsInstantIdx].physicalIdx;
+		if (IsOutInstant(action, INSTANT_SLOT_DS))
+			action.slotIds[INSTANT_SLOT_DS] = dsInstantLogicalList[action.slotIds[INSTANT_SLOT_DS]].physicalIdx;
 
 		if (action.srInstantIdx[INSTANT_SLOT_DS] != TEX_INSTANT_NONE)
 			action.srInstantIdx[INSTANT_SLOT_DS] = dsInstantLogicalList[action.srInstantIdx[INSTANT_SLOT_DS]].physicalIdx;
@@ -1027,12 +1346,12 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 
 	#pragma region Barrier
 
-	rtInstantSimStates.assign(layer.rtInstantCount, GetInstantBaseState(false));
-	dsInstantSimStates.assign(layer.dsInstantCount, GetInstantBaseState(true));
+	rtInstantSimStateList.assign(layer.rtInstantCount, GetInstantBaseState(false));
+	dsInstantSimStateList.assign(layer.dsInstantCount, GetInstantBaseState(true));
 
 	for (uint32_t i = 1; i < actionCount; i++)
 	{
-		BuildActionBarriers(actionList[i]);
+		BuildActionBarriers(actionList[i], rtInstantSimStateList, dsInstantSimStateList);
 
 		if (actionList[i].actionType == DX12_RenderActionType_Compute)
 		{
@@ -1040,30 +1359,8 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 		}
 		else
 		{
-			bool drawable = actionList[i].dsTexId == 0;
-			bool hole = false;
-
-			for (uint8_t r = 0; r < RENDER_TARGET_MAX; r++)
-			{
-				if (actionList[i].rtTexIds[r] != 0)
-					drawable = false;
-
-				if (actionList[i].rtInstantIdx[r] == TEX_INSTANT_NONE)
-					hole = true;
-				else if (hole)
-					drawable = false;
-			}
-
-			if (!drawable)
-			{
-				DebugReport(DataHub::RenderReport_Contract, L"[Graph] 로디드 RT/DS 출력 (미지원) 이거나 RT 출력 칸이 연속이 아님 (액션 스킵)");
-				actionList[i].outputSigId = OUTPUT_SIGNATURE_INVALID;
-			}
-			else
-			{
-				const Action_Output& output = GetActionSource(layerDesc, layer.renderActionNodeList[i].actionId).output;
-				actionList[i].outputSigId = GetOutputSignatureId(MakeOutputSignature(actionList[i], output));
-			}
+			const Action_Output& output = GetActionSource(layerDesc, layer.renderActionNodeList[i].actionId).output;
+			actionList[i].outputSigId = GetOutputSignatureId(MakeOutputSignature(actionList[i], output));
 		}
 	}
 
@@ -1071,20 +1368,20 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 
 	for (uint16_t p = 0; p < layer.rtInstantCount; p++)
 	{
-		if (rtInstantSimStates[p] != GetInstantBaseState(false))
-			layer.finalBarriers.push_back(DX12_ActionBarrier{p, DX12_BarrierTarget_RTInstant, rtInstantSimStates[p], GetInstantBaseState(false)});
+		if (rtInstantSimStateList[p] != GetInstantBaseState(false))
+			layer.finalBarriers.push_back(DX12_ActionBarrier{p, DX12_BarrierTarget_RTInstant, rtInstantSimStateList[p], GetInstantBaseState(false)});
 	}
 
 	for (uint16_t p = 0; p < layer.dsInstantCount; p++)
 	{
-		if (dsInstantSimStates[p] != GetInstantBaseState(true))
-			layer.finalBarriers.push_back(DX12_ActionBarrier{p, DX12_BarrierTarget_DSInstant, dsInstantSimStates[p], GetInstantBaseState(true)});
+		if (dsInstantSimStateList[p] != GetInstantBaseState(true))
+			layer.finalBarriers.push_back(DX12_ActionBarrier{p, DX12_BarrierTarget_DSInstant, dsInstantSimStateList[p], GetInstantBaseState(true)});
 	}
 
 	#pragma endregion
 }
 
-void D3D12Renderer::BuildActionBarriers(DX12_RenderAction& action)
+void D3D12Renderer::BuildActionBarriers(DX12_RenderAction& action, vector<D3D12_RESOURCE_STATES>& rtInstantSimStateList, vector<D3D12_RESOURCE_STATES>& dsInstantSimStateList)
 {
 	const bool isCompute = action.actionType == DX12_RenderActionType_Compute;
 
@@ -1104,7 +1401,7 @@ void D3D12Renderer::BuildActionBarriers(DX12_RenderAction& action)
 
 		const uint16_t dstIdx = action.srInstantIdx[s];
 		const bool isDS = s == INSTANT_SLOT_DS;
-		auto& simStates = isDS ? dsInstantSimStates : rtInstantSimStates;
+		auto& simStates = isDS ? dsInstantSimStateList : rtInstantSimStateList;
 		const DX12_BarrierTarget target = isDS ? DX12_BarrierTarget_DSInstant : DX12_BarrierTarget_RTInstant;
 
 		if (dstIdx == TEX_INSTANT_NONE || srcIdx >= simStates.size() || dstIdx >= simStates.size())
@@ -1132,7 +1429,7 @@ void D3D12Renderer::BuildActionBarriers(DX12_RenderAction& action)
 			continue;
 
 		const bool isDS = s == INSTANT_SLOT_DS;
-		auto& simStates = isDS ? dsInstantSimStates : rtInstantSimStates;
+		auto& simStates = isDS ? dsInstantSimStateList : rtInstantSimStateList;
 
 		if (instIdx >= simStates.size())
 		{
@@ -1151,12 +1448,12 @@ void D3D12Renderer::BuildActionBarriers(DX12_RenderAction& action)
 
 	for (uint8_t r = 0; r < RENDER_TARGET_MAX; r++)
 	{
-		const TexID texId = action.rtTexIds[r];
-		const uint16_t instIdx = action.rtInstantIdx[r];
+		const TexID texId = OutTexId(action, r);
+		const uint16_t instIdx = OutInstantIdx(action, r);
 
 		if (texId != 0)
 		{
-			const DX12_TextureUsage needUsage = isCompute ? DX12_TextureUsage_UAV : DX12_TextureUsage_RTV;
+			const DX12_TextureUsage needUsage = DX12_TextureUsage_RTV;
 			bool valid = true;
 
 			if (texId >= textureList.size() || (texId < releaseTexIdMask.size() && releaseTexIdMask[texId]))
@@ -1164,7 +1461,7 @@ void D3D12Renderer::BuildActionBarriers(DX12_RenderAction& action)
 				DebugReport(DataHub::RenderReport_Contract, L"[Barrier] 출력 RT 텍스처 없음 / 해제 예정");
 				valid = false;
 			}
-			else if (textureList[texId].usage != needUsage)
+			else if (texRefList_WTex[texId].usage != needUsage)
 			{
 				DebugReport(DataHub::RenderReport_Contract, L"[Barrier] 출력 RT 텍스처 usage 불일치");
 				valid = false;
@@ -1173,7 +1470,7 @@ void D3D12Renderer::BuildActionBarriers(DX12_RenderAction& action)
 			{
 				for (uint8_t i = 0; i < r; i++)
 				{
-					if (action.rtTexIds[i] == texId)
+					if (OutTexId(action, i) == texId)
 					{
 						DebugReport(DataHub::RenderReport_Contract, L"[Barrier] 같은 텍스처를 RT 두 슬롯에 지정");
 						valid = false;
@@ -1184,24 +1481,23 @@ void D3D12Renderer::BuildActionBarriers(DX12_RenderAction& action)
 
 			if (!valid)
 			{
-				action.rtTexIds[r] = 0;
+				SetOutTex(action, r, 0);
 				continue;
 			}
 
-			TransitionLoaded(action, texId, textureList[texId],
-				isCompute ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS : D3D12_RESOURCE_STATE_RENDER_TARGET);
+			TransitionLoaded(action, texId, texRefList_WTex[texId].usage, D3D12_RESOURCE_STATE_RENDER_TARGET);
 		}
 		else if (instIdx != TEX_INSTANT_NONE)
 		{
-			if (instIdx >= rtInstantSimStates.size())
+			if (instIdx >= rtInstantSimStateList.size())
 			{
 				DebugReport(DataHub::RenderReport_Invariant, L"[Barrier] 출력 RT 인스턴트 인덱스 범위 밖");
-				action.rtInstantIdx[r] = TEX_INSTANT_NONE;
+				SetOutInstant(action, r, TEX_INSTANT_NONE);
 				continue;
 			}
 
 			TransitionInstant(action.beginBarriers, DX12_BarrierTarget_RTInstant, instIdx,
-				rtInstantSimStates[instIdx], D3D12_RESOURCE_STATE_RENDER_TARGET);
+				rtInstantSimStateList[instIdx], D3D12_RESOURCE_STATE_RENDER_TARGET);
 		}
 	}
 
@@ -1210,8 +1506,8 @@ void D3D12Renderer::BuildActionBarriers(DX12_RenderAction& action)
 
 	#pragma region OutputDS
 
-	const TexID dsTexId = action.dsTexId;
-	const uint16_t dsInstIdx = action.dsInstantIdx;
+	const TexID dsTexId = OutTexId(action, INSTANT_SLOT_DS);
+	const uint16_t dsInstIdx = OutInstantIdx(action, INSTANT_SLOT_DS);
 	const D3D12_RESOURCE_STATES dsUse = action.dsReadOnly ? D3D12_RESOURCE_STATE_DEPTH_READ : D3D12_RESOURCE_STATE_DEPTH_WRITE;
 
 	if (dsTexId != 0)
@@ -1223,61 +1519,133 @@ void D3D12Renderer::BuildActionBarriers(DX12_RenderAction& action)
 			DebugReport(DataHub::RenderReport_Contract, L"[Barrier] 출력 DS 텍스처 없음 / 해제 예정");
 			valid = false;
 		}
-		else if (textureList[dsTexId].usage != DX12_TextureUsage_DSV)
+		else if (texRefList_WTex[dsTexId].usage != DX12_TextureUsage_DSV)
 		{
 			DebugReport(DataHub::RenderReport_Contract, L"[Barrier] 출력 DS 텍스처 usage 불일치");
 			valid = false;
 		}
 
 		if (valid)
-			TransitionLoaded(action, dsTexId, textureList[dsTexId], dsUse);
+			TransitionLoaded(action, dsTexId, texRefList_WTex[dsTexId].usage, dsUse);
 		else
-			action.dsTexId = 0;
+			SetOutTex(action, INSTANT_SLOT_DS, 0);
 	}
 	else if (dsInstIdx != TEX_INSTANT_NONE)
 	{
-		if (dsInstIdx >= dsInstantSimStates.size())
+		if (dsInstIdx >= dsInstantSimStateList.size())
 		{
 			DebugReport(DataHub::RenderReport_Invariant, L"[Barrier] 출력 DS 인스턴트 인덱스 범위 밖");
-			action.dsInstantIdx = TEX_INSTANT_NONE;
+			SetOutInstant(action, INSTANT_SLOT_DS, TEX_INSTANT_NONE);
 		}
 		else
 		{
 			TransitionInstant(action.beginBarriers, DX12_BarrierTarget_DSInstant, dsInstIdx,
-				dsInstantSimStates[dsInstIdx], dsUse);
+				dsInstantSimStateList[dsInstIdx], dsUse);
 		}
 	}
 
 	#pragma endregion
-}
 
 
-void D3D12Renderer::RecordActionBarriers(ID3D12GraphicsCommandList* cmdList, const DX12_RenderLayer& layer,
-	const vector<DX12_ActionBarrier>& barriers, UINT frameIdx)
-{
-	if (barriers.empty())
-		return;
+	#pragma region ComputeBinding
 
-	const auto& rtInstants = rtTextureInstantLists[frameIdx];
-	const auto& dsInstants = dsTextureInstantLists[frameIdx];
-
-	barrierScratch.clear();
-
-	for (const DX12_ActionBarrier& barrier : barriers)
+	if (isCompute)
 	{
-		ID3D12Resource* res;
-
-		switch (barrier.target)
+		for (uint8_t k = 0; k < COMPUTE_BINDING_MAX; k++)
 		{
-		case DX12_BarrierTarget_Loaded:		res = textureList[barrier.id].Tex.Get();							break;
-		case DX12_BarrierTarget_RTInstant:	res = rtInstants[barrier.id + layer.rtInstantOffset].Tex.Get();	break;
-		default:							res = dsInstants[barrier.id + layer.dsInstantOffset].Tex.Get();	break;
+			const uint8_t s = (uint8_t)(CS_SLOT_WRITE0 + k);
+			const uint16_t id = action.slotIds[s];
+			const bool isTex = IsCSTexture(action, s);
+
+			if (id == 0)
+				continue;
+
+			bool valid = true;
+
+			for (uint8_t i = CS_SLOT_WRITE0; i < s && valid; i++)
+				valid = !(action.slotIds[i] == id && IsCSTexture(action, i) == isTex);
+
+			if (!valid)
+				DebugReport(DataHub::RenderReport_Contract, L"[Barrier] 컴퓨트 쓰기 칸에 같은 자원 중복 (칸 무시)");
+			else if (!isTex)
+			{
+				if (id >= csBufferList.size() || (id < releaseCSBufferIdMask.size() && releaseCSBufferIdMask[id]))
+				{
+					DebugReport(DataHub::RenderReport_Contract, L"[Barrier] 컴퓨트 쓰기 버퍼 없음 / 해제 예정 (칸 무시)");
+					valid = false;
+				}
+			}
+			else
+			{
+				if (id >= textureList.size() || (id < releaseTexIdMask.size() && releaseTexIdMask[id]))
+				{
+					DebugReport(DataHub::RenderReport_Contract, L"[Barrier] 컴퓨트 쓰기 텍스처 없음 / 해제 예정 (칸 무시)");
+					valid = false;
+				}
+				else if (texRefList_WTex[id].usage != DX12_TextureUsage_UAV || writableTextureList[texRefList_WTex[id].idx].VHeapIndex == UINT_MAX)
+				{
+					DebugReport(DataHub::RenderReport_Contract, L"[Barrier] 컴퓨트 쓰기 텍스처 usage 가 Compute 가 아님 (칸 무시)");
+					valid = false;
+				}
+			}
+
+			if (!valid)
+			{
+				SetCSBinding(action, s, 0, false);
+				continue;
+			}
+
+			if (!isTex)
+				TransitionBuffer(action, id, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			else
+				TransitionLoaded(action, id, texRefList_WTex[id].usage, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		}
 
-		barrierScratch.push_back(CD3DX12_RESOURCE_BARRIER::Transition(res, barrier.before, barrier.after));
+		for (uint8_t k = 0; k < COMPUTE_BINDING_MAX; k++)
+		{
+			const uint8_t s = (uint8_t)(CS_SLOT_READ0 + k);
+			const uint16_t id = action.slotIds[s];
+			const bool isTex = IsCSTexture(action, s);
+
+			bool valid = true;
+
+			for (uint8_t i = CS_SLOT_WRITE0; i < CS_SLOT_WRITE0 + COMPUTE_BINDING_MAX && valid; i++)
+				valid = !(action.slotIds[i] != 0 && action.slotIds[i] == id && IsCSTexture(action, i) == isTex);
+
+			if (!valid)
+				DebugReport(DataHub::RenderReport_Contract, L"[Barrier] 컴퓨트 읽기 칸이 같은 액션의 쓰기 자원 (칸 무시)");
+			else if (!isTex)
+			{
+				if (id >= csBufferList.size() || (id < releaseCSBufferIdMask.size() && releaseCSBufferIdMask[id]))
+				{
+					DebugReport(DataHub::RenderReport_Contract, L"[Barrier] 컴퓨트 읽기 버퍼 없음 / 해제 예정 (칸 무시)");
+					valid = false;
+				}
+			}
+			else
+			{
+				if (id >= textureList.size() || (id < releaseTexIdMask.size() && releaseTexIdMask[id]))
+				{
+					DebugReport(DataHub::RenderReport_Contract, L"[Barrier] 컴퓨트 읽기 텍스처 없음 / 해제 예정 (칸 무시)");
+					valid = false;
+				}
+			}
+
+			if (!valid)
+			{
+				SetCSBinding(action, s, 0, false);
+				continue;
+			}
+
+			if (isTex)
+			{
+				MarkOrBuildSingleTexture(id);
+				TransitionLoaded(action, id, texRefList_WTex[id].usage, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+			}
+		}
 	}
 
-	cmdList->ResourceBarrier((UINT)barrierScratch.size(), barrierScratch.data());
+	#pragma endregion
 }
 
 #pragma endregion

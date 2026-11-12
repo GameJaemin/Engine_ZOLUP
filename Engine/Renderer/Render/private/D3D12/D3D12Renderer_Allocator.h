@@ -21,6 +21,7 @@ protected:
 	vector<pair<UINT, UINT>> blankedIndexList;
 
 public:
+	bool IsValid() const { return vHeap != nullptr; }
 	ID3D12DescriptorHeap* GetDescriptorHeap() const { return vHeap.Get(); }
 	D3D12_CPU_DESCRIPTOR_HANDLE GetCPUHandle() const { return vHeapCPUHandle; }
 	D3D12_GPU_DESCRIPTOR_HANDLE GetGPUHandle() const { return vHeapGPUHandle; }
@@ -60,6 +61,19 @@ public:
 		ID3D12Resource* subRes,
 		D3D12_SHADER_RESOURCE_VIEW_DESC* SRVDesc
 	);
+
+	bool SetUAV(
+		ID3D12Resource* res,
+		D3D12_UNORDERED_ACCESS_VIEW_DESC* UAVDesc,
+		UINT& rvIndex
+	);
+
+	void UpdateUAV(
+		UINT rvIndex,
+		ID3D12Resource* res,
+		D3D12_UNORDERED_ACCESS_VIEW_DESC* UAVDesc
+	);
+
 
 	void UnSetSRV(UINT rvStartIndex, UINT size = 1);
 
@@ -198,26 +212,6 @@ public:
 #pragma endregion
 
 
-
-#pragma region Template
-
-template <>
-D3D12Renderer::CBAreaAllocator<DataHub::DataBox_RenderLight>::CBAreaAllocator(UINT areaNumSize, UINT areaShrinkFreq, UINT areaShrinkThreshold);
-
-template <>
-void D3D12Renderer::CBAreaAllocator<DataHub::DataBox_RenderLight>::ReserveArea(uint32_t dataNum) = delete;
-
-template <>
-bool D3D12Renderer::CBAreaAllocator<DataHub::DataBox_RenderLight>::SetCBData(DX12_RenderData& data, const DataHub::DataBox_RenderLight& rawData);
-
-template <>
-void D3D12Renderer::CBAreaAllocator<DataHub::DataBox_RenderLight>::FlushCB();
-
-template <>
-D3D12_GPU_VIRTUAL_ADDRESS D3D12Renderer::CBAreaAllocator<DataHub::DataBox_RenderLight>::GetGPUAddress(uint32_t dataIdx);
-
-
-#pragma endregion
 
 }
 

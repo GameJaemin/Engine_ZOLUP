@@ -89,11 +89,11 @@ namespace Hakko::DataHub
     
     struct RenderTransferBox_DrawRequestScreen : public RTB
     {
-        // 레이어(16) 반투명(1) 텍스처(16) psoBody(16) 잉여(15)
+        // 레이어(16) 반투명(1) psoBody(16) 텍스처(16) 잉여(15)
         uint16_t layer;
         bool translucent;
-        TexID texture;
         DrawPropID drawProp;
+        TexID texture;
         uint16_t iid;
 
         DataBoxID screenId;
@@ -108,37 +108,29 @@ namespace Hakko::DataHub
 
     #pragma region ResourceCommand
 
-    enum RTBCMD_UpdateResource
+    // 비트 조합 가능 (예: RTBCMD_Upload | RTBCMD_Release_Prop)
+    enum RTBCMD_UpdateResource : uint32_t
     {
-        RTBCMD_UpdateResource_Upload,
-        RTBCMD_UpdateResource_Release,
+        RTBCMD_Upload_Resource  = 1 << 0,       // 메쉬 / 텍스처 / 컴퓨트 버퍼 / 링크 / 셰이더
+        RTBCMD_Upload_Prop      = 1 << 1,       // drawProp / texProp
+        RTBCMD_Update_Resource  = 1 << 2,
+        RTBCMD_Update_Prop      = 1 << 3,
+        RTBCMD_Release_Resource = 1 << 4,
+        RTBCMD_Release_Prop     = 1 << 5,
+
+        RTBCMD_Upload  = RTBCMD_Upload_Resource  | RTBCMD_Upload_Prop,
+        RTBCMD_Update  = RTBCMD_Update_Resource  | RTBCMD_Update_Prop,
+        RTBCMD_Release = RTBCMD_Release_Resource | RTBCMD_Release_Prop,
     };
 
-    struct RenderTransferBox_UpdateResource : public RTB
+    struct RenderTransferBox_UpdateResources : public RTB
     {
-        RTBCMD_UpdateResource command;
+        uint32_t command;       // RTBCMD_UpdateResource 조합
     };
-    typedef RenderTransferBox_UpdateResource RTB_UpdateResource;
+    typedef RenderTransferBox_UpdateResources RTB_UpdateResources;
 
 
-    enum RTBCMD_UpdateProp
-    {
-        RTBCMD_UpdateProp_FindOrBuild,
-        RTBCMD_UpdateProp_Release,
-    };
-
-    struct RenderTransferBox_UpdateProp : public RTB
-    {
-        RTBCMD_UpdateProp command;
-    };
-    typedef RenderTransferBox_UpdateProp RTB_UpdateProp;
-
-
-    extern bool flag_updateResources_Upload;
-    extern bool flag_updateProps_FindOrBuild;
-
-    extern bool flag_updateResources_Release;
-    extern bool flag_updateProps_Release;
+    extern uint32_t flag_updateResources;
 
     #pragma endregion
 
@@ -179,6 +171,7 @@ namespace Hakko::DataHub
 
         Action_Input_DrawDefault = Action_InputType_NoConvert,
         Action_Input_EditDefault = Action_InputType_Convert,
+        Action_Input_ComputeDefault = Action_InputType_Detach,
     };
 
 
@@ -208,14 +201,22 @@ namespace Hakko::DataHub
         Action_Output_DepthOption_ForceDepthRead,
     };
 
+    enum Action_Output_LoadOption
+    {
+        Action_Output_LoadOption_Default,
+
+        Action_Output_LoadOption_Load,
+        Action_Output_LoadOption_Clear,
+    };
+
     // 출력 레이아웃 (의미 정보): PS가 어느 칸에 뭘 쓰는지, 셰이더 변형 컴파일용
     enum Action_OutputLayout
     {
-        OutputLayout_None = 0,
-        OutputLayout_DepthOnly,
-        OutputLayout_Color,
-        OutputLayout_ColorId,
-        OutputLayout_GBuffer,
+        OutputLayout_None = 0,      // 매크로/검증 없이 원본 PS 그대로 (Edit / Compute / PP 경로)
+        OutputLayout_DepthOnly,     // DS 만, PS 없음 (LATER 알파클립 drawProp 은 clip 전용 PS)
+        OutputLayout_Color,         // RT0 = 최종 색 (포워드 / 스크린 / 디버그)
+        OutputLayout_ColorId,       // RT0 = 색, RT1 = id (UI / 피킹)
+        OutputLayout_GBuffer,       // RT0 알베도, RT1 노멀, RT2 ORM, RT3 이미션 (a 채널 예약)
 
         OutputLayout_Count,
     };
@@ -235,20 +236,17 @@ namespace Hakko::DataHub
     struct Action_Output
     {
         std::array<bool, RENDER_TARGET_MAX> useRT = {0};
-        std::array<TexID, RENDER_TARGET_MAX> RTTex = {0};
+        std::array<TexID, RENDER_TARGET_MAX> RTTex = {0};     // 0이면 임시 리소스 사용, InputType 적용
         std::array<Action_Output_BlendOption, RENDER_TARGET_MAX> blendOpt = {(Action_Output_BlendOption)0};
+        std::array<Action_Output_LoadOption, RENDER_TARGET_MAX> loadOpt = {(Action_Output_LoadOption)0};
 
         bool useDS = 0;
         TexID DSTex = 0;
         Action_Output_DepthOption depthOpt = {(Action_Output_DepthOption)0};
+        Action_Output_LoadOption dsLoadOpt = {(Action_Output_LoadOption)0};
 
-        Action_OutputLayout outputLayout = OutputLayout_None;
+        Action_OutputLayout outputLayout = OutputLayout_None;   // PS 변형 생성용 키 (상기 정보와 일치해야 함)
     };
-
-    #pragma endregion
-
-
-    #pragma region ActionVariant
 
     #define RENDER_ACTION_NODE_MAX 8    
 
@@ -280,7 +278,11 @@ namespace Hakko::DataHub
 
     typedef uint32_t ActionID;
 
-    
+    #pragma endregion
+
+
+    #pragma region ActionVariant
+
     struct RenderTransferBox_ActionDraw : public RTB_Action
     {
         RenderIDType renderIdType;
@@ -292,6 +294,7 @@ namespace Hakko::DataHub
             output.useRT[0] = true;
             output.useDS = true;
             output.outputLayout = OutputLayout_Color;
+            renderIdType = RenderIdType_None;
             dataBoxTypeIds.fill(0);
         }
     };
@@ -311,6 +314,21 @@ namespace Hakko::DataHub
     typedef RenderTransferBox_ActionEdit RTB_ActionEdit;
     
 
+    enum ActionCompute_Binding_Type
+    {
+        ActionCompute_Binding_Type_None,
+        ActionCompute_Binding_Type_Buffer,
+        ActionCompute_Binding_Type_Texture,
+    };
+
+    struct ActionCompute_Binding
+    {
+        ActionCompute_Binding_Type type;
+        uint16_t resId;
+    };
+
+    #define COMPUTE_BINDING_MAX 4
+
     struct RenderTransferBox_ActionCompute : public RTB_Action
     {
         // 미구현 (컴퓨트 경로)
@@ -319,10 +337,15 @@ namespace Hakko::DataHub
         uint32_t dispatchY;
         uint32_t dispatchZ;
 
-        RenderTransferBox_ActionCompute() : RenderTransferBox_Action(Action_Input_EditDefault)
+        std::array<ActionCompute_Binding, COMPUTE_BINDING_MAX> writes;
+        std::array<ActionCompute_Binding, COMPUTE_BINDING_MAX> reads;
+
+        RenderTransferBox_ActionCompute() : RenderTransferBox_Action(Action_Input_ComputeDefault)
         {
             csId = 0;
             dispatchX = dispatchY = dispatchZ = 0;
+            writes.fill({});
+            reads.fill({});
         }
     };
     typedef RenderTransferBox_ActionCompute RTB_ActionCompute;
@@ -355,8 +378,13 @@ namespace Hakko::DataHub
 
     #pragma region Layer
 
-    #define RENDER_LIGHT_MAX 64
     #define RENDER_LAYER_MAX 8
+    #define RENDER_LIGHT_MAX 64
+
+    #define RENDER_BUILTIN_PRECOMPUTE_MAX 4
+    #define RENDER_BUILTIN_PP_MAX 16
+
+    #define RENDER_BUILTIN_AO_SLOT 4            // AO 결과가 흐르는 RT 칸 (GBuffer 가 안 쓰는 칸, 포워드 / 디퍼드 공통)
     
     struct Layer_BackGround
     {
@@ -375,42 +403,16 @@ namespace Hakko::DataHub
     };
 
 
-    #pragma region LayerCommand
-
-    struct RenderTransferBox_SetRenderCondition : public RTB
-    {
-        RenderCondition condition;
-    };
-    typedef RenderTransferBox_SetRenderCondition RTB_SetRenderCondition, RTB_SetCondition;
-    
-
-    struct RenderTransferBox_SetRenderLight : public RTB
-    {
-        DataBoxID light;
-        uint16_t slot;
-    };
-    typedef RenderTransferBox_SetRenderLight RTB_SetRenderLight, RTB_SetLight;
-    
-
-    struct RenderTransferBox_SetRenderLightMatrix : public RTB
-    {
-        DataBoxID lightMatrix;
-        uint16_t slot;
-    };
-    typedef RenderTransferBox_SetRenderLightMatrix RTB_SetRenderLightMatrix, RTB_SetLightMatrix;
-
-    #pragma endregion
-    
-
     // 매크로는 RenderOption.h 에 정의되어 있습니다
     #pragma region LayerPipelineVariant
 
     #if RENDER_PIPELINE_MODE == RENDER_USE_PIPELINE_BUILTIN
 
+    // 미구현: 디퍼드 경로 기본 셰이더 없음, 포워드로 처리
     enum Layer_PipelineType
     {
         Layer_PipelineType_Forward,
-        Layer_PipelineType_Defered,
+        Layer_PipelineType_Deferred,    // 미구현
     };
 
 
@@ -431,21 +433,32 @@ namespace Hakko::DataHub
         DataBoxID layerDataBoxId;
 
 
+        // 미구현 섀도우맵 고정칸: 레이어 조명 환경으로 읽힘 (0 = 없음)
+        TexID globalShadowTexId;
+        TexID localShadowTexId;
+
+
+        std::array<RTB_ActionCompute, RENDER_BUILTIN_PRECOMPUTE_MAX> actionPreComputes;     // 미구현 스키닝 / 파티클 시뮬
+
         RTB_ActionDraw actionEarlyZ;                    // 포워드용
         RTB_ActionDraw actionGBuffer;                   // 디퍼드용
 
-        RTB_ActionDraw actionGlobalSDW;                 // 현재 제한적으로 지원 (로드된 텍스처에 쓰기가 불가)
-        std::array<RTB_ActionDraw, RENDER_LIGHT_MAX> actionLocalSDWs;   // 동일
+        RTB_ActionEdit actionAO;                        // 미구현 (기본 셰이더 전)
+        RTB_ActionEdit actionAOBlur;                    // 미구현 (기본 셰이더 전)
 
-        RTB_ActionDraw actionOPQ;
+        std::array<RTB_ActionDraw, RENDER_BUILTIN_CSM_MAX> actionGlobalSDWs;    // 미구현 캐스케이드별, 아틀라스 타일은 액션 뷰포트로
+        std::array<RTB_ActionDraw, RENDER_LIGHT_MAX> actionLocalSDWs;   // 미구현
+
+        RTB_ActionDraw actionOPQ;                       // 포워드용
+        RTB_ActionEdit actionLighting;                  // 미구현 디퍼드용 
         RTB_ActionBuiltin actionBackground;             // OPQ 뒤 고정 (스카이박스 / 배경판)
         RTB_ActionDraw actionTP;
 
-        std::array<RTB_ActionEdit, 16> actionPPs;
+        std::array<RTB_ActionEdit, RENDER_BUILTIN_PP_MAX> actionPPs;
 
-        RTB_ActionDraw actionSC;
+        RTB_ActionDraw actionSC;                        // 미구현
 
-        RTB_ActionDraw actionDebug;
+        RTB_ActionDraw actionDebug;                     // 미구현 PP 안 먹는 3D 오버레이 (기즈모 / 와이어 등)
 
 
         RenderTransferBox_LayerBuiltIn();
@@ -458,44 +471,90 @@ namespace Hakko::DataHub
             layerDataBoxTid(0), layerDataBoxId(0),
             actionLocalSDWs({}), actionPPs({})
     {
+        pipelineType = Layer_PipelineType_Forward;
+
+        layerDataBoxTid = 0;
+        layerDataBoxId = 0;
+
+        globalShadowTexId = 0;
+        localShadowTexId = 0;
+        
+
         actionEarlyZ.renderIdType = RenderIdType_Opaque;
+        actionEarlyZ.output.useRT[0] = false;
         actionEarlyZ.output.outputLayout = OutputLayout_DepthOnly;
         actionEarlyZ.dataBoxTypeIds[0] = DataBoxType_DataBox_Render3DGeneral;
         actionEarlyZ.dataBoxTypeIds[1] = DataBoxType_DataBox_Render3DOptional;
 
+        actionGBuffer.renderIdType = RenderIdType_Opaque;
+        actionGBuffer.output.useRT[1] = true;
+        actionGBuffer.output.useRT[2] = true;
+        actionGBuffer.output.useRT[3] = true;
         actionGBuffer.output.outputLayout = OutputLayout_GBuffer;
+        actionGBuffer.dataBoxTypeIds[0] = DataBoxType_DataBox_Render3DGeneral;
+        actionGBuffer.dataBoxTypeIds[1] = DataBoxType_DataBox_Render3DOptional;
 
-        actionGlobalSDW.output.useRT[0] = false;
-        // actionGlobalSDW.output.useDS = true;
-        actionGlobalSDW.renderIdType = RenderIdType_Shadow;
-        actionGlobalSDW.output.outputLayout = OutputLayout_DepthOnly;
-        actionGlobalSDW.dataBoxTypeIds[0] = DataBoxType_DataBox_Render3DGeneral;
-        actionGlobalSDW.dataBoxTypeIds[1] = DataBoxType_DataBox_Render3DOptional;
+        // AO: G 노드의 DS (디퍼드면 노멀도) 를 읽어서 AO 칸에. drawProp 을 넣어야 노드가 생김
+        // DS 는 읽으면서 다음 노드로 넘김
+        actionAO.output.useRT[RENDER_BUILTIN_AO_SLOT] = true;
+        actionAO.output.useDS = true;
+        actionAO.output.depthOpt = Action_Output_DepthOption_ForceDepthRead;
 
-        for (auto& action : actionLocalSDWs)
+        actionAOBlur.output.useRT[RENDER_BUILTIN_AO_SLOT] = true;
+        actionAOBlur.output.useDS = true;
+        actionAOBlur.output.depthOpt = Action_Output_DepthOption_ForceDepthRead;
+
+        // 섀도우는 기본(임시 리소스 경로) 출력 없음! 쓰려면 섀도우맵 (DS 텍스처) 을 직접 넣고, useDS 를 켜세요
+        // 액션 데이터 = DataBox_RenderShadowView (그 패스의 라이트 뷰프로젝션)
+        for (auto& action : actionGlobalSDWs)
         {
             action.output.useRT[0] = false;
-            // action.output.useDS = true;
+            action.output.useDS = false;
             action.renderIdType = RenderIdType_Shadow;
             action.output.outputLayout = OutputLayout_DepthOnly;
+            action.actionDataBoxTypeId = DataBoxType_DtB_ShadowView;
             action.dataBoxTypeIds[0] = DataBoxType_DataBox_Render3DGeneral;
             action.dataBoxTypeIds[1] = DataBoxType_DataBox_Render3DOptional;
         }
 
+        for (auto& action : actionLocalSDWs)
+        {
+            action.output.useRT[0] = false;
+            action.output.useDS = false;
+            action.renderIdType = RenderIdType_Shadow;
+            action.output.outputLayout = OutputLayout_DepthOnly;
+            action.actionDataBoxTypeId = DataBoxType_DtB_ShadowView;
+            action.dataBoxTypeIds[0] = DataBoxType_DataBox_Render3DGeneral;
+            action.dataBoxTypeIds[1] = DataBoxType_DataBox_Render3DOptional;
+        }
+        
+        // inputs[0] = EarlyZ (아무것도 안 받음, 지정만), inputs[1] = AO 체인 끝 (AO 칸 읽기 + DS 이어 그리기)
         actionOPQ.inputs[0].RTInputType[0] = Action_InputType_Detach;
+        actionOPQ.inputs[0].DSInputType = Action_InputType_Detach;
         actionOPQ.inputs[1].RTInputType[0] = Action_InputType_Detach;
-        actionOPQ.inputs[1].DSInputType = Action_InputType_Detach;
-        actionOPQ.inputs[2].DSInputType = Action_InputType_Detach;
+        actionOPQ.inputs[1].RTInputType[RENDER_BUILTIN_AO_SLOT] = Action_InputType_Convert;
         actionOPQ.renderIdType = RenderIdType_Opaque;
         actionOPQ.dataBoxTypeIds[0] = DataBoxType_DataBox_Render3DGeneral;
         actionOPQ.dataBoxTypeIds[1] = DataBoxType_DataBox_Render3DOptional;
+
+        // 디퍼드 라이팅: inputs[0] = GBuffer (RT0~3 읽기), inputs[1] = AO 체인 끝 (AO 칸 읽기 + DS 읽으면서 넘김). 나머지는 Edit 기본값 (Convert)
+        actionLighting.inputs[0].DSInputType = Action_InputType_Detach;
+        actionLighting.output.useRT[0] = true;
+        actionLighting.output.useDS = true;
+        actionLighting.output.depthOpt = Action_Output_DepthOption_ForceDepthRead;
+
+        // AO 는 OPQ | Lighting 까지만 읽음 (뒤로 안 물려줌)
+        actionBackground.inputs[0].RTInputType[RENDER_BUILTIN_AO_SLOT] = Action_InputType_ClearSR;
+        actionTP.inputs[0].RTInputType[RENDER_BUILTIN_AO_SLOT] = Action_InputType_ClearSR;
 
         // actionTP.inputs[0].RTInputType[0] = Action_InputType_NoConvert;
         actionTP.renderIdType = RenderIdType_Translucent;
         actionTP.dataBoxTypeIds[0] = DataBoxType_DataBox_Render3DGeneral;
         actionTP.dataBoxTypeIds[1] = DataBoxType_DataBox_Render3DOptional;
 
-        // 출력 전부 false면 노드 스킵 (PP 기본)
+        // PP: drawProp 을 넣어야 노드가 생김, 기본 출력은 RT0
+        for (auto& action : actionPPs)
+            action.output.useRT[0] = true;
 
         // actionSC.inputs[0].RTInputType[0] = Action_InputType_NoConvert;
         actionSC.renderIdType = RenderIdType_Screen;

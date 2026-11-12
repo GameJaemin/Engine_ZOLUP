@@ -11,6 +11,25 @@ namespace Hakko
 
 #pragma region Allocator
 
+#pragma region Helper
+
+#ifdef _DEBUG
+static void CheckBlankOverlap(const std::vector<std::pair<UINT, UINT>>& blankList, UINT startIndex, UINT size)
+{
+	for (const auto& blank : blankList)
+	{
+		if (startIndex < blank.second + blank.first && blank.second < startIndex + size)
+		{
+			DebugReport(DataHub::RenderReport_Invariant, L"[Heap] 이미 반납된 디스크립터 칸을 또 반납");
+			return;
+		}
+	}
+}
+#endif
+
+#pragma endregion
+
+
 #pragma region HeapAllocator
 
 #pragma region AllocatorBase
@@ -132,7 +151,9 @@ D3D12Renderer::RVHeapAllocator::RVHeapAllocator(UINT numDescriptors)
 	rvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	rvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	
-	device->CreateDescriptorHeap(&rvHeapDesc, IID_PPV_ARGS(&vHeap));
+	if (FAILED(device->CreateDescriptorHeap(&rvHeapDesc, IID_PPV_ARGS(&vHeap))))
+		return;
+
 	vHeapIncSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	vHeapCPUHandle = vHeap->GetCPUDescriptorHandleForHeapStart();
@@ -198,8 +219,42 @@ void D3D12Renderer::RVHeapAllocator::UpdateSRV(UINT rvIndex, ID3D12Resource *sub
 }
 
 
+bool D3D12Renderer::RVHeapAllocator::SetUAV(ID3D12Resource* res, D3D12_UNORDERED_ACCESS_VIEW_DESC* UAVDesc, UINT& rvIndex)
+{
+	UINT usageIndex = GetUsageIndexSingle();
+	if (usageIndex >= NUM_DESCRIPTORS)
+		return false;
+
+	ID3D12Device* device = D3D12Core::getInstance().GetDevice();
+
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE uavCPUHandle = vHeapCPUHandle;
+	uavCPUHandle.Offset(usageIndex, vHeapIncSize);
+	device->CreateUnorderedAccessView(res, nullptr, UAVDesc, uavCPUHandle);
+
+
+	rvIndex = usageIndex;
+
+
+	return true;
+}
+
+void D3D12Renderer::RVHeapAllocator::UpdateUAV(UINT rvIndex, ID3D12Resource* res, D3D12_UNORDERED_ACCESS_VIEW_DESC* UAVDesc)
+{
+	ID3D12Device* device = D3D12Core::getInstance().GetDevice();
+
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE uavCPUHandle = vHeapCPUHandle;
+	uavCPUHandle.Offset(rvIndex, vHeapIncSize);
+	device->CreateUnorderedAccessView(res, nullptr, UAVDesc, uavCPUHandle);
+}
+
 void D3D12Renderer::RVHeapAllocator::UnSetSRV(UINT rvStartIndex, UINT size)
 {
+	#ifdef _DEBUG
+	CheckBlankOverlap(blankedIndexList, rvStartIndex, size);
+	#endif
+
 	blankedIndexList.emplace_back(size, rvStartIndex);
 }
 
@@ -219,7 +274,9 @@ D3D12Renderer::RTVHeapAllocator::RTVHeapAllocator(UINT numDescriptors, UINT16 fr
 	rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 	rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 
-	device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&vHeap));
+	if (FAILED(device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&vHeap))))
+		return;
+
 	vHeapIncSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
 	vHeapCPUHandle = vHeap->GetCPUDescriptorHandleForHeapStart();
@@ -273,6 +330,11 @@ bool D3D12Renderer::RTVHeapAllocator::SetCombinedRTV(ID3D12Resource **subResList
 
 void D3D12Renderer::RTVHeapAllocator::UpdateRTV(UINT rtvIndex, ID3D12Resource *subRes, D3D12_RENDER_TARGET_VIEW_DESC *RTVDesc)
 {
+	if (rtvIndex == 0)
+	{
+		DebugReport(DataHub::RenderReport_Invariant, L"[Heap] 예약 RTV 칸 갱신 시도");
+		return;
+	}
 
 	ID3D12Device* device = D3D12Core::getInstance().GetDevice();
 
@@ -285,11 +347,15 @@ void D3D12Renderer::RTVHeapAllocator::UpdateRTV(UINT rtvIndex, ID3D12Resource *s
 
 void D3D12Renderer::RTVHeapAllocator::UnSetRTV(UINT rtvStartIndex, UINT size)
 {
-	if (rtvStartIndex < FRAME_RES_COUNT)
+	if (rtvStartIndex < FRAME_RES_COUNT + 1)
 	{
-		DebugReport(DataHub::RenderReport_Invariant, L"[Heap] 예약 RTV 칸 (백버퍼) 해제 시도");
+		DebugReport(DataHub::RenderReport_Invariant, L"[Heap] 예약 RTV 칸 해제 시도");
 		return;
 	}
+
+	#ifdef _DEBUG
+	CheckBlankOverlap(blankedIndexList, rtvStartIndex, size);
+	#endif
 
 	blankedIndexList.emplace_back(size, rtvStartIndex);
 }
@@ -310,7 +376,9 @@ D3D12Renderer::DSVHeapAllocator::DSVHeapAllocator(UINT numDescriptors)
 	dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
 	dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 
-	device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&vHeap));
+	if (FAILED(device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&vHeap))))
+		return;
+
 	vHeapIncSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 
 	vHeapCPUHandle = vHeap->GetCPUDescriptorHandleForHeapStart();
@@ -375,102 +443,14 @@ void D3D12Renderer::DSVHeapAllocator::UpdateDSV(UINT dsvIndex, ID3D12Resource *s
 
 void D3D12Renderer::DSVHeapAllocator::UnSetDSV(UINT dsvStartIndex, UINT size)
 {
+	#ifdef _DEBUG
+	CheckBlankOverlap(blankedIndexList, dsvStartIndex, size);
+	#endif
+
 	blankedIndexList.emplace_back(size, dsvStartIndex);
 }
 
 #pragma endregion
-
-#pragma endregion
-
-
-
-#pragma region CBAreaAllocator
-
-template <>
-D3D12Renderer::CBAreaAllocator<DataHub::DataBox_RenderLight>::CBAreaAllocator(UINT areaNumSize, UINT areaShrinkFreq, UINT areaShrinkThreshold)
-	: AREA_MAX_NUM_SIZE(areaNumSize), T_DATA_NUM_SIZE(0), 
-	AREA_SHRINK_FREQ(0), AREA_SHRINK_THRESHOLD(0), areaShrinkCount(0),
-	currentIndex(0)
-{
-	if (areaNumSize != 64U)
-	{
-		DebugReport(DataHub::RenderReport_Invariant, L"[CBArea] Light 영역 크기는 RENDER_LIGHT_MAX 고정");
-		return;
-	}
-
-	auto device = D3D12Core::getInstance().GetDevice();
-
-	const CD3DX12_RANGE readRange(0, 0);
-	ComPtr<ID3D12Resource> CB;
-	UINT8* pCBBegin;
-
-	const UINT bufferSize = (AREA_MAX_NUM_SIZE * sizeof(DataHub::DataBox_RenderLight) + 255) & ~255;
-
-	const CD3DX12_HEAP_PROPERTIES UPLOAD_HEAP_PROPS(D3D12_HEAP_TYPE_UPLOAD);
-	auto resDec = CD3DX12_RESOURCE_DESC::Buffer(bufferSize);
-	
-	device->CreateCommittedResource(
-		&UPLOAD_HEAP_PROPS,
-		D3D12_HEAP_FLAG_NONE,
-		&resDec,
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&CB)
-	);
-
-	CB->Map(0, &readRange, (void**)&pCBBegin);
-	D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = CB->GetGPUVirtualAddress();
-
-
-	cbArea = std::move(CB);
-	pCBAreaData = pCBBegin;
-	cbAreaGPUAddress = gpuAddress;
-
-	dataCopyList.reserve(64);
-}
-
-
-template <>
-bool D3D12Renderer::CBAreaAllocator<DataHub::DataBox_RenderLight>::SetCBData(DX12_RenderData& data, const DataHub::DataBox_RenderLight& rawData)
-{
-	using namespace DataHub;
-
-	if (AREA_MAX_NUM_SIZE <= currentIndex)
-	{
-		DebugReport(DataHub::RenderReport_Invariant, L"[CBArea] Light 영역 넘침 (RENDER_LIGHT_MAX 초과)");
-		return false;
-	}
-
-	dataCopyList.emplace_back(rawData);
-
-	data.CBAreaIndex = currentIndex;
-
-	currentIndex += 1;
-
-	return true;
-}
-
-template <>
-void D3D12Renderer::CBAreaAllocator<DataHub::DataBox_RenderLight>::FlushCB()
-{
-	static const UINT bufferSize = (AREA_MAX_NUM_SIZE * sizeof(DataHub::DataBox_RenderLight) + 255) & ~255;
-
-	UINT8* pDataBegin = reinterpret_cast<UINT8*>(dataCopyList.data());
-	memcpy(pCBAreaData, pDataBegin, bufferSize);
-
-	
-	dataCopyList.clear();
-	
-	currentIndex = 0;
-}
-
-template <>
-D3D12_GPU_VIRTUAL_ADDRESS D3D12Renderer::CBAreaAllocator<DataHub::DataBox_RenderLight>::GetGPUAddress(uint32_t dataIdx)
-{
-	const UINT offset = dataIdx * sizeof(DataHub::DataBox_RenderLight);
-
-	return cbAreaGPUAddress + offset;
-}
 
 #pragma endregion
 

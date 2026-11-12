@@ -1,7 +1,6 @@
 #include "D3D12Renderer.h"
 
 #include "D3D12Core.h"
-#include "DirectXTex.h"
 
 #ifdef _DEBUG
 #include <comdef.h>
@@ -53,6 +52,112 @@ static bool SwapAndRemoveIdInLUT(
 }
 
 
+static void RemoveCTexRef(vector<vector<pair<CTexID, uint8_t>>>& refList, CTexID cTexId)
+{
+	for (auto& refs : refList)
+	{
+		for (size_t i = 0; i < refs.size(); )
+		{
+			if (refs[i].first == cTexId)
+				refs.erase(refs.begin() + i);
+			else
+				i++;
+		}
+	}
+}
+
+static void SwapCTexRef(vector<vector<pair<CTexID, uint8_t>>>& refList, CTexID a, CTexID b)
+{
+	for (auto& refs : refList)
+	{
+		for (auto& ref : refs)
+		{
+			if (ref.first == a)
+				ref.first = b;
+			else if (ref.first == b)
+				ref.first = a;
+		}
+	}
+}
+
+
+static void FillTextureSRVDesc(const DX12_Texture& texInfo, D3D12_SHADER_RESOURCE_VIEW_DESC& desc)
+{
+	desc = {};
+	desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	desc.Format = GetSRVFormat(texInfo.Format);
+	desc.Texture2D.MipLevels = texInfo.MipLevels;
+
+	if (texInfo.ArraySize > 1)
+	{
+		if (texInfo.IsCube)
+		{
+			if (texInfo.ArraySize > 6)
+				desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBEARRAY;
+			else
+				desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+		}
+		else
+		{
+			switch (texInfo.Dimension)
+			{
+			default:
+			case D3D12_RESOURCE_DIMENSION_TEXTURE2D:
+				desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;	break;
+
+			case D3D12_RESOURCE_DIMENSION_TEXTURE1D:
+				desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE1DARRAY;	break;
+
+			case D3D12_RESOURCE_DIMENSION_TEXTURE3D:
+				desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;			break;
+			}
+		}
+	}
+	else
+	{
+		switch (texInfo.Dimension)
+		{
+		default:
+		case D3D12_RESOURCE_DIMENSION_TEXTURE2D:
+			desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;		break;
+
+		case D3D12_RESOURCE_DIMENSION_TEXTURE1D:
+			desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE1D;		break;
+
+		case D3D12_RESOURCE_DIMENSION_TEXTURE3D:
+			desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;		break;
+		}
+	}
+
+	switch (desc.ViewDimension)
+	{
+	case D3D12_SRV_DIMENSION_TEXTURE2DARRAY:
+		desc.Texture2DArray.ArraySize = texInfo.ArraySize;		break;
+
+	case D3D12_SRV_DIMENSION_TEXTURE1DARRAY:
+		desc.Texture1DArray.ArraySize = texInfo.ArraySize;		break;
+
+	case D3D12_SRV_DIMENSION_TEXTURECUBEARRAY:
+		desc.TextureCubeArray.NumCubes = texInfo.ArraySize / 6;	break;
+	}
+}
+
+
+static uint8_t ShaderVariantVS(DataHub::VertexType vertexType)
+{
+	return (uint8_t)vertexType + 1;
+}
+
+static uint8_t ShaderVariantPS(DataHub::Action_OutputLayout layout)
+{
+	return (uint8_t)layout;
+}
+
+
+static const DXGI_FORMAT MESH_INDEX_FORMAT = DXGI_FORMAT_R32_UINT;
+static_assert(sizeof(DataHub::VIndex) == 4, "MESH_INDEX_FORMAT 은 허브 VIndex 크기와 같이 바뀌어야 함");
+
+
 static DXGI_FORMAT ToDXGI(DataHub::TextureReadFormat f)
 {
     switch (f) {
@@ -70,6 +175,16 @@ static DXGI_FORMAT ToDXGI(DataHub::TextureReadFormat f)
     case DataHub::TextureReadFormat::R32_Float:            return DXGI_FORMAT_R32_FLOAT;
     case DataHub::TextureReadFormat::RG32_Float:           return DXGI_FORMAT_R32G32_FLOAT;
     case DataHub::TextureReadFormat::RGBA32_Float:         return DXGI_FORMAT_R32G32B32A32_FLOAT;
+    case DataHub::TextureReadFormat::R16_UNorm:            return DXGI_FORMAT_R16_UNORM;
+    case DataHub::TextureReadFormat::RG16_UNorm:           return DXGI_FORMAT_R16G16_UNORM;
+    case DataHub::TextureReadFormat::RGBA16_UNorm:         return DXGI_FORMAT_R16G16B16A16_UNORM;
+    case DataHub::TextureReadFormat::RG8_SNorm:            return DXGI_FORMAT_R8G8_SNORM;
+    case DataHub::TextureReadFormat::RGBA8_SNorm:          return DXGI_FORMAT_R8G8B8A8_SNORM;
+    case DataHub::TextureReadFormat::RG16_SNorm:           return DXGI_FORMAT_R16G16_SNORM;
+    case DataHub::TextureReadFormat::R8_UInt:              return DXGI_FORMAT_R8_UINT;
+    case DataHub::TextureReadFormat::R16_UInt:             return DXGI_FORMAT_R16_UINT;
+    case DataHub::TextureReadFormat::R32_UInt:             return DXGI_FORMAT_R32_UINT;
+    case DataHub::TextureReadFormat::RGB9E5_SharedExp:     return DXGI_FORMAT_R9G9B9E5_SHAREDEXP;
 
     case DataHub::TextureReadFormat::BC1_UNorm:            return DXGI_FORMAT_BC1_UNORM;
     case DataHub::TextureReadFormat::BC1_SRGB:             return DXGI_FORMAT_BC1_UNORM_SRGB;
@@ -105,6 +220,27 @@ static DXGI_FORMAT GetDSFormat(DataHub::TextureReadFormat f)
         case DataHub::TextureReadFormat::D32_Float_S8X24_UInt: return DXGI_FORMAT_R32G8X24_TYPELESS;
         default:                                  				return DXGI_FORMAT_UNKNOWN;
 	}
+}
+
+static bool SetLinkedMeshVertex(const DX12_Buffer& buffer, const DX12_BufferView& bufferView, DX12_Mesh& mesh, DX12_MeshView& view)
+{
+	using namespace DataHub;
+
+	switch (buffer.stride)
+	{
+	case sizeof(VertexSimple):	mesh.vertexType = VertexType_Simple;	break;
+	case sizeof(VertexStatic):	mesh.vertexType = VertexType_Static;	break;
+	case sizeof(VertexSkinned):	mesh.vertexType = VertexType_Skinned;	break;
+	default:					return false;
+	}
+
+	mesh.vertexCount = buffer.count;
+
+	view.VBV.BufferLocation = bufferView.address;
+	view.VBV.StrideInBytes = buffer.stride;
+	view.VBV.SizeInBytes = buffer.stride * buffer.count;
+
+	return true;
 }
 
 #pragma endregion
@@ -180,7 +316,7 @@ bool D3D12Renderer::InitResource()
 
 	// --- 칸 다뚫어놓는 디폴트 시그니처 (그래픽스 공용, 인덱스는 DX12_RootParam) ---
 	// t space0 : 선행 출력 인스턴트 t0~t8 (RT 8 + DS), 1칸 테이블 x 9 -> 9개 하나씩 바인딩 (STex)
-	// t space1 : CTex / STex (언바운드)	t space2 : 구조버퍼 (언바운드, 미지원)	t space4 : 레이어 전역 텍스처 (환경맵, 1칸)
+	// t space1 : CTex / STex (언바운드)	t space2 : 구조버퍼 (루트 SRV, 드로우 칸 tid CSBuffer)	t space4 : 레이어 전역 텍스처 (환경맵, 1칸)
 	// b space0 : 레이어 고정칸 (b0 카메라, b1 조명, b2 조명행렬, b4 루트상수)
 	// b space1 : 레이어 데이터		b space2 : 액션 데이터		b space3 : 물체 칸 b0~b4 (= DRAWREQ_DATABOX_MAX)
 	CD3DX12_ROOT_PARAMETER1 defaultRenderRootParams[RootParam_Count];
@@ -193,10 +329,7 @@ bool D3D12Renderer::InitResource()
 		D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE | D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
 	defaultRenderRootParams[RootParam_CTexTable].InitAsDescriptorTable(1, &loadedTextureRange, D3D12_SHADER_VISIBILITY_PIXEL);
 
-	CD3DX12_DESCRIPTOR_RANGE1 structuredBufferRange;
-	structuredBufferRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, UINT_MAX, 0, 2U,
-		D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE | D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
-	defaultRenderRootParams[RootParam_StructuredTable].InitAsDescriptorTable(1, &structuredBufferRange, D3D12_SHADER_VISIBILITY_ALL);
+	defaultRenderRootParams[RootParam_StructuredSB].InitAsShaderResourceView(0, 2U);
 
 	CD3DX12_DESCRIPTOR_RANGE1 instantTextureRanges[INSTANT_SLOT_MAX];
 	for (UINT s = 0; s < INSTANT_SLOT_MAX; s++)
@@ -218,8 +351,6 @@ bool D3D12Renderer::InitResource()
 	defaultRenderRootParams[RootParam_LayerTexTable].InitAsDescriptorTable(1, &layerTextureRange, D3D12_SHADER_VISIBILITY_PIXEL);
 
 	defaultRenderRootParams[RootParam_Constants].InitAsConstants(4, 4, 0U, D3D12_SHADER_VISIBILITY_PIXEL);
-
-	// TODO 컴퓨트는 별도 루트 시그니처
 
 
 	D3D12_ROOT_SIGNATURE_FLAGS defaultRenderRootSigFlags =
@@ -244,8 +375,78 @@ bool D3D12Renderer::InitResource()
 	ComPtr<ID3DBlob> error;
 
 
-	D3DX12SerializeVersionedRootSignature(&defaultRenderRootSigDesc, featureData.HighestVersion, &rootSigRaw, &error);
-	device->CreateRootSignature(0, rootSigRaw->GetBufferPointer(), rootSigRaw->GetBufferSize(), IID_PPV_ARGS(&defaultRenderRootSig));
+	if (FAILED(D3DX12SerializeVersionedRootSignature(&defaultRenderRootSigDesc, featureData.HighestVersion, &rootSigRaw, &error))
+		|| FAILED(device->CreateRootSignature(0, rootSigRaw->GetBufferPointer(), rootSigRaw->GetBufferSize(), IID_PPV_ARGS(&defaultRenderRootSig))))
+	{
+		DebugReport(DataHub::RenderReport_Init, L"[Init] 그래픽스 루트 시그니처 생성 실패");
+		return false;
+	}
+
+
+	// --- 컴퓨트 루트 시그니처 (인덱스는 DX12_RootParamCompute) ---
+	// t space0 : 읽기 버퍼 t0~t3 (루트 SRV)		u space0 : 쓰기 버퍼 u0~u3 (루트 UAV)
+	// t space1 : 읽기 텍스처 t0~t3 (1칸 테이블)	u space1 : 쓰기 텍스처 u0~u3 (1칸 테이블)
+	// t space2 : 선행 출력 인스턴트 t0~t8 (1칸 테이블 x 9)
+	// b space0 : 카메라 등 b0	b space1 : 레이어 데이터 b0	b space2 : 액션 데이터 b0	(그래픽스와 같은 자리)
+	CD3DX12_ROOT_PARAMETER1 computeRootParams[RootParamCS_Count];
+
+	for (UINT k = 0; k < COMPUTE_BINDING_MAX; k++)
+	{
+		computeRootParams[RootParamCS_ReadBuffer0 + k].InitAsShaderResourceView(k, 0U);
+		computeRootParams[RootParamCS_WriteBuffer0 + k].InitAsUnorderedAccessView(k, 0U);
+	}
+
+	CD3DX12_DESCRIPTOR_RANGE1 computeReadTexRanges[COMPUTE_BINDING_MAX];
+	CD3DX12_DESCRIPTOR_RANGE1 computeWriteTexRanges[COMPUTE_BINDING_MAX];
+	for (UINT k = 0; k < COMPUTE_BINDING_MAX; k++)
+	{
+		computeReadTexRanges[k].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, k, 1U,
+			D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE | D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
+		computeRootParams[RootParamCS_ReadTex0 + k].InitAsDescriptorTable(1, &computeReadTexRanges[k]);
+
+		computeWriteTexRanges[k].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, k, 1U,
+			D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE | D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
+		computeRootParams[RootParamCS_WriteTex0 + k].InitAsDescriptorTable(1, &computeWriteTexRanges[k]);
+	}
+
+	CD3DX12_DESCRIPTOR_RANGE1 computeInstantRanges[INSTANT_SLOT_MAX];
+	for (UINT s = 0; s < INSTANT_SLOT_MAX; s++)
+	{
+		computeInstantRanges[s].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, s, 2U,
+			D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE | D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
+		computeRootParams[RootParamCS_InstantSR0 + s].InitAsDescriptorTable(1, &computeInstantRanges[s]);
+	}
+
+	computeRootParams[RootParamCS_ActionCB].InitAsConstantBufferView(0, 2U);
+	computeRootParams[RootParamCS_LayerDataCB].InitAsConstantBufferView(0, 1U);
+	computeRootParams[RootParamCS_ConditionCB].InitAsConstantBufferView(0, 0U);
+
+	D3D12_STATIC_SAMPLER_DESC computeSamplers[_countof(samplers)];
+	for (UINT s = 0; s < _countof(samplers); s++)
+	{
+		computeSamplers[s] = samplers[s];
+		computeSamplers[s].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+	}
+
+
+	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC computeRootSigDesc;
+	computeRootSigDesc.Init_1_1(
+		_countof(computeRootParams),
+		computeRootParams,
+		_countof(computeSamplers),
+		computeSamplers,
+		D3D12_ROOT_SIGNATURE_FLAG_NONE
+	);
+
+	rootSigRaw.Reset();
+	error.Reset();
+
+	if (FAILED(D3DX12SerializeVersionedRootSignature(&computeRootSigDesc, featureData.HighestVersion, &rootSigRaw, &error))
+		|| FAILED(device->CreateRootSignature(0, rootSigRaw->GetBufferPointer(), rootSigRaw->GetBufferSize(), IID_PPV_ARGS(&computeRootSig))))
+	{
+		DebugReport(DataHub::RenderReport_Init, L"[Init] 컴퓨트 루트 시그니처 생성 실패");
+		return false;
+	}
 
 	#pragma endregion
 
@@ -254,7 +455,10 @@ bool D3D12Renderer::InitResource()
 	#pragma region InitGraphicResource
 
 	if (!InitGraphicResource())
+	{
+		DebugReport(DataHub::RenderReport_Init, L"[Init] 기본 리소스 (쿼드 / 예약 텍스처 / 더미 버퍼 / 기본 셰이더) 준비 실패");
 		return false;
+	}
 
 	PreUploadResource();
 
@@ -264,20 +468,20 @@ bool D3D12Renderer::InitResource()
 	
 	#pragma region InitCBArea
 
+	cbArea_Light.clear();
+	cbArea_Light.resize(FRAME_COUNT);
 	cbArea_LightMatrix.clear();
 	cbArea_LightMatrix.resize(FRAME_COUNT);
 
 	for (size_t i = 0; i < FRAME_COUNT; i++)
 	{
 		cbArea_Condition[i] = std::make_unique<CBAreaAllocator<DataHub::RenderCondition>>(CB_AREA_SIZE_CONDITION);
-		cbArea_Light[i].reserve(RENDER_LAYER_MAX);
 
-		for (size_t j = 0; j < RENDER_LAYER_MAX; j++)
-			cbArea_Light[i].emplace_back(CB_AREA_SIZE_LIGHT);
-
+		if (!cbArea_Light[i].Init((UINT)(RENDER_LIGHT_MAX * sizeof(DataHub::DataBox_RenderLight)), RENDER_LAYER_MAX, 0, 0))
+			DebugReport(DataHub::RenderReport_Init, L"[CBArea] 조명 cbArea 생성 실패");
 		if (!cbArea_LightMatrix[i].Init((UINT)(RENDER_LIGHT_MAX * sizeof(DataHub::DataBox_RenderLightMatrix)), RENDER_LAYER_MAX, 0, 0))
 			DebugReport(DataHub::RenderReport_Init, L"[CBArea] 조명 행렬 cbArea 생성 실패");
-		
+
 		const uint32_t providerCount = DataHub::DataBoxCustomizer::GetProviderCount();
 
 		cbArea_DataBox[i].clear();
@@ -294,6 +498,9 @@ bool D3D12Renderer::InitResource()
 				DebugReport(DataHub::RenderReport_Init, L"[CBArea] 데이터박스 타입 cbArea 생성 실패 (stride 256 배수 아님 / 할당 실패)");
 		}
 	}
+
+	dataSlotLUTList.resize(DataHub::DataBoxCustomizer::GetProviderCount());
+	dataSlotStampList.resize(DataHub::DataBoxCustomizer::GetProviderCount());
 
 	#pragma endregion
 
@@ -357,11 +564,12 @@ bool D3D12Renderer::InitGraphicResource()
 	uploadBufferList.reserve((DEFAULT_RES_MESH_COUNT - 1) * 2 + DEFAULT_RES_TEX_COUNT);
 
 
-	renderCMDAllocators[0]->Reset();
-	renderCMDList_Master->Reset(renderCMDAllocators[0].Get(), nullptr);
+	BeginUploadCommands();
 
 	
 	#pragma region DefaultMesh
+
+	csRefList_Mesh.assign(DEFAULT_RES_MESH_COUNT, 0);
 
 	meshList.emplace_back();
 	meshViewList.emplace_back();
@@ -374,28 +582,38 @@ bool D3D12Renderer::InitGraphicResource()
 		{ DirectX::XMFLOAT3( 1.0f,  1.0f, 0.0f) },
 		{ DirectX::XMFLOAT3( 1.0f, -1.0f, 0.0f) },
 	};
+
 	const DataHub::VIndex quadIndices[6] = { 0, 1, 2, 0, 2, 3 };
 
 	DX12_Mesh quad = {};
-	DX12_MeshView quadView = {};
 	quad.vertexType = DataHub::VertexType_Simple;
 	quad.vertexCount = 4;
 	quad.indexCount = 6;
 
+	DX12_MeshView quadView = {};
+
 	auto vbDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(quadVertices));
 	auto ibDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(quadIndices));
+
+
 	ComPtr<ID3D12Resource> uploadQuadVB;
 	ComPtr<ID3D12Resource> uploadQuadIB;
 
-	device->CreateCommittedResource(&DEFAULT_HEAP_PROPS, D3D12_HEAP_FLAG_NONE, &vbDesc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&quad.VB));
-	device->CreateCommittedResource(&UPLOAD_HEAP_PROPS, D3D12_HEAP_FLAG_NONE, &vbDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&uploadQuadVB));
-	device->CreateCommittedResource(&DEFAULT_HEAP_PROPS, D3D12_HEAP_FLAG_NONE, &ibDesc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&quad.IB));
-	device->CreateCommittedResource(&UPLOAD_HEAP_PROPS, D3D12_HEAP_FLAG_NONE, &ibDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&uploadQuadIB));
+	if (FAILED(device->CreateCommittedResource(&DEFAULT_HEAP_PROPS, D3D12_HEAP_FLAG_NONE, &vbDesc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&quad.VB))))
+		return false;
+	if (FAILED(device->CreateCommittedResource(&UPLOAD_HEAP_PROPS, D3D12_HEAP_FLAG_NONE, &vbDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&uploadQuadVB))))
+		return false;
+	if (FAILED(device->CreateCommittedResource(&DEFAULT_HEAP_PROPS, D3D12_HEAP_FLAG_NONE, &ibDesc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&quad.IB))))
+		return false;
+	if (FAILED(device->CreateCommittedResource(&UPLOAD_HEAP_PROPS, D3D12_HEAP_FLAG_NONE, &ibDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&uploadQuadIB))))
+		return false;
+
 
 	UINT8* pQuadData = nullptr;
 	uploadQuadVB->Map(0, &readRange, (void**)&pQuadData);
 	memcpy(pQuadData, quadVertices, sizeof(quadVertices));
 	uploadQuadVB->Unmap(0, nullptr);
+
 	uploadQuadIB->Map(0, &readRange, (void**)&pQuadData);
 	memcpy(pQuadData, quadIndices, sizeof(quadIndices));
 	uploadQuadIB->Unmap(0, nullptr);
@@ -403,19 +621,25 @@ bool D3D12Renderer::InitGraphicResource()
 	renderCMDList_Master->CopyBufferRegion(quad.VB.Get(), 0, uploadQuadVB.Get(), 0, sizeof(quadVertices));
 	renderCMDList_Master->CopyBufferRegion(quad.IB.Get(), 0, uploadQuadIB.Get(), 0, sizeof(quadIndices));
 
+
 	D3D12_RESOURCE_BARRIER quadBarriers[2] = {
 		CD3DX12_RESOURCE_BARRIER::Transition(quad.VB.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER),
 		CD3DX12_RESOURCE_BARRIER::Transition(quad.IB.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER),
 	};
+
 	renderCMDList_Master->ResourceBarrier(2, quadBarriers);
+	
 
 	quadView.VBV.BufferLocation = quad.VB->GetGPUVirtualAddress();
 	quadView.VBV.StrideInBytes = sizeof(DataHub::VertexSimple);
 	quadView.VBV.SizeInBytes = sizeof(quadVertices);
+
 	quadView.IBV.BufferLocation = quad.IB->GetGPUVirtualAddress();
-	quadView.IBV.Format = DXGI_FORMAT_R16_UINT;
+	quadView.IBV.Format = MESH_INDEX_FORMAT;
 	quadView.IBV.SizeInBytes = sizeof(quadIndices);
+
 	quadView.subMeshes.push_back(DX12_SubMesh{ 0, 6, 0 });
+	
 
 	meshList.emplace_back(std::move(quad));
 	meshViewList.emplace_back(std::move(quadView));
@@ -429,6 +653,7 @@ bool D3D12Renderer::InitGraphicResource()
 	#pragma region DefaultTexture
 
 	const uint32_t DefaultErrorRaw = 0xFFFF00FF;
+	const uint32_t DefaultTransparentRaw = 0x00000000;
 	const uint32_t None_DiffuseRaw = 0xFFFFFFFF;
 	const uint32_t None_NormalRaw = 0xFFFF8080;
 	const uint32_t None_ORMRaw = 0xFF0080FF;
@@ -441,6 +666,11 @@ bool D3D12Renderer::InitGraphicResource()
 	DefaultErrorData.pData = &DefaultErrorRaw;
 	DefaultErrorData.RowPitch = texWidth;
 	DefaultErrorData.SlicePitch = DefaultErrorData.RowPitch;
+
+	D3D12_SUBRESOURCE_DATA DefaultTransparentData = {};
+	DefaultTransparentData.pData = &DefaultTransparentRaw;
+	DefaultTransparentData.RowPitch = texWidth;
+	DefaultTransparentData.SlicePitch = DefaultTransparentData.RowPitch;
 
 	D3D12_SUBRESOURCE_DATA None_DiffuseData = {};
 	None_DiffuseData.pData = &None_DiffuseRaw;
@@ -478,13 +708,14 @@ bool D3D12Renderer::InitGraphicResource()
 
 	ComPtr<ID3D12Resource> DefaultErrorTexture;
 
-	device->CreateCommittedResource(
+	if (FAILED(device->CreateCommittedResource(
 		&DEFAULT_HEAP_PROPS,
 		D3D12_HEAP_FLAG_NONE,
 		&textureDesc,
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		nullptr,
-		IID_PPV_ARGS(&DefaultErrorTexture));
+		IID_PPV_ARGS(&DefaultErrorTexture))))
+		return false;
 		
 
 	const UINT64 uploadTextureSizeDefault = GetRequiredIntermediateSize(DefaultErrorTexture.Get(), 0, 1);
@@ -492,13 +723,14 @@ bool D3D12Renderer::InitGraphicResource()
 
 	auto errUploadResDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadTextureSizeDefault);
 
-	device->CreateCommittedResource(
+	if (FAILED(device->CreateCommittedResource(
 		&UPLOAD_HEAP_PROPS,
 		D3D12_HEAP_FLAG_NONE,
 		&errUploadResDesc,
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
-		IID_PPV_ARGS(&uploadTextureDefault));
+		IID_PPV_ARGS(&uploadTextureDefault))))
+		return false;
 
 
 	UpdateSubresources(renderCMDList_Master.Get(), DefaultErrorTexture.Get(), uploadTextureDefault.Get(), 0, 0, 1, &DefaultErrorData);
@@ -527,15 +759,69 @@ bool D3D12Renderer::InitGraphicResource()
 
 
 
-	ComPtr<ID3D12Resource> None_DiffuseTexture;
+	ComPtr<ID3D12Resource> TransparentTexture;
 
-	device->CreateCommittedResource(
+	if (FAILED(device->CreateCommittedResource(
 		&DEFAULT_HEAP_PROPS,
 		D3D12_HEAP_FLAG_NONE,
 		&textureDesc,
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		nullptr,
-		IID_PPV_ARGS(&None_DiffuseTexture));
+		IID_PPV_ARGS(&TransparentTexture))))
+		return false;
+		
+
+	const UINT64 uploadTextureSizeTransparent = GetRequiredIntermediateSize(TransparentTexture.Get(), 0, 1);
+	ComPtr<ID3D12Resource> uploadTextureTransparent;
+
+	auto transparentUploadResDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadTextureSizeTransparent);
+
+	if (FAILED(device->CreateCommittedResource(
+		&UPLOAD_HEAP_PROPS,
+		D3D12_HEAP_FLAG_NONE,
+		&transparentUploadResDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&uploadTextureTransparent))))
+		return false;
+
+
+	UpdateSubresources(renderCMDList_Master.Get(), TransparentTexture.Get(), uploadTextureTransparent.Get(), 0, 0, 1, &DefaultTransparentData);
+
+	auto transparentResBar = CD3DX12_RESOURCE_BARRIER::Transition(
+		TransparentTexture.Get(), 
+		D3D12_RESOURCE_STATE_COPY_DEST, 
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
+	);
+
+	renderCMDList_Master->ResourceBarrier(1, &transparentResBar);
+
+	textureList.emplace_back(
+		DX12_Texture{
+			std::move(TransparentTexture),
+			1,
+			1,
+			textureDesc.Format,
+			D3D12_RESOURCE_DIMENSION_TEXTURE2D,
+            false
+			
+		}
+	);
+
+	uploadBufferList.push_back(std::move(uploadTextureTransparent));
+
+
+
+	ComPtr<ID3D12Resource> None_DiffuseTexture;
+
+	if (FAILED(device->CreateCommittedResource(
+		&DEFAULT_HEAP_PROPS,
+		D3D12_HEAP_FLAG_NONE,
+		&textureDesc,
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		nullptr,
+		IID_PPV_ARGS(&None_DiffuseTexture))))
+		return false;
 		
 
 	const UINT64 uploadTextureSize1 = GetRequiredIntermediateSize(None_DiffuseTexture.Get(), 0, 1);
@@ -543,13 +829,14 @@ bool D3D12Renderer::InitGraphicResource()
 
 	auto diffUploadResDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadTextureSize1);
 
-	device->CreateCommittedResource(
+	if (FAILED(device->CreateCommittedResource(
 		&UPLOAD_HEAP_PROPS,
 		D3D12_HEAP_FLAG_NONE,
 		&diffUploadResDesc,
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
-		IID_PPV_ARGS(&uploadTexture1));
+		IID_PPV_ARGS(&uploadTexture1))))
+		return false;
 
 
 	UpdateSubresources(renderCMDList_Master.Get(), None_DiffuseTexture.Get(), uploadTexture1.Get(), 0, 0, 1, &None_DiffuseData);
@@ -580,13 +867,14 @@ bool D3D12Renderer::InitGraphicResource()
 
 	ComPtr<ID3D12Resource> None_NormalTexture;
 
-	device->CreateCommittedResource(
+	if (FAILED(device->CreateCommittedResource(
 		&DEFAULT_HEAP_PROPS,
 		D3D12_HEAP_FLAG_NONE,
 		&textureDesc,
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		nullptr,
-		IID_PPV_ARGS(&None_NormalTexture));
+		IID_PPV_ARGS(&None_NormalTexture))))
+		return false;
 		
 
 	const UINT64 uploadTextureSize2 = GetRequiredIntermediateSize(None_NormalTexture.Get(), 0, 1);
@@ -594,13 +882,14 @@ bool D3D12Renderer::InitGraphicResource()
 
 	auto normUploadResDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadTextureSize2);
 
-	device->CreateCommittedResource(
+	if (FAILED(device->CreateCommittedResource(
 		&UPLOAD_HEAP_PROPS,
 		D3D12_HEAP_FLAG_NONE,
 		&normUploadResDesc,
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
-		IID_PPV_ARGS(&uploadTexture2));
+		IID_PPV_ARGS(&uploadTexture2))))
+		return false;
 
 
 	UpdateSubresources(renderCMDList_Master.Get(), None_NormalTexture.Get(), uploadTexture2.Get(), 0, 0, 1, &None_NormalData);
@@ -631,13 +920,14 @@ bool D3D12Renderer::InitGraphicResource()
 	
 	ComPtr<ID3D12Resource> None_ORMTexture;
 
-	device->CreateCommittedResource(
+	if (FAILED(device->CreateCommittedResource(
 		&DEFAULT_HEAP_PROPS,
 		D3D12_HEAP_FLAG_NONE,
 		&textureDesc,
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		nullptr,
-		IID_PPV_ARGS(&None_ORMTexture));
+		IID_PPV_ARGS(&None_ORMTexture))))
+		return false;
 		
 
 	const UINT64 uploadTextureSize3 = GetRequiredIntermediateSize(None_ORMTexture.Get(), 0, 1);
@@ -645,13 +935,14 @@ bool D3D12Renderer::InitGraphicResource()
 
 	auto ormUploadResDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadTextureSize3);
 
-	device->CreateCommittedResource(
+	if (FAILED(device->CreateCommittedResource(
 		&UPLOAD_HEAP_PROPS,
 		D3D12_HEAP_FLAG_NONE,
 		&ormUploadResDesc,
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
-		IID_PPV_ARGS(&uploadTexture3));
+		IID_PPV_ARGS(&uploadTexture3))))
+		return false;
 
 
 	UpdateSubresources(renderCMDList_Master.Get(), None_ORMTexture.Get(), uploadTexture3.Get(), 0, 0, 1, &None_ORMData);
@@ -682,13 +973,14 @@ bool D3D12Renderer::InitGraphicResource()
 	
 	ComPtr<ID3D12Resource> None_EmissionTexture;
 
-	device->CreateCommittedResource(
+	if (FAILED(device->CreateCommittedResource(
 		&DEFAULT_HEAP_PROPS,
 		D3D12_HEAP_FLAG_NONE,
 		&textureDesc,
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		nullptr,
-		IID_PPV_ARGS(&None_EmissionTexture));
+		IID_PPV_ARGS(&None_EmissionTexture))))
+		return false;
 		
 
 	const UINT64 uploadTextureSize4 = GetRequiredIntermediateSize(None_EmissionTexture.Get(), 0, 1);
@@ -696,13 +988,14 @@ bool D3D12Renderer::InitGraphicResource()
 
 	auto emsUploadResDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadTextureSize4);
 
-	device->CreateCommittedResource(
+	if (FAILED(device->CreateCommittedResource(
 		&UPLOAD_HEAP_PROPS,
 		D3D12_HEAP_FLAG_NONE,
 		&emsUploadResDesc,
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		nullptr,
-		IID_PPV_ARGS(&uploadTexture4));
+		IID_PPV_ARGS(&uploadTexture4))))
+		return false;
 
 
 	UpdateSubresources(renderCMDList_Master.Get(), None_EmissionTexture.Get(), uploadTexture4.Get(), 0, 0, 1, &None_EmissionData);
@@ -739,68 +1032,83 @@ bool D3D12Renderer::InitGraphicResource()
 	#pragma endregion
 
 
-	renderCMDList_Master->Close();
+	#pragma region DefaultCSBuffer
 
-	ID3D12CommandList* cmdLists[] = {renderCMDList_Master.Get()};
-	renderCMDQueue->ExecuteCommandLists(1, cmdLists);
+	{
+		DataHub::ComputeBuffer dummyDesc;
+		dummyDesc.stride = CSBUFFER_DUMMY_STRIDE;
+		dummyDesc.count = CSBUFFER_DUMMY_COUNT;
 
-	SignalFence();
-	WaitGPUProcess();
+		DX12_Buffer dummy;
+		DX12_BufferView dummyView;
+		if (!CreateBufferResource(dummyDesc, dummy, dummyView, uploadBufferList))
+			return false;
 
+		csBufferList.emplace_back(std::move(dummy));
+		csBufferViewList.push_back(dummyView);
+	}
+
+	#pragma endregion
+
+
+	FlushUploadCommands();
 
 	uploadBufferList.clear();
 
 
 	#pragma region DefaultShader
 
-	shaderList.emplace_back();
-	shaderList.emplace_back(std::make_pair(defaultShaderDir + L"/defaultWorld_VS.hlsl", DataHub::ShaderType_VS));
-	shaderList.emplace_back(std::make_pair(defaultShaderDir + L"/defaultWorldOPQ_PS.hlsl", DataHub::ShaderType_PS));
-	shaderList.emplace_back(std::make_pair(defaultShaderDir + L"/defaultWorldTP_PS.hlsl", DataHub::ShaderType_PS));
-	shaderList.emplace_back(std::make_pair(defaultShaderDir + L"/defaultSkyBox_VS.hlsl", DataHub::ShaderType_VS));
-	shaderList.emplace_back(std::make_pair(defaultShaderDir + L"/defaultSkyBox_PS.hlsl", DataHub::ShaderType_PS));
-	shaderList.emplace_back(std::make_pair(defaultShaderDir + L"/defaultBG_VS.hlsl", DataHub::ShaderType_VS));
-	shaderList.emplace_back(std::make_pair(defaultShaderDir + L"/defaultBG_PS.hlsl", DataHub::ShaderType_PS));
-	shaderList.emplace_back(std::make_pair(defaultShaderDir + L"/defaultComposite_PS.hlsl", DataHub::ShaderType_PS));
+	shaderList.clear();
+	shaderList.resize(DEFAULT_RES_SHADER_COUNT);
+	shaderList[DEFAULT_SHADER_COMPOSITE_PS] = std::make_pair(defaultShaderDir + L"/defaultComposite_PS.hlsl", DataHub::ShaderType_PS);
+	shaderList[DEFAULT_SHADER_SKYBOX_VS] = std::make_pair(defaultShaderDir + L"/defaultSkyBox_VS.hlsl", DataHub::ShaderType_VS);
+	shaderList[DEFAULT_SHADER_SKYBOX_PS] = std::make_pair(defaultShaderDir + L"/defaultSkyBox_PS.hlsl", DataHub::ShaderType_PS);
+	shaderList[DEFAULT_SHADER_BG_VS] = std::make_pair(defaultShaderDir + L"/defaultBG_VS.hlsl", DataHub::ShaderType_VS);
+	shaderList[DEFAULT_SHADER_BG_PS] = std::make_pair(defaultShaderDir + L"/defaultBG_PS.hlsl", DataHub::ShaderType_PS);
+	shaderList[DEFAULT_SHADER_WORLD_VS] = std::make_pair(defaultShaderDir + L"/defaultWorld_VS.hlsl", DataHub::ShaderType_VS);
+	shaderList[DEFAULT_SHADER_WORLD_OPQ_PS] = std::make_pair(defaultShaderDir + L"/defaultWorldOPQ_PS.hlsl", DataHub::ShaderType_PS);
+	shaderList[DEFAULT_SHADER_WORLD_TP_PS] = std::make_pair(defaultShaderDir + L"/defaultWorldTP_PS.hlsl", DataHub::ShaderType_PS);
 
 
 	ComPtr<IDxcBlob> defaultBG_VSRaw;
 	ComPtr<IDxcBlob> defaultComposite_PSRaw;
 
-	if (!CompileShader(6U, SHADER_VARIANT_NONE, defaultBG_VSRaw))
+	if (!CompileShader(DEFAULT_SHADER_BG_VS, SHADER_VARIANT_NONE, defaultBG_VSRaw))
 		return false;
-	if (!CompileShader(8U, SHADER_VARIANT_NONE, defaultComposite_PSRaw))
+	if (!CompileShader(DEFAULT_SHADER_COMPOSITE_PS, SHADER_VARIANT_NONE, defaultComposite_PSRaw))
 		return false;
 
 
-	if (DataHub::drawPropList.size() > DEFAULT_RES_PSOBODY_COUNT - 1)
+	if (DataHub::drawPropIdLUT.size() < DEFAULT_RES_PSOBODY_COUNT)
+		DebugReport(DataHub::RenderReport_Init, L"[Init] 허브 빌트인 drawProp 0~6 이 없음 (DataHub::Init 순서 확인)");
+
 	{
 		using namespace DataHub;
 
-		DrawProp& sky = drawPropList[1];
+		psoGeneratorList.resize(DEFAULT_RES_PSOBODY_COUNT);
+
+		DrawProp& sky = psoGeneratorList[1].psoBody;
 		sky.depthUsage = DrawProp_DepthUsage_Background;	sky.cullType = DrawProp_CullType_None;	sky.blendType = DrawProp_BlendType_None;
-		sky.vertexType = VertexType_Simple;					sky.VSId = 4;	sky.PSId = 5;
+		sky.vertexType = VertexType_Simple;					sky.VSId = DEFAULT_SHADER_SKYBOX_VS;	sky.PSId = DEFAULT_SHADER_SKYBOX_PS;
 
-		DrawProp& bg = drawPropList[2];
+		DrawProp& bg = psoGeneratorList[2].psoBody;
 		bg.depthUsage = DrawProp_DepthUsage_Background;		bg.cullType = DrawProp_CullType_None;	bg.blendType = DrawProp_BlendType_None;
-		bg.vertexType = VertexType_Simple;					bg.VSId = 6;	bg.PSId = 7;
+		bg.vertexType = VertexType_Simple;					bg.VSId = DEFAULT_SHADER_BG_VS;	bg.PSId = DEFAULT_SHADER_BG_PS;
 
-		DrawProp& opq = drawPropList[3];
+		DrawProp& opq = psoGeneratorList[3].psoBody;
 		opq.depthUsage = DrawProp_DepthUsage_Opaque;		opq.cullType = DrawProp_CullType_Back;	opq.blendType = DrawProp_BlendType_None;
-		opq.vertexType = VertexType_Static;					opq.VSId = 1;	opq.PSId = 2;
+		opq.vertexType = VertexType_Static;					opq.VSId = DEFAULT_SHADER_WORLD_VS;	opq.PSId = DEFAULT_SHADER_WORLD_OPQ_PS;
 
-		DrawProp& tp = drawPropList[4];
+		DrawProp& tp = psoGeneratorList[4].psoBody;
 		tp.depthUsage = DrawProp_DepthUsage_Translucent;	tp.cullType = DrawProp_CullType_Back;	tp.blendType = DrawProp_BlendType_Alpha;
-		tp.vertexType = VertexType_Static;					tp.VSId = 1;	tp.PSId = 3;
+		tp.vertexType = VertexType_Static;					tp.VSId = DEFAULT_SHADER_WORLD_VS;	tp.PSId = DEFAULT_SHADER_WORLD_TP_PS;
 
-		DrawProp& opqSkin = drawPropList[5];
+		DrawProp& opqSkin = psoGeneratorList[5].psoBody;
 		opqSkin = opq;	opqSkin.vertexType = VertexType_Skinned;
 
-		DrawProp& tpSkin = drawPropList[6];
+		DrawProp& tpSkin = psoGeneratorList[6].psoBody;
 		tpSkin = tp;	tpSkin.vertexType = VertexType_Skinned;
 	}
-	else
-		DebugReport(DataHub::RenderReport_Init, L"[Init] 허브 빌트인 drawProp 0~6 이 없음 (DataHub::Init 순서 확인)");
 
 	#pragma endregion
 
@@ -857,6 +1165,7 @@ bool D3D12Renderer::InitGraphicResource()
 
 	DX12_CombinedTextureView CTex = { rvStartIndex };
 	combinedTextureList.emplace_back(CTex);
+	combinedTextureBodyList.emplace_back();
 
 	#pragma endregion
 
@@ -867,17 +1176,25 @@ bool D3D12Renderer::InitGraphicResource()
 
 void D3D12Renderer::PreUploadResource()
 {
+	using namespace DataHub;
 
-	UploadMesh();
-	UploadTexture();
+	vector<ComPtr<ID3D12Resource>> uploadBufferList;
+
+	BeginUploadCommands();
+
+	UploadMesh(uploadBufferList);
+	UploadTexture(uploadBufferList);
+	UploadCSBuffer(uploadBufferList);
+	LinkCSBufferMesh(uploadBufferList);
 	GetShaderInfo();
-	
+
 	BuildPSOBody();
 	BuildCombinedTexture();
 
+	FlushUploadCommands();
 
-	DataHub::flag_updateResources_Upload = false;
-	DataHub::flag_updateProps_FindOrBuild = false;
+
+	flag_updateResources &= ~(uint32_t)RTBCMD_Upload;
 }
 
 #pragma endregion
@@ -905,6 +1222,8 @@ void D3D12Renderer::InvalidateView()
 		auto& targetRefs_CTex = texRefList_CTex[id];
 		for (auto [cTexId, slot] : targetRefs_CTex)
 		{
+			combinedTextureBodyList[cTexId].texId[slot] = 0;
+
 			rvHeap->UpdateSRV(
 				combinedTextureList[cTexId].RVHeapIndex + slot,
 				textureList[0].Tex.Get(),
@@ -943,6 +1262,22 @@ void D3D12Renderer::CollectManagedResource()
 
 void D3D12Renderer::ScheduledReleaseResource()
 {
+	#ifdef _DEBUG
+	{
+		using namespace DataHub;
+
+		const bool releasing = meshReleaseCount == 0 || texReleaseCount == 0 || csBufferReleaseCount == 0
+			|| psoReleaseCount == 0 || cTexReleaseCount == 0;
+		const bool pending = !uploadMeshList.empty() || !uploadTextureList.empty() || !uploadCSBufferList.empty()
+			|| !linkCSBufferAsMeshList.empty() || !uploadDrawPropList.empty() || !uploadTexPropList.empty()
+			|| !updateMeshList.empty() || !updateTextureList.empty() || !updateCSBufferList.empty()
+			|| !updateDrawPropList.empty() || !updateTexPropList.empty();
+
+		if (releasing && pending)
+			DebugReport(RenderReport_Contract, L"[Release] 해제 실행 시점에 허브 대기 리스트가 남아 있음 (Create / Update / Link 는 부른 프레임에 RTB 를 보내야 함)");
+	}
+	#endif
+
 	if (meshReleaseCount > -1)
 	{
 		if (meshReleaseCount == 0)
@@ -954,6 +1289,12 @@ void D3D12Renderer::ScheduledReleaseResource()
 		if (texReleaseCount == 0)
 			ReleaseTexture(releaseTexIdMask);
 		texReleaseCount--;
+	}
+	if (csBufferReleaseCount > -1)
+	{
+		if (csBufferReleaseCount == 0)
+			ReleaseCSBuffer(releaseCSBufferIdMask);
+		csBufferReleaseCount--;
 	}
 	if (psoReleaseCount > -1)
 	{
@@ -969,222 +1310,74 @@ void D3D12Renderer::ScheduledReleaseResource()
 	}
 }
 
+
+void D3D12Renderer::ReleaseRetiredResource()
+{
+	for (auto& view : retiredSTexViewLists[cpuFrameIndex])
+		rvHeap->UnSetSRV(view.RVHeapIndex);
+
+	for (auto& view : retiredCTexViewLists[cpuFrameIndex])
+		rvHeap->UnSetSRV(view.RVHeapIndex, CTEX_COMBINED_SIZE);
+
+	retiredSTexViewLists[cpuFrameIndex].clear();
+	retiredCTexViewLists[cpuFrameIndex].clear();
+	retiredMeshLists[cpuFrameIndex].clear();
+	retiredTextureLists[cpuFrameIndex].clear();
+	retiredCSBufferLists[cpuFrameIndex].clear();
+	retiredPSOLists[cpuFrameIndex].clear();
+}
+
 #pragma endregion
 
 
 #pragma region UploadResource
 
-void D3D12Renderer::UploadMesh()
+void D3D12Renderer::UploadMesh(vector<ComPtr<ID3D12Resource>>& uploadBufferList)
 {
 	using namespace DataHub;
-
-	ID3D12Device* device = D3D12Core::getInstance().GetDevice();
-
-	const CD3DX12_RANGE readRange(0, 0);
-	UINT8* pDataBegin;
-
 
 	const size_t newMeshListSize = meshList.size() + uploadMeshList.size();
 	meshList.reserve(newMeshListSize);
 	meshViewList.reserve(newMeshListSize);
 	releaseMeshIdMask.resize(newMeshListSize, false);
+	csRefList_Mesh.resize(newMeshListSize, 0);
 
 
-	vector<ComPtr<ID3D12Resource>> uploadBufferList;
-	uploadBufferList.reserve(uploadMeshList.size() * 2);
-
-
-	renderCMDAllocators[0]->Reset();
-	renderCMDList_Master->Reset(renderCMDAllocators[0].Get(), nullptr);
+	if (uploadMeshList.empty())
+		return;
 
 
 	for (auto& upload : uploadMeshList)
 	{
-		const void* vertexData = nullptr;
-		UINT vertexCount = 0;
-		UINT stride = 0;
+		DX12_Mesh mesh;
+		DX12_MeshView view;
 
-		switch (upload.vertexType)
+		if (!CreateMeshResource(upload, mesh, view, uploadBufferList))
 		{
-		case VertexType_Simple:
-			vertexData = upload.verticesSimple.data();
-			vertexCount = (UINT)upload.verticesSimple.size();
-			stride = sizeof(VertexSimple);
-			break;
+			bool linked = false;
+			for (const auto& link : linkCSBufferAsMeshList)
+				linked = linked || link.linkMeshId == meshList.size();
 
-		case VertexType_Static:
-			vertexData = upload.verticesStatic.data();
-			vertexCount = (UINT)upload.verticesStatic.size();
-			stride = sizeof(VertexStatic);
-			break;
+			if (!linked)
+				DebugReport(DataHub::RenderReport_Contract, L"[Mesh] 업로드 항목 무효 (빈 데이터 / 생성 실패) -> 빈 메쉬로 자리만");
 
-		case VertexType_Skinned:
-			vertexData = upload.verticesSkinned.data();
-			vertexCount = (UINT)upload.verticesSkinned.size();
-			stride = sizeof(VertexSkinned);
-			break;
-
-		default:
-			break;
-		}
-
-		const UINT indexCount = (UINT)upload.indices.size();
-
-		if (vertexData == nullptr || vertexCount == 0 || indexCount == 0)
-		{
-			DebugReport(DataHub::RenderReport_Contract, L"[Mesh] 업로드 항목 무효 (빈 데이터) -> 빈 메쉬로 자리만");
 			meshList.emplace_back();
 			meshViewList.emplace_back();
 			meshViewList.back().subMeshes.push_back(DX12_SubMesh{ 0, 0, 0 });
 			continue;
 		}
 
-
-		DX12_Mesh mesh = {};
-		DX12_MeshView view = {};
-		mesh.vertexType = upload.vertexType;
-		mesh.vertexCount = vertexCount;
-		mesh.indexCount = indexCount;
-
-		const UINT64 sizeofVertices = (UINT64)vertexCount * stride;
-		const UINT64 sizeofIndices = (UINT64)indexCount * sizeof(VIndex);
-
-
-		ComPtr<ID3D12Resource> uploadVertexBuffer;
-		auto vtxResDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeofVertices);
-
-		device->CreateCommittedResource(
-			&DEFAULT_HEAP_PROPS,
-			D3D12_HEAP_FLAG_NONE,
-			&vtxResDesc,
-			D3D12_RESOURCE_STATE_COMMON,
-			nullptr,
-			IID_PPV_ARGS(&mesh.VB)
-		);
-
-		device->CreateCommittedResource(
-			&UPLOAD_HEAP_PROPS,
-			D3D12_HEAP_FLAG_NONE,
-			&vtxResDesc,
-			D3D12_RESOURCE_STATE_GENERIC_READ,
-			nullptr,
-			IID_PPV_ARGS(&uploadVertexBuffer)
-		);
-
-		uploadVertexBuffer->Map(0, &readRange, (void**)(&pDataBegin));
-		memcpy(pDataBegin, vertexData, sizeofVertices);
-		uploadVertexBuffer->Unmap(0, nullptr);
-
-		view.VBV.BufferLocation = mesh.VB->GetGPUVirtualAddress();
-		view.VBV.StrideInBytes = stride;
-		view.VBV.SizeInBytes = (UINT)sizeofVertices;
-
-		renderCMDList_Master->CopyBufferRegion(mesh.VB.Get(), 0, uploadVertexBuffer.Get(), 0, sizeofVertices);
-
-		auto vtxResBar = CD3DX12_RESOURCE_BARRIER::Transition(
-			mesh.VB.Get(),
-			D3D12_RESOURCE_STATE_COPY_DEST,
-			D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER
-		);
-		renderCMDList_Master->ResourceBarrier(1, &vtxResBar);
-
-
-		ComPtr<ID3D12Resource> uploadIndexBuffer;
-		auto idxResDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeofIndices);
-
-		device->CreateCommittedResource(
-			&DEFAULT_HEAP_PROPS,
-			D3D12_HEAP_FLAG_NONE,
-			&idxResDesc,
-			D3D12_RESOURCE_STATE_COMMON,
-			nullptr,
-			IID_PPV_ARGS(&mesh.IB)
-		);
-
-		device->CreateCommittedResource(
-			&UPLOAD_HEAP_PROPS,
-			D3D12_HEAP_FLAG_NONE,
-			&idxResDesc,
-			D3D12_RESOURCE_STATE_GENERIC_READ,
-			nullptr,
-			IID_PPV_ARGS(&uploadIndexBuffer)
-		);
-
-		uploadIndexBuffer->Map(0, &readRange, (void**)(&pDataBegin));
-		memcpy(pDataBegin, upload.indices.data(), sizeofIndices);
-		uploadIndexBuffer->Unmap(0, nullptr);
-
-		view.IBV.BufferLocation = mesh.IB->GetGPUVirtualAddress();
-		view.IBV.Format = DXGI_FORMAT_R16_UINT;
-		view.IBV.SizeInBytes = (UINT)sizeofIndices;
-
-		renderCMDList_Master->CopyBufferRegion(mesh.IB.Get(), 0, uploadIndexBuffer.Get(), 0, sizeofIndices);
-
-		auto idxResBar = CD3DX12_RESOURCE_BARRIER::Transition(
-			mesh.IB.Get(),
-			D3D12_RESOURCE_STATE_COPY_DEST,
-			D3D12_RESOURCE_STATE_INDEX_BUFFER
-		);
-		renderCMDList_Master->ResourceBarrier(1, &idxResBar);
-
-
-		if (upload.subMeshes.empty())
-		{
-			view.subMeshes.push_back(DX12_SubMesh{ 0, indexCount, 0 });
-		}
-		else
-		{
-			for (size_t s = 0; s < upload.subMeshes.size(); s++)
-			{
-				const SubMesh& src = upload.subMeshes[s];
-				DX12_SubMesh sub = { src.indexStart, src.indexCount, (INT)src.baseVertex };
-
-				if (sub.indexStart >= indexCount)
-				{
-					DebugReport(DataHub::RenderReport_Contract, L"[Mesh] 서브메쉬 시작이 인덱스 범위 밖 (빈 서브메쉬로)");
-					sub.indexStart = 0;
-					sub.indexCount = 0;
-				}
-				else if (sub.indexStart + sub.indexCount > indexCount)
-				{
-					DebugReport(DataHub::RenderReport_Contract, L"[Mesh] 서브메쉬 끝이 인덱스 범위 밖 (잘라냄)");
-					sub.indexCount = indexCount - sub.indexStart;
-				}
-
-				view.subMeshes.push_back(sub);
-			}
-		}
-
-
 		meshList.emplace_back(std::move(mesh));
 		meshViewList.emplace_back(std::move(view));
-
-		uploadBufferList.push_back(std::move(uploadVertexBuffer));
-		uploadBufferList.push_back(std::move(uploadIndexBuffer));
 	}
 
-
-	renderCMDList_Master->Close();
-
-	ID3D12CommandList* cmdLists[] = {renderCMDList_Master.Get()};
-	renderCMDQueue->ExecuteCommandLists(1, cmdLists);
-
-	SignalFence();
-	WaitGPUProcess();
-
-
-	uploadBufferList.clear();
 
 	uploadMeshList.clear();
 }
 
-void D3D12Renderer::UploadTexture()
+void D3D12Renderer::UploadTexture(vector<ComPtr<ID3D12Resource>>& uploadBufferList)
 {
 	using namespace DataHub;
-	
-	ID3D12Device* device = D3D12Core::getInstance().GetDevice();
-
-	const CD3DX12_RANGE readRange(0, 0);
 
 	const size_t newTextureListSize = textureList.size() + uploadTextureList.size();
 	textureList.reserve(newTextureListSize);
@@ -1195,236 +1388,114 @@ void D3D12Renderer::UploadTexture()
 
 	releaseTexIdMask.resize(newTextureListSize, false);
 
-	vector<TexID> rejectedTexIdList;
+	if (uploadTextureList.empty())
+		return;
 
 
-	vector<ComPtr<ID3D12Resource>> uploadBufferList;
-	uploadBufferList.reserve(uploadTextureList.size());
-
-
-	renderCMDAllocators[0]->Reset();
-	renderCMDList_Master->Reset(renderCMDAllocators[0].Get(), nullptr);
-
-	
-	for (size_t id = 0; id < uploadTextureList.size(); id++)
+	for (auto& upload : uploadTextureList)
 	{
-		auto& textureData = uploadTextureList[id];
+		DX12_Texture texture;
 
-		auto& data = textureData.data;
-
-
-		D3D12_CLEAR_VALUE optClear = {};
-		D3D12_CLEAR_VALUE* pOptClear = nullptr;
-		D3D12_RESOURCE_STATES resState = {};
-
-
-		D3D12_RESOURCE_DESC textureDesc = {};
-		
-		switch (textureData.usage)
+		if (!CreateTextureResource(upload, texture, uploadBufferList))
 		{
-		default:
-		case TextureUsage_ReadOnly:
-			textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
-			textureDesc.Format = ToDXGI(data.format);
-
-			resState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-			break;
-		
-		case TextureUsage_RT:
-			textureDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
-			textureDesc.Format = ToDXGI(data.format);
-
-			optClear.Format = textureDesc.Format;
-			optClear.Color[0] = optClear.Color[1] = optClear.Color[2] = optClear.Color[3] = 0.0f;
-			pOptClear = &optClear;
-			
-			resState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-			break;
-		
-		case TextureUsage_DS:
-			textureDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
-			textureDesc.Format = GetDSFormat(data.format);
-
-			optClear.Format = textureDesc.Format;
-			optClear.DepthStencil = D3D12_DEPTH_STENCIL_VALUE{1.0f, 0};
-			pOptClear = &optClear;
-			
-			resState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_DEPTH_READ;
-			break;
-		}
-
-		if (textureDesc.Format == DXGI_FORMAT_UNKNOWN)
-		{
-			rejectedTexIdList.push_back(id);
-			DebugReport(DataHub::RenderReport_Contract, L"[Tex] 포맷 UNKNOWN 텍스처 업로드 거부");
+			DebugReport(DataHub::RenderReport_Contract, L"[Tex] 텍스처 업로드 거부 (에러 텍스처로 자리만)");
+			textureList.emplace_back(textureList[0]);
 			continue;
 		}
 
-		textureDesc.SampleDesc.Count = 1;
-		textureDesc.SampleDesc.Quality = 0;
-
-		textureDesc.MipLevels = data.mipLevels;
-		textureDesc.Width = data.width;
-		textureDesc.Height = data.height;
-
-
-		switch (data.textureType)
-		{
-		default:
-		case TextureType_Default:
-			textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-			textureDesc.DepthOrArraySize = data.arraySize;
-			break;
-
-		case TextureType_Diffuse:
-			textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-			textureDesc.Format = MakeSRGB(textureDesc.Format);
-			textureDesc.DepthOrArraySize = data.arraySize;
-			break;
-
-		case TextureType_CubeMap:
-			textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-			textureDesc.Format = MakeSRGB(textureDesc.Format);
-			textureDesc.DepthOrArraySize = data.arraySize;
-			break;
-
-		case TextureType_LUT:
-			textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE1D;
-			textureDesc.DepthOrArraySize = data.arraySize;
-			break;
-
-		case TextureType_VolumeMap:
-			textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE3D;
-			textureDesc.DepthOrArraySize = data.depth;
-			break;
-		}
-		
-
-		ComPtr<ID3D12Resource> texture;
-
-		const UINT numSubresources = textureData.subresources.size();
-
-		if (numSubresources == 0)
-		{
-			device->CreateCommittedResource(
-				&DEFAULT_HEAP_PROPS,
-				D3D12_HEAP_FLAG_NONE,
-				&textureDesc,
-				resState,
-				pOptClear,
-				IID_PPV_ARGS(&texture));
-		}
-		else
-		{
-			device->CreateCommittedResource(
-				&DEFAULT_HEAP_PROPS,
-				D3D12_HEAP_FLAG_NONE,
-				&textureDesc,
-				D3D12_RESOURCE_STATE_COPY_DEST,
-				pOptClear,
-				IID_PPV_ARGS(&texture));
-
-
-			const UINT64 uploadTextureSize = GetRequiredIntermediateSize(texture.Get(), 0, numSubresources);
-			ComPtr<ID3D12Resource> uploadTexture;
-
-			auto resDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadTextureSize);
-
-			device->CreateCommittedResource(
-				&UPLOAD_HEAP_PROPS,
-				D3D12_HEAP_FLAG_NONE,
-				&resDesc,
-				D3D12_RESOURCE_STATE_GENERIC_READ,
-				nullptr,
-				IID_PPV_ARGS(&uploadTexture));
-
-
-			vector<D3D12_SUBRESOURCE_DATA> subResData(numSubresources, {});
-
-			const std::byte* base = textureData.rawData.data();
-			for (size_t i = 0; i < numSubresources; ++i)
-			{
-				subResData[i].pData = base + textureData.subresources[i].offset;
-				subResData[i].RowPitch = static_cast<LONG_PTR>(textureData.subresources[i].rowPitch);
-				subResData[i].SlicePitch = static_cast<LONG_PTR>(textureData.subresources[i].slicePitch);
-			}
-
-
-			UpdateSubresources(renderCMDList_Master.Get(), texture.Get(), uploadTexture.Get(), 
-								0, 
-								0, numSubresources, 
-								subResData.data());
-
-
-			auto resBar = CD3DX12_RESOURCE_BARRIER::Transition(
-				texture.Get(), 
-				D3D12_RESOURCE_STATE_COPY_DEST, 
-				resState
-			);
-
-			renderCMDList_Master->ResourceBarrier(1, &resBar);
-
-
-			uploadBufferList.push_back(move(uploadTexture));
-		}
-
-		
-		textureList.emplace_back(
-			DX12_Texture{
-				move(texture),
-				textureDesc.DepthOrArraySize,
-				textureDesc.MipLevels,
-				textureDesc.Format,
-				textureDesc.Dimension,
-				data.textureType == TextureType_CubeMap ? true : false,
-
-				static_cast<DX12_TextureUsage>(textureData.usage)
-			}
-		);
-
-	}
-
-
-	renderCMDList_Master->Close();
-
-	ID3D12CommandList* cmdLists[] = {renderCMDList_Master.Get()};
-	renderCMDQueue->ExecuteCommandLists(1, cmdLists);
-
-	SignalFence();
-	WaitGPUProcess();
+		textureList.emplace_back(std::move(texture));
+		BuildWritableTexture(textureList.back(), upload, texRefList_WTex[textureList.size() - 1]);
+}
 
 
 	texRefList_CTex.resize(textureList.size(), {});
 
 
-	if (rejectedTexIdList.size() )
-	{
-		renderFrames[cpuFrameIndex].frameInvalidated = true;
-		
-		for (auto id : rejectedTexIdList)
-		{
-			auto it = std::find_if(textureIdLUT.begin(), textureIdLUT.end(),
-					[id](const auto& pair) {
-						return pair.second == id;
-					});
-						
-			if (it != textureIdLUT.end()) 
-			{
-				it->second = 0;
-			}
-			else
-			{
-				DebugReport(DataHub::RenderReport_Contract, L"[Tex] 거부된 텍스처의 이름이 LUT 에 없음");
-				continue;
-			}
-		}
-	}
-
-	uploadBufferList.clear();
-
 	uploadTextureList.clear();
 
 }
+
+void D3D12Renderer::UploadCSBuffer(vector<ComPtr<ID3D12Resource>>& uploadBufferList)
+{
+	using namespace DataHub;
+
+	if (uploadCSBufferList.empty())
+		return;
+
+	const size_t newListSize = csBufferList.size() + uploadCSBufferList.size();
+	csBufferList.reserve(newListSize);
+	csBufferViewList.reserve(newListSize);
+	releaseCSBufferIdMask.resize(newListSize, false);
+
+
+	for (auto& upload : uploadCSBufferList)
+	{
+		DX12_Buffer buffer;
+		DX12_BufferView view;
+
+		if (!CreateBufferResource(upload, buffer, view, uploadBufferList))
+		{
+			DebugReport(RenderReport_Contract, L"[CSBuffer] 업로드 항목 무효 (stride / count / data 크기) -> 더미로 자리만");
+			csBufferList.push_back(csBufferList[0]);
+			csBufferViewList.push_back(csBufferViewList[0]);
+			continue;
+		}
+
+		csBufferList.emplace_back(std::move(buffer));
+		csBufferViewList.push_back(view);
+	}
+
+
+	uploadCSBufferList.clear();
+}
+
+void D3D12Renderer::LinkCSBufferMesh(vector<ComPtr<ID3D12Resource>>& uploadBufferList)
+{
+	using namespace DataHub;
+
+	if (linkCSBufferAsMeshList.empty())
+		return;
+
+	const UINT retireSlot = (cpuFrameIndex + FRAME_COUNT - 1) % FRAME_COUNT;
+
+
+	for (auto& link : linkCSBufferAsMeshList)
+	{
+		const MeshID meshId = link.linkMeshId;
+		const CSBufferID csBufferId = link.csBufferId;
+
+		if (meshId >= meshList.size() || csBufferId == 0 || csBufferId >= csBufferList.size())
+		{
+			DebugReport(RenderReport_Contract, L"[Link] meshId / csBufferId 범위 밖 (업로드 전 링크?), 빈 메쉬 유지");
+			continue;
+		}
+
+		DX12_Mesh mesh;
+		DX12_MeshView view;
+
+		if (!SetLinkedMeshVertex(csBufferList[csBufferId], csBufferViewList[csBufferId], mesh, view))
+		{
+			DebugReport(RenderReport_Contract, L"[Link] 컴퓨트 버퍼 stride 가 정점 타입 (Simple / Static / Skinned) 과 안 맞음, 빈 메쉬 유지");
+			continue;
+		}
+
+		if (!CreateIndexResource(link.indices, link.subMeshes, csBufferList[csBufferId].count, mesh, view, uploadBufferList))
+		{
+			DebugReport(RenderReport_Contract, L"[Link] 인덱스 비어 있음 / 생성 실패, 빈 메쉬 유지");
+			continue;
+		}
+
+		retiredMeshLists[retireSlot].push_back(std::move(meshList[meshId]));
+		meshList[meshId] = std::move(mesh);
+		meshViewList[meshId] = std::move(view);
+		meshSubMeshCountList[meshId] = (uint16_t)meshViewList[meshId].subMeshes.size();
+		csRefList_Mesh[meshId] = csBufferId;
+	}
+
+
+	linkCSBufferAsMeshList.clear();
+}
+
 
 void D3D12Renderer::GetShaderInfo()
 {
@@ -1444,59 +1515,41 @@ void D3D12Renderer::BuildPSOBody()
 {
 	using namespace DataHub;
 
-	const size_t drawPropListSize = drawPropList.size();
+	const size_t newListSize = psoGeneratorList.size() + uploadDrawPropList.size();
 
-	psoGeneratorList.reserve(drawPropListSize);
+	psoGeneratorList.reserve(newListSize);
 
-	releasePSOIdMask.resize(drawPropListSize, false);
+	releasePSOIdMask.resize(newListSize, false);
 
-
-	vector<PSOID> rejectedPSOIdList;
 
 	const ShaderID shaderCount = (ShaderID)shaderList.size();
+	bool rejected = false;
 
-	for (size_t i = psoGeneratorList.size(); i < drawPropListSize; i++)
+	for (const DrawProp& prop : uploadDrawPropList)
 	{
-		const DrawProp& prop = drawPropList[i];
-
 		DX12_PSOGenerator generator = {};
 		generator.psoBody = prop;
 
-		psoGeneratorList.emplace_back(std::move(generator));
-
-		if (i != 0 && (prop.VSId == 0 || prop.PSId == 0 || prop.VSId >= shaderCount || prop.PSId >= shaderCount))
+		if (prop.VSId == 0 || prop.PSId == 0 || prop.VSId >= shaderCount || prop.PSId >= shaderCount)
 		{
-			rejectedPSOIdList.emplace_back((PSOID)i);
-			continue;
+			generator.psoBody.VSId = 0;
+			generator.psoBody.PSId = 0;
+			rejected = true;
 		}
+
+		psoGeneratorList.emplace_back(std::move(generator));
 	}
 
-
-	if (rejectedPSOIdList.size() )
+	if (rejected)
 	{
-		DebugReport(DataHub::RenderReport_Contract, L"[PSO] 셰이더 id 잘못된 drawProp 있음 (LUT 0 으로 돌림)");
+		DebugReport(DataHub::RenderReport_Contract, L"[PSO] 셰이더 id 잘못된 drawProp 있음 (빈 drawProp 으로 자리만)");
 
 		renderFrames[cpuFrameIndex].frameInvalidated = true;
-
-		for (auto id : rejectedPSOIdList)
-		{
-			auto it = std::find_if(drawPropIdLUT.begin(), drawPropIdLUT.end(),
-					[id](const auto& pair) {
-						return pair.second == id;
-					});
-
-			if (it != drawPropIdLUT.end())
-			{
-				it->second = 0;
-			}
-			else
-			{
-				DebugReport(DataHub::RenderReport_Contract, L"[PSO] 거부된 drawProp 의 이름이 LUT 에 없음");
-				continue;
-			}
-		}
 	}
+
+	uploadDrawPropList.clear();
 }
+
 
 void D3D12Renderer::BuildPSOVariant(PSOID psoId, OutputSignatureID sigId)
 {
@@ -1759,6 +1812,15 @@ void D3D12Renderer::BuildPSOVariant(PSOID psoId, OutputSignatureID sigId)
 			psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
 			psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
 			break;
+
+		case DrawProp_DepthUsage_Equal:
+			psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_EQUAL;
+			psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+			break;
+
+		case DrawProp_DepthUsage_Always:
+			psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+			break;
 		}
 
 		if (sig.dsOpt == Action_Output_DepthOption_ForceDepthRead)
@@ -1783,6 +1845,37 @@ void D3D12Renderer::BuildPSOVariant(PSOID psoId, OutputSignatureID sigId)
 
 	case DrawProp_CullType_None:
 		psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+		break;
+	}
+
+	switch (body.fillType)
+	{
+	default:
+	case DrawProp_FillType_Solid:
+		psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+		break;
+
+	case DrawProp_FillType_Wireframe:
+		psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
+		break;
+	}
+
+	switch (body.depthBias)
+	{
+	default:
+	case DrawProp_DepthBias_None:
+		break;
+
+	case DrawProp_DepthBias_ShadowCaster:
+		psoDesc.RasterizerState.DepthBias = DEPTH_BIAS_SHADOWCASTER;
+		psoDesc.RasterizerState.SlopeScaledDepthBias = DEPTH_BIAS_SLOPE_SHADOWCASTER;
+		psoDesc.RasterizerState.DepthBiasClamp = DEPTH_BIAS_CLAMP_SHADOWCASTER;
+		break;
+
+	case DrawProp_DepthBias_Decal:
+		psoDesc.RasterizerState.DepthBias = DEPTH_BIAS_DECAL;
+		psoDesc.RasterizerState.SlopeScaledDepthBias = DEPTH_BIAS_SLOPE_DECAL;
+		psoDesc.RasterizerState.DepthBiasClamp = DEPTH_BIAS_CLAMP_DECAL;
 		break;
 	}
 
@@ -1821,128 +1914,286 @@ void D3D12Renderer::BuildCombinedTexture()
 {
 	using namespace DataHub;
 
-	const size_t texPropListSize = texPropList.size();
+	const size_t newListSize = combinedTextureList.size() + uploadTexPropList.size();
 
-	combinedTextureList.reserve(texPropListSize);
+	combinedTextureList.reserve(newListSize);
+	combinedTextureBodyList.reserve(newListSize);
 
-	releaseCTexIdMask.resize(texPropListSize, false);
+	releaseCTexIdMask.resize(newListSize, false);
 
 
-	D3D12_SHADER_RESOURCE_VIEW_DESC* srvDescList[CTEX_COMBINED_SIZE] = {};
-	D3D12_SHADER_RESOURCE_VIEW_DESC descNakamiList[CTEX_COMBINED_SIZE] = {};
+	const DX12_CombinedTextureView defaultView = combinedTextureList[0];
+	bool heapFull = false;
 
-	for (size_t i = 0; i < CTEX_COMBINED_SIZE; i++)
+	for (const TextureProp& prop : uploadTexPropList)
 	{
-		srvDescList[i] = &descNakamiList[i];
-	}
-	
+		const CTexID id = (CTexID)combinedTextureList.size();
 
-	for (size_t t = combinedTextureList.size(); t < texPropList.size(); t++)
-	{
-		auto& prop = texPropList[t];
-		
+		UINT rvStartIndex;
+		if (!BuildCombinedView(prop, rvStartIndex))
+		{
+			combinedTextureList.emplace_back(defaultView);
+			combinedTextureBodyList.emplace_back();
+			heapFull = true;
+			continue;
+		}
 
-		ID3D12Resource* subresList[CTEX_COMBINED_SIZE] = {};
+		combinedTextureList.emplace_back(DX12_CombinedTextureView{ rvStartIndex });
+		combinedTextureBodyList.emplace_back(prop);
 
 		for (size_t i = 0; i < CTEX_COMBINED_SIZE; i++)
 		{
-			if (releaseTexIdMask[prop.texId[i]])
+			if (prop.texId[i] >= DEFAULT_RES_TEX_COUNT && prop.texId[i] < texRefList_CTex.size())
+				texRefList_CTex[prop.texId[i]].emplace_back(id, (uint8_t)i);
+		}
+	}
+
+	if (heapFull)
+		DebugReport(DataHub::RenderReport_Limit, L"[CTex] 디스크립터 힙 꽉참 (기본 texProp 뷰로 자리만)");
+
+	uploadTexPropList.clear();
+}
+
+#pragma endregion
+
+
+#pragma region UpdateResources
+
+void D3D12Renderer::UpdateMesh(vector<ComPtr<ID3D12Resource>>& uploadBufferList)
+{
+	using namespace DataHub;
+
+	if (updateMeshList.empty())
+		return;
+
+	const UINT retireSlot = (cpuFrameIndex + FRAME_COUNT - 1) % FRAME_COUNT;
+
+
+	for (auto& update : updateMeshList)
+	{
+		const MeshID id = update.first;
+
+		if (id >= meshList.size())
+		{
+			DebugReport(RenderReport_Contract, L"[Mesh] 업데이트 meshId 범위 밖 (업로드 전 업데이트?), 무시");
+			continue;
+		}
+
+		if (csRefList_Mesh[id] != 0)
+		{
+			DebugReport(RenderReport_Contract, L"[Mesh] 링크 메쉬 (컴퓨트 버퍼 별칭) 는 업데이트 불가, 무시");
+			continue;
+		}
+
+		DX12_Mesh mesh;
+		DX12_MeshView view;
+
+		if (!CreateMeshResource(update.second, mesh, view, uploadBufferList))
+		{
+			DebugReport(RenderReport_Contract, L"[Mesh] 업데이트 항목 무효 (빈 데이터 / 생성 실패), 기존 유지");
+			continue;
+		}
+
+		retiredMeshLists[retireSlot].push_back(std::move(meshList[id]));
+		meshList[id] = std::move(mesh);
+		meshViewList[id] = std::move(view);
+		meshSubMeshCountList[id] = (uint16_t)meshViewList[id].subMeshes.size();
+	}
+
+
+	updateMeshList.clear();
+}
+
+void D3D12Renderer::UpdateTexture(vector<ComPtr<ID3D12Resource>>& uploadBufferList)
+{
+	using namespace DataHub;
+
+	if (updateTextureList.empty())
+		return;
+
+	const UINT retireSlot = (cpuFrameIndex + FRAME_COUNT - 1) % FRAME_COUNT;
+
+
+	for (auto& update : updateTextureList)
+	{
+		const TexID id = update.first;
+
+		if (id >= textureList.size())
+		{
+			DebugReport(RenderReport_Contract, L"[Tex] 업데이트 texId 범위 밖 (업로드 전 업데이트?), 무시");
+			continue;
+		}
+
+		DX12_Texture texture;
+
+		if (!CreateTextureResource(update.second, texture, uploadBufferList))
+		{
+			DebugReport(RenderReport_Contract, L"[Tex] 텍스처 업데이트 거부, 기존 유지");
+			continue;
+		}
+
+		retiredTextureLists[retireSlot].push_back(std::move(textureList[id]));
+		textureList[id] = std::move(texture);
+		BuildWritableTexture(textureList[id], update.second, texRefList_WTex[id]);
+
+		if (texRefMask_STex[id])
+		{
+			retiredSTexViewLists[retireSlot].push_back(singleTextureList[id]);
+			singleTextureList[id] = {};
+			texRefMask_STex[id] = false;
+		}
+
+		for (auto& ref : texRefList_CTex[id])
+		{
+			const CTexID cTexId = ref.first;
+			UINT rvStartIndex;
+
+			if (!BuildCombinedView(combinedTextureBodyList[cTexId], rvStartIndex))
 			{
-				subresList[i] = textureList[0].Tex.Get();
-				DebugReport(DataHub::RenderReport_Contract, L"[CTex] 삭제된 텍스처를 texProp 이 참조 (기본 텍스처로 대체)");
+				DebugReport(RenderReport_Limit, L"[CTex] 디스크립터 힙 꽉참 (업데이트된 텍스처의 조합 뷰 유지)");
 				continue;
 			}
 
-			auto& texInfo = textureList[prop.texId[i]];
+			retiredCTexViewLists[retireSlot].push_back(combinedTextureList[cTexId]);
+			combinedTextureList[cTexId] = { rvStartIndex };
+		}
+	}
 
 
-			subresList[i] = texInfo.Tex.Get();
+	updateTextureList.clear();
+}
+
+void D3D12Renderer::UpdateCSBuffer(vector<ComPtr<ID3D12Resource>>& uploadBufferList)
+{
+	using namespace DataHub;
+
+	if (updateCSBufferList.empty())
+		return;
+
+	const UINT retireSlot = (cpuFrameIndex + FRAME_COUNT - 1) % FRAME_COUNT;
 
 
-			srvDescList[i]->Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-			srvDescList[i]->Format = texInfo.Format;
-			if (prop.texMipLevels[i] == 0)
-				srvDescList[i]->Texture2D.MipLevels = texInfo.MipLevels;
-			else
-				srvDescList[i]->Texture2D.MipLevels = prop.texMipLevels[i];
+	for (auto& update : updateCSBufferList)
+	{
+		const CSBufferID id = update.first;
 
+		if (id >= csBufferList.size())
+		{
+			DebugReport(RenderReport_Contract, L"[CSBuffer] 업데이트 csBufferId 범위 밖 (업로드 전 업데이트?), 무시");
+			continue;
+		}
 
-			if (texInfo.ArraySize > 1)
+		DX12_Buffer buffer;
+		DX12_BufferView view;
+
+		if (!CreateBufferResource(update.second, buffer, view, uploadBufferList))
+		{
+			DebugReport(RenderReport_Contract, L"[CSBuffer] 업데이트 항목 무효 (stride / count / data 크기), 기존 유지");
+			continue;
+		}
+
+		retiredCSBufferLists[retireSlot].push_back(std::move(csBufferList[id]));
+		csBufferList[id] = std::move(buffer);
+		csBufferViewList[id] = view;
+
+		for (size_t m = 0; m < csRefList_Mesh.size(); m++)
+		{
+			if (csRefList_Mesh[m] != id)
+				continue;
+
+			if (!SetLinkedMeshVertex(csBufferList[id], view, meshList[m], meshViewList[m]))
 			{
-				if (texInfo.IsCube)
-				{
-					if (texInfo.ArraySize > 6)
-						srvDescList[i]->ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBEARRAY;
-					else
-						srvDescList[i]->ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
-				}
-				else
-				{
-					switch (texInfo.Dimension)
-					{
-					default:
-					case D3D12_RESOURCE_DIMENSION_TEXTURE2D:
-						srvDescList[i]->ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;		break;
-					
-					case D3D12_RESOURCE_DIMENSION_TEXTURE1D:
-						srvDescList[i]->ViewDimension = D3D12_SRV_DIMENSION_TEXTURE1DARRAY;		break;
-					
-					case D3D12_RESOURCE_DIMENSION_TEXTURE3D:
-						srvDescList[i]->ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;			break;
-					}
-				}
-			}
-			else
-			{
-				switch (texInfo.Dimension)
-				{
-				default:
-				case D3D12_RESOURCE_DIMENSION_TEXTURE2D:
-					srvDescList[i]->ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;		break;
-				
-				case D3D12_RESOURCE_DIMENSION_TEXTURE1D:
-					srvDescList[i]->ViewDimension = D3D12_SRV_DIMENSION_TEXTURE1D;		break;
-				
-				case D3D12_RESOURCE_DIMENSION_TEXTURE3D:
-					srvDescList[i]->ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;		break;
-				}
-			}
-
-			switch (srvDescList[i]->ViewDimension)
-			{
-			case D3D12_SRV_DIMENSION_TEXTURE2DARRAY:
-				srvDescList[i]->Texture2DArray.ArraySize = texInfo.ArraySize;		break;
-
-			case D3D12_SRV_DIMENSION_TEXTURE1DARRAY:
-				srvDescList[i]->Texture1DArray.ArraySize = texInfo.ArraySize;		break;
-
-			case D3D12_SRV_DIMENSION_TEXTURECUBEARRAY:
-				srvDescList[i]->TextureCubeArray.NumCubes = texInfo.ArraySize / 6;	break;
+				DebugReport(RenderReport_Contract, L"[Link] 업데이트된 컴퓨트 버퍼 stride 가 정점 타입과 안 맞음 (링크 메쉬 -> 빈 메쉬)");
+				UnlinkMesh((MeshID)m, retireSlot);
 			}
 		}
-		
+	}
+
+
+	updateCSBufferList.clear();
+}
+
+
+void D3D12Renderer::UpdatePSOBody()
+{
+	using namespace DataHub;
+
+	if (updateDrawPropList.empty())
+		return;
+
+	const UINT retireSlot = (cpuFrameIndex + FRAME_COUNT - 1) % FRAME_COUNT;
+
+
+	const ShaderID shaderCount = (ShaderID)shaderList.size();
+
+	for (auto& update : updateDrawPropList)
+	{
+		const DrawPropID id = update.first;
+		const DrawProp& prop = update.second;
+
+		if (id >= psoGeneratorList.size())
+		{
+			DebugReport(RenderReport_Contract, L"[PSO] 업데이트 drawPropId 범위 밖 (빌드 전 업데이트?), 무시");
+			continue;
+		}
+
+		if (prop.VSId == 0 || prop.PSId == 0 || prop.VSId >= shaderCount || prop.PSId >= shaderCount)
+		{
+			DebugReport(RenderReport_Contract, L"[PSO] 업데이트 drawProp 셰이더 id 잘못됨, 기존 유지");
+			continue;
+		}
+
+		retiredPSOLists[retireSlot].push_back(std::move(psoGeneratorList[id]));
+		psoGeneratorList[id] = {};
+		psoGeneratorList[id].psoBody = prop;
+	}
+
+	updateDrawPropList.clear();
+}
+
+void D3D12Renderer::UpdateCombinedTexture()
+{
+	using namespace DataHub;
+
+	if (updateTexPropList.empty())
+		return;
+
+	const UINT retireSlot = (cpuFrameIndex + FRAME_COUNT - 1) % FRAME_COUNT;
+
+
+	for (auto& update : updateTexPropList)
+	{
+		const TexPropID id = update.first;
+		const TextureProp& prop = update.second;
+
+		if (id >= combinedTextureList.size())
+		{
+			DebugReport(RenderReport_Contract, L"[CTex] 업데이트 texPropId 범위 밖 (빌드 전 업데이트?), 무시");
+			continue;
+		}
 
 		UINT rvStartIndex;
-		if (!rvHeap->SetCombinedSRV(subresList, srvDescList, CTEX_COMBINED_SIZE, rvStartIndex))
+		if (!BuildCombinedView(prop, rvStartIndex))
 		{
-			DebugReport(DataHub::RenderReport_Limit, L"[CTex] 디스크립터 힙 꽉참 (이후 CTex 생성 중단)");
-			break;
+			DebugReport(RenderReport_Limit, L"[CTex] 디스크립터 힙 꽉참 (texProp 업데이트 무시)");
+			continue;
 		}
 
+		if (combinedTextureList[id].RVHeapIndex != combinedTextureList[0].RVHeapIndex)
+			retiredCTexViewLists[retireSlot].push_back(combinedTextureList[id]);
+		combinedTextureList[id] = { rvStartIndex };
 
-		const CTexID id = (CTexID)combinedTextureList.size();
-
-		DX12_CombinedTextureView CTex = { rvStartIndex };
-		combinedTextureList.emplace_back(CTex);
+		RemoveCTexRef(texRefList_CTex, (CTexID)id);
+		combinedTextureBodyList[id] = prop;
 
 		for (size_t i = 0; i < CTEX_COMBINED_SIZE; i++)
 		{
-			if (prop.texId[i] >= DEFAULT_RES_TEX_COUNT)
-				texRefList_CTex[prop.texId[i]].emplace_back(id, (uint8_t)i);
-
-			descNakamiList[i] = {};
+			if (prop.texId[i] >= DEFAULT_RES_TEX_COUNT && prop.texId[i] < texRefList_CTex.size())
+				texRefList_CTex[prop.texId[i]].emplace_back((CTexID)id, (uint8_t)i);
 		}
 	}
+
+	updateTexPropList.clear();
 }
 
 #pragma endregion
@@ -1955,22 +2206,17 @@ void D3D12Renderer::ReleaseMesh(vector<bool>& releaseResIdMask)
 	using namespace DataHub;
 	
 
-	uint16_t lastId = releaseResIdMask.size();
+	releaseResIdMask.resize(meshList.size(), false);
+
+	uint16_t lastId = (uint16_t)meshList.size();
 
 	for (uint16_t id = 0; id < releaseResIdMask.size(); id++)
 	{
 		if (!releaseResIdMask[id])
 			continue;
 
-		
-		DX12_Mesh& targetResource = meshList[id];
 
-		targetResource.VB.Reset();
-		targetResource.IB.Reset();
-		meshViewList[id].subMeshes.clear();
-
-
-		PSOID idUsable = meshList.size() - 1;
+		MeshID idUsable = meshList.size() - 1;
 
 		while (idUsable > id && releaseResIdMask[idUsable])
 			idUsable--;
@@ -1984,9 +2230,10 @@ void D3D12Renderer::ReleaseMesh(vector<bool>& releaseResIdMask)
 			break;
 		}
 
-		std::swap(targetResource, meshList[idUsable]);
+		std::swap(meshList[id], meshList[idUsable]);
 		std::swap(meshViewList[id], meshViewList[idUsable]);
 		std::swap(meshSubMeshCountList[id], meshSubMeshCountList[idUsable]);
+		std::swap(csRefList_Mesh[id], csRefList_Mesh[idUsable]);
 
 		SwapAndRemoveIdInLUT(meshIdLUT, id, idUsable);
 
@@ -1998,6 +2245,7 @@ void D3D12Renderer::ReleaseMesh(vector<bool>& releaseResIdMask)
 	meshList.resize(lastId);
 	meshViewList.resize(lastId);
 	meshSubMeshCountList.resize(lastId);
+	csRefList_Mesh.resize(lastId);
 
 	releaseResIdMask = {};
 	releaseResIdMask.assign(meshList.size(), false);
@@ -2008,7 +2256,9 @@ void D3D12Renderer::ReleaseTexture(vector<bool>& releaseResIdMask)
 	using namespace DataHub;
 
 
-	uint16_t lastId = releaseResIdMask.size();
+	releaseResIdMask.resize(textureList.size(), false);
+
+	uint16_t lastId = (uint16_t)textureList.size();
 
 	for (uint16_t id = 0; id < releaseResIdMask.size(); id++)
 	{
@@ -2016,15 +2266,7 @@ void D3D12Renderer::ReleaseTexture(vector<bool>& releaseResIdMask)
 			continue;
 
 
-		DX12_Texture& targetResource = textureList[id];
-
-		auto& tex = targetResource.Tex;
-
-
-		tex.Reset();
-
-		
-		PSOID idUsable = textureList.size() - 1;
+		TexID idUsable = textureList.size() - 1;
 
 		while (idUsable > id && releaseResIdMask[idUsable])
 			idUsable--;
@@ -2038,9 +2280,16 @@ void D3D12Renderer::ReleaseTexture(vector<bool>& releaseResIdMask)
 			break;
 		}
 
-		std::swap(targetResource, textureList[idUsable]);
+		std::swap(textureList[id], textureList[idUsable]);
 		std::swap(texRefList_CTex[id], texRefList_CTex[idUsable]);
-		texRefMask_STex[id] = texRefMask_STex[idUsable];
+
+		for (const auto& ref : texRefList_CTex[id])
+			combinedTextureBodyList[ref.first].texId[ref.second] = id;
+
+		const bool usableSTex = texRefMask_STex[idUsable];
+		texRefMask_STex[idUsable] = texRefMask_STex[id];
+		texRefMask_STex[id] = usableSTex;
+
 		std::swap(singleTextureList[id], singleTextureList[idUsable]);
 		std::swap(frameMarkList_STex[id], frameMarkList_STex[idUsable]);
 		std::swap(texRefList_WTex[id], texRefList_WTex[idUsable]);
@@ -2054,6 +2303,14 @@ void D3D12Renderer::ReleaseTexture(vector<bool>& releaseResIdMask)
 	}
 
 	
+	for (size_t k = lastId; k < textureList.size(); k++)
+	{
+		ReleaseWritableTexture(texRefList_WTex[k]);
+
+		if (texRefMask_STex[k])
+			rvHeap->UnSetSRV(singleTextureList[k].RVHeapIndex);
+	}
+
 	textureList.resize(lastId);
 	texRefList_CTex.resize(lastId);
 	texRefMask_STex.resize(lastId);
@@ -2065,13 +2322,16 @@ void D3D12Renderer::ReleaseTexture(vector<bool>& releaseResIdMask)
 	releaseResIdMask.assign(textureList.size(), false);
 }
 
-
-void D3D12Renderer::ReleasePSOBody(vector<bool>& releaseResIdMask)
+void D3D12Renderer::ReleaseCSBuffer(vector<bool>& releaseResIdMask)
 {
 	using namespace DataHub;
 
+	const UINT retireSlot = (cpuFrameIndex + FRAME_COUNT - 1) % FRAME_COUNT;
 
-	uint16_t lastId = releaseResIdMask.size();
+
+	releaseResIdMask.resize(csBufferList.size(), false);
+
+	uint16_t lastId = (uint16_t)csBufferList.size();
 
 	for (uint16_t id = 0; id < releaseResIdMask.size(); id++)
 	{
@@ -2079,7 +2339,72 @@ void D3D12Renderer::ReleasePSOBody(vector<bool>& releaseResIdMask)
 			continue;
 
 
-		auto& targetGenerator = psoGeneratorList[id];
+		uint16_t idUsable = csBufferList.size() - 1;
+
+		while (idUsable > id && releaseResIdMask[idUsable])
+			idUsable--;
+
+		if (idUsable <= id)
+		{
+			for (uint16_t k = id; k < releaseResIdMask.size(); k++)
+				RemoveIdInLUT(csBufferIdLUT, k);
+
+			lastId = id;
+			break;
+		}
+
+		std::swap(csBufferList[id], csBufferList[idUsable]);
+		std::swap(csBufferViewList[id], csBufferViewList[idUsable]);
+
+		for (auto& ref : csRefList_Mesh)
+		{
+			if (ref == id)
+				ref = idUsable;
+			else if (ref == idUsable)
+				ref = id;
+		}
+
+		SwapAndRemoveIdInLUT(csBufferIdLUT, id, idUsable);
+
+		releaseResIdMask[id] = false;
+		releaseResIdMask[idUsable] = true;
+	}
+
+
+	for (size_t k = lastId; k < csBufferList.size(); k++)
+	{
+		for (size_t m = 0; m < csRefList_Mesh.size(); m++)
+		{
+			if (csRefList_Mesh[m] != k)
+				continue;
+
+			DebugReport(RenderReport_Contract, L"[Link] 컴퓨트 버퍼 해제로 링크 메쉬 끊김 (빈 메쉬로)");
+			UnlinkMesh((MeshID)m, retireSlot);
+		}
+	}
+
+	csBufferList.resize(lastId);
+	csBufferViewList.resize(lastId);
+
+	releaseResIdMask = {};
+	releaseResIdMask.assign(csBufferList.size(), false);
+}
+
+
+void D3D12Renderer::ReleasePSOBody(vector<bool>& releaseResIdMask)
+{
+	using namespace DataHub;
+
+
+	releaseResIdMask.resize(psoGeneratorList.size(), false);
+
+	uint16_t lastId = (uint16_t)psoGeneratorList.size();
+
+	for (uint16_t id = 0; id < releaseResIdMask.size(); id++)
+	{
+		if (!releaseResIdMask[id])
+			continue;
+
 
 		PSOID idUsable = psoGeneratorList.size() - 1;
 
@@ -2095,8 +2420,7 @@ void D3D12Renderer::ReleasePSOBody(vector<bool>& releaseResIdMask)
 			break;
 		}
 
-		std::swap(targetGenerator, psoGeneratorList[idUsable]);
-		std::swap(drawPropList[id], drawPropList[idUsable]);
+		std::swap(psoGeneratorList[id], psoGeneratorList[idUsable]);
 
 		SwapAndRemoveIdInLUT(drawPropIdLUT, id, idUsable);
 
@@ -2107,7 +2431,6 @@ void D3D12Renderer::ReleasePSOBody(vector<bool>& releaseResIdMask)
 
 
 	psoGeneratorList.resize(lastId);
-	drawPropList.resize(lastId);
 
 	releaseResIdMask = {};
 	releaseResIdMask.assign(psoGeneratorList.size(), false);
@@ -2118,7 +2441,9 @@ void D3D12Renderer::ReleaseCombinedTexture(vector<bool>& releaseResIdMask)
 	using namespace DataHub;
 
 
-	uint16_t lastId = releaseResIdMask.size();
+	releaseResIdMask.resize(combinedTextureList.size(), false);
+
+	uint16_t lastId = (uint16_t)combinedTextureList.size();
 
 	for (uint16_t id = 0; id < releaseResIdMask.size(); id++)
 	{
@@ -2126,12 +2451,7 @@ void D3D12Renderer::ReleaseCombinedTexture(vector<bool>& releaseResIdMask)
 			continue;
 
 
-		auto& targetCTex = combinedTextureList[id];
-
-		rvHeap->UnSetSRV(targetCTex.RVHeapIndex, CTEX_COMBINED_SIZE);
-
-
-		PSOID idUsable = combinedTextureList.size() - 1;
+		CTexID idUsable = combinedTextureList.size() - 1;
 
 		while (idUsable > id && releaseResIdMask[idUsable])
 			idUsable--;
@@ -2146,18 +2466,26 @@ void D3D12Renderer::ReleaseCombinedTexture(vector<bool>& releaseResIdMask)
 		}
 
 
-		std::swap(targetCTex, combinedTextureList[idUsable]);
-		std::swap(texPropList[id], texPropList[idUsable]);
+		std::swap(combinedTextureList[id], combinedTextureList[idUsable]);
+		std::swap(combinedTextureBodyList[id], combinedTextureBodyList[idUsable]);
 
 		SwapAndRemoveIdInLUT(texPropIdLUT, id, idUsable);
+		SwapCTexRef(texRefList_CTex, id, idUsable);
 
 		releaseResIdMask[id] = false;
 		releaseResIdMask[idUsable] = true;
 
 	}
 
+	for (size_t k = lastId; k < combinedTextureList.size(); k++)
+	{
+		if (combinedTextureList[k].RVHeapIndex != combinedTextureList[0].RVHeapIndex)
+			rvHeap->UnSetSRV(combinedTextureList[k].RVHeapIndex, CTEX_COMBINED_SIZE);
+		RemoveCTexRef(texRefList_CTex, (CTexID)k);
+	}
+
 	combinedTextureList.resize(lastId);
-	texPropList.resize(lastId);
+	combinedTextureBodyList.resize(lastId);
 	
 	releaseResIdMask = {};
 	releaseResIdMask.assign(combinedTextureList.size(), false);
@@ -2275,7 +2603,7 @@ void D3D12Renderer::ResizeTextureInstant()
 
 		rtInstant.usage = DX12_TextureUsage_RTV;
 
-		device->CreateCommittedResource(
+		HRESULT hr = device->CreateCommittedResource(
 			&DEFAULT_HEAP_PROPS,
 			D3D12_HEAP_FLAG_NONE,
 			&rtTextureDesc,
@@ -2283,9 +2611,26 @@ void D3D12Renderer::ResizeTextureInstant()
 			&rtoptClear,
 			IID_PPV_ARGS(&rtInstant.Tex));
 
-		UINT rtSViewIdx, rtvIdx;
-		rvHeap->SetSRV(rtInstant.Tex.Get(), &rtSViewdesc, rtSViewIdx);
-		rtvHeap->SetRTV(rtInstant.Tex.Get(), &rtvdesc, rtvIdx);
+		if (FAILED(hr))
+		{
+			DebugReport(DataHub::RenderReport_Limit, L"[Instant] RT 인스턴트 생성 실패 (메모리 부족?), 이번 프레임 무효");
+			renderFrames[cpuFrameIndex].frameInvalidated = true;
+			return;
+		}
+
+		UINT rtSViewIdx = 0, rtvIdx = 0;
+		const bool rtSViewOk = rvHeap->SetSRV(rtInstant.Tex.Get(), &rtSViewdesc, rtSViewIdx);
+		const bool rtvOk = rtSViewOk && rtvHeap->SetRTV(rtInstant.Tex.Get(), &rtvdesc, rtvIdx);
+
+		if (!rtvOk)
+		{
+			if (rtSViewOk)
+				rvHeap->UnSetSRV(rtSViewIdx);
+
+			DebugReport(DataHub::RenderReport_Limit, L"[Instant] RT 인스턴트 뷰 자리 부족 (디스크립터 힙 한도), 이번 프레임 무효");
+			renderFrames[cpuFrameIndex].frameInvalidated = true;
+			return;
+		}
 
 		rtInstantList.emplace_back(std::move(rtInstant));
 
@@ -2300,7 +2645,7 @@ void D3D12Renderer::ResizeTextureInstant()
 
 		dsInstant.usage = DX12_TextureUsage_DSV;
 
-		device->CreateCommittedResource(
+		HRESULT hr = device->CreateCommittedResource(
 			&DEFAULT_HEAP_PROPS,
 			D3D12_HEAP_FLAG_NONE,
 			&dsTextureDesc,
@@ -2308,10 +2653,29 @@ void D3D12Renderer::ResizeTextureInstant()
 			&dsoptClear,
 			IID_PPV_ARGS(&dsInstant.Tex));
 
-		UINT dsSViewIdx, dsvIdx, dsvReadIdx;
-		rvHeap->SetSRV(dsInstant.Tex.Get(), &dsSViewdesc, dsSViewIdx);
-		dsvHeap->SetDSV(dsInstant.Tex.Get(), &dsvdesc, dsvIdx);
-		dsvHeap->SetDSV(dsInstant.Tex.Get(), &dsvReaddesc, dsvReadIdx);
+		if (FAILED(hr))
+		{
+			DebugReport(DataHub::RenderReport_Limit, L"[Instant] DS 인스턴트 생성 실패 (메모리 부족?), 이번 프레임 무효");
+			renderFrames[cpuFrameIndex].frameInvalidated = true;
+			return;
+		}
+
+		UINT dsSViewIdx = 0, dsvIdx = 0, dsvReadIdx = 0;
+		const bool dsSViewOk = rvHeap->SetSRV(dsInstant.Tex.Get(), &dsSViewdesc, dsSViewIdx);
+		const bool dsvOk = dsSViewOk && dsvHeap->SetDSV(dsInstant.Tex.Get(), &dsvdesc, dsvIdx);
+		const bool dsvReadOk = dsvOk && dsvHeap->SetDSV(dsInstant.Tex.Get(), &dsvReaddesc, dsvReadIdx);
+
+		if (!dsvReadOk)
+		{
+			if (dsSViewOk)
+				rvHeap->UnSetSRV(dsSViewIdx);
+			if (dsvOk)
+				dsvHeap->UnSetDSV(dsvIdx);
+
+			DebugReport(DataHub::RenderReport_Limit, L"[Instant] DS 인스턴트 뷰 자리 부족 (디스크립터 힙 한도), 이번 프레임 무효");
+			renderFrames[cpuFrameIndex].frameInvalidated = true;
+			return;
+		}
 
 		dsInstantList.emplace_back(std::move(dsInstant));
 
@@ -2326,72 +2690,33 @@ void D3D12Renderer::ResizeTextureInstant()
 
 #pragma region Helper
 
+void D3D12Renderer::BeginUploadCommands()
+{
+	uploadCMDAllocator->Reset();
+	renderCMDList_Master->Reset(uploadCMDAllocator.Get(), nullptr);
+}
+
+void D3D12Renderer::FlushUploadCommands()
+{
+	renderCMDList_Master->Close();
+
+	ID3D12CommandList* cmdLists[] = {renderCMDList_Master.Get()};
+	renderCMDQueue->ExecuteCommandLists(1, cmdLists);
+
+	SignalFence();
+	WaitGPUProcess();
+}
+
+
 void D3D12Renderer::MarkOrBuildSingleTexture(TexID texId)
 {
 	if (!texRefMask_STex[texId])
 	{
 		DX12_Texture& texInfo = textureList[texId];
-		D3D12_SHADER_RESOURCE_VIEW_DESC desc = {};
+		D3D12_SHADER_RESOURCE_VIEW_DESC desc;
 		UINT rvIndex;
 
-		desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-		desc.Format = texInfo.Format;
-		desc.Texture2D.MipLevels = texInfo.MipLevels;
-
-
-		if (texInfo.ArraySize > 1)
-		{
-			if (texInfo.IsCube)
-			{
-				if (texInfo.ArraySize > 6)
-					desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBEARRAY;
-				else
-					desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
-			}
-			else
-			{
-				switch (texInfo.Dimension)
-				{
-				default:
-				case D3D12_RESOURCE_DIMENSION_TEXTURE2D:
-					desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;	break;
-				
-				case D3D12_RESOURCE_DIMENSION_TEXTURE1D:
-					desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE1DARRAY;	break;
-				
-				case D3D12_RESOURCE_DIMENSION_TEXTURE3D:
-					desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;			break;
-				}
-			}
-		}
-		else
-		{
-			switch (texInfo.Dimension)
-			{
-			default:
-			case D3D12_RESOURCE_DIMENSION_TEXTURE2D:
-				desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;		break;
-			
-			case D3D12_RESOURCE_DIMENSION_TEXTURE1D:
-				desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE1D;		break;
-			
-			case D3D12_RESOURCE_DIMENSION_TEXTURE3D:
-				desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;		break;
-			}
-		}
-
-		switch (desc.ViewDimension)
-		{
-		case D3D12_SRV_DIMENSION_TEXTURE2DARRAY:
-			desc.Texture2DArray.ArraySize = texInfo.ArraySize;		break;
-
-		case D3D12_SRV_DIMENSION_TEXTURE1DARRAY:
-			desc.Texture1DArray.ArraySize = texInfo.ArraySize;		break;
-			
-		case D3D12_SRV_DIMENSION_TEXTURECUBEARRAY:
-			desc.TextureCubeArray.NumCubes = texInfo.ArraySize / 6;	break;
-		}
-	
+		FillTextureSRVDesc(texInfo, desc);
 
 		rvHeap->SetSRV(
 			texInfo.Tex.Get(),
@@ -2404,6 +2729,739 @@ void D3D12Renderer::MarkOrBuildSingleTexture(TexID texId)
 	}
 
 	frameMarkList_STex[texId] = static_cast<UINT16>(currentFrameCount % UINT16_MAX);
+}
+
+void D3D12Renderer::BuildWritableTexture(const DX12_Texture& texture, const DataHub::Texture& src, DX12_WTexRef& ref)
+{
+	const DX12_TextureUsage newUsage = static_cast<DX12_TextureUsage>(src.usage);
+
+	if (newUsage == DX12_TextureUsage_ReadOnly)
+	{
+		ReleaseWritableTexture(ref);
+		return;
+	}
+
+	if (texture.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D)
+	{
+		DebugReport(DataHub::RenderReport_Contract, L"[WTex] 2D 가 아닌 텍스처의 쓰기 뷰 미지원 (쓰기 뷰 없이)");
+		ReleaseWritableTexture(ref);
+		return;
+	}
+
+	const bool inPlace = (ref.usage == newUsage);
+	if (!inPlace)
+		ReleaseWritableTexture(ref);
+
+	UINT vIndex = inPlace ? writableTextureList[ref.idx].VHeapIndex : 0;
+	bool allocated = true;
+
+	D3D12_CLEAR_VALUE clear = {};
+	D3D12_RESOURCE_STATES home;
+	D3D12_RESOURCE_STATES write;
+
+	if (newUsage == DX12_TextureUsage_RTV)
+	{
+		D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+		rtvDesc.Format = texture.Format;
+
+		clear.Format = rtvDesc.Format;
+		memcpy(clear.Color, src.clearValue.color, sizeof(clear.Color));
+		home = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+		write = D3D12_RESOURCE_STATE_RENDER_TARGET;
+
+		if (texture.ArraySize > 1)
+		{
+			rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DARRAY;
+			rtvDesc.Texture2DArray.ArraySize = texture.ArraySize;
+		}
+		else
+			rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+
+		if (inPlace)
+			rtvHeap->UpdateRTV(vIndex, texture.Tex.Get(), &rtvDesc);
+		else
+			allocated = rtvHeap->SetRTV(texture.Tex.Get(), &rtvDesc, vIndex);
+	}
+	else if (newUsage == DX12_TextureUsage_UAV)
+	{
+		D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+		uavDesc.Format = texture.Format;
+
+		home = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+		write = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+
+		if (texture.ArraySize > 1)
+		{
+			uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2DARRAY;
+			uavDesc.Texture2DArray.ArraySize = texture.ArraySize;
+		}
+		else
+			uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+
+		if (inPlace)
+			rvHeap->UpdateUAV(vIndex, texture.Tex.Get(), &uavDesc);
+		else
+			allocated = rvHeap->SetUAV(texture.Tex.Get(), &uavDesc, vIndex);
+	}
+	else
+	{
+		D3D12_DEPTH_STENCIL_VIEW_DESC dsvDescs[2] = {};
+		dsvDescs[0].Format = GetDSVFormat(texture.Format);
+
+		clear.Format = dsvDescs[0].Format;
+		clear.DepthStencil = D3D12_DEPTH_STENCIL_VALUE{ src.clearValue.depth, src.clearValue.stencil };
+		home = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_DEPTH_READ;
+		write = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+
+		if (texture.ArraySize > 1)
+		{
+			dsvDescs[0].ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DARRAY;
+			dsvDescs[0].Texture2DArray.ArraySize = texture.ArraySize;
+		}
+		else
+			dsvDescs[0].ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+
+		dsvDescs[1] = dsvDescs[0];
+		dsvDescs[1].Flags = D3D12_DSV_FLAG_READ_ONLY_DEPTH;
+
+		if (inPlace)
+		{
+			dsvHeap->UpdateDSV(vIndex, texture.Tex.Get(), &dsvDescs[0]);
+			dsvHeap->UpdateDSV(vIndex + 1, texture.Tex.Get(), &dsvDescs[1]);
+		}
+		else
+		{
+			ID3D12Resource* resList[2] = { texture.Tex.Get(), texture.Tex.Get() };
+			D3D12_DEPTH_STENCIL_VIEW_DESC* descList[2] = { &dsvDescs[0], &dsvDescs[1] };
+			allocated = dsvHeap->SetCombinedDSV(resList, descList, 2, vIndex);
+		}
+	}
+
+	if (!allocated)
+	{
+		DebugReport(DataHub::RenderReport_Limit, L"[WTex] RTV / DSV / RV 힙 꽉참 (쓰기 뷰 없이)");
+		return;
+	}
+
+	if (src.subresources.empty() && newUsage != DX12_TextureUsage_UAV)
+	{
+		const CD3DX12_RESOURCE_BARRIER toWrite = CD3DX12_RESOURCE_BARRIER::Transition(texture.Tex.Get(), home, write);
+		const CD3DX12_RESOURCE_BARRIER toHome = CD3DX12_RESOURCE_BARRIER::Transition(texture.Tex.Get(), write, home);
+
+		renderCMDList_Master->ResourceBarrier(1, &toWrite);
+
+		if (newUsage == DX12_TextureUsage_RTV)
+			renderCMDList_Master->ClearRenderTargetView(rtvHeap->GetCPUHandle(vIndex), clear.Color, 0, nullptr);
+		else
+			renderCMDList_Master->ClearDepthStencilView(dsvHeap->GetCPUHandle(vIndex), GetDSClearFlags(clear.Format), clear.DepthStencil.Depth, clear.DepthStencil.Stencil, 0, nullptr);
+
+		renderCMDList_Master->ResourceBarrier(1, &toHome);
+	}
+
+	if (inPlace)
+	{
+		writableClearList[ref.idx] = clear;
+		return;
+	}
+
+	uint16_t idx;
+
+	if (!blankedIdxList_WTex.empty())
+	{
+		idx = blankedIdxList_WTex.back();
+		blankedIdxList_WTex.pop_back();
+		writableTextureList[idx] = { vIndex };
+		writableClearList[idx] = clear;
+	}
+	else
+	{
+		idx = (uint16_t)writableTextureList.size();
+		writableTextureList.push_back({ vIndex });
+		writableClearList.push_back(clear);
+	}
+
+	ref = { newUsage, idx };
+}
+
+void D3D12Renderer::UnlinkMesh(MeshID meshId, UINT retireSlot)
+{
+	retiredMeshLists[retireSlot].push_back(std::move(meshList[meshId]));
+
+	meshList[meshId] = {};
+	meshViewList[meshId] = {};
+	meshViewList[meshId].subMeshes.push_back(DX12_SubMesh{ 0, 0, 0 });
+	DataHub::meshSubMeshCountList[meshId] = 1;
+	csRefList_Mesh[meshId] = 0;
+}
+
+void D3D12Renderer::ReleaseWritableTexture(DX12_WTexRef& ref)
+{
+	if (ref.usage == DX12_TextureUsage_ReadOnly)
+		return;
+
+	const UINT vIndex = writableTextureList[ref.idx].VHeapIndex;
+
+	if (ref.usage == DX12_TextureUsage_DSV)
+		dsvHeap->UnSetDSV(vIndex, 2);
+	else if (ref.usage == DX12_TextureUsage_UAV)
+		rvHeap->UnSetSRV(vIndex);
+	else
+		rtvHeap->UnSetRTV(vIndex);
+
+	writableTextureList[ref.idx] = {};
+	blankedIdxList_WTex.push_back(ref.idx);
+	ref = {};
+}
+
+
+bool D3D12Renderer::CreateMeshResource(const DataHub::Mesh& src, DX12_Mesh& mesh, DX12_MeshView& view, vector<ComPtr<ID3D12Resource>>& uploadBufferList)
+{
+	using namespace DataHub;
+
+	ID3D12Device* device = D3D12Core::getInstance().GetDevice();
+
+	const CD3DX12_RANGE readRange(0, 0);
+	UINT8* pDataBegin;
+
+
+	const void* vertexData = nullptr;
+	UINT vertexCount = 0;
+	UINT stride = 0;
+
+	switch (src.vertexType)
+	{
+	case VertexType_Simple:
+		vertexData = src.verticesSimple.data();
+		vertexCount = (UINT)src.verticesSimple.size();
+		stride = sizeof(VertexSimple);
+		break;
+
+	case VertexType_Static:
+		vertexData = src.verticesStatic.data();
+		vertexCount = (UINT)src.verticesStatic.size();
+		stride = sizeof(VertexStatic);
+		break;
+
+	case VertexType_Skinned:
+		vertexData = src.verticesSkinned.data();
+		vertexCount = (UINT)src.verticesSkinned.size();
+		stride = sizeof(VertexSkinned);
+		break;
+
+	default:
+		break;
+	}
+
+	if (vertexData == nullptr || vertexCount == 0 || src.indices.empty())
+		return false;
+
+
+	mesh = {};
+	view = {};
+	mesh.vertexType = src.vertexType;
+	mesh.vertexCount = vertexCount;
+
+	const UINT64 sizeofVertices = (UINT64)vertexCount * stride;
+
+
+	ComPtr<ID3D12Resource> uploadVertexBuffer;
+	auto vtxResDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeofVertices);
+
+	HRESULT hr = device->CreateCommittedResource(
+		&DEFAULT_HEAP_PROPS,
+		D3D12_HEAP_FLAG_NONE,
+		&vtxResDesc,
+		D3D12_RESOURCE_STATE_COMMON,
+		nullptr,
+		IID_PPV_ARGS(&mesh.VB)
+	);
+
+	if (SUCCEEDED(hr))
+	{
+		hr = device->CreateCommittedResource(
+			&UPLOAD_HEAP_PROPS,
+			D3D12_HEAP_FLAG_NONE,
+			&vtxResDesc,
+			D3D12_RESOURCE_STATE_GENERIC_READ,
+			nullptr,
+			IID_PPV_ARGS(&uploadVertexBuffer)
+		);
+	}
+
+	if (FAILED(hr))
+	{
+		DebugReport(RenderReport_Contract, L"[Mesh] 버텍스 버퍼 생성 실패");
+		return false;
+	}
+
+	uploadVertexBuffer->Map(0, &readRange, (void**)(&pDataBegin));
+	memcpy(pDataBegin, vertexData, sizeofVertices);
+	uploadVertexBuffer->Unmap(0, nullptr);
+
+	view.VBV.BufferLocation = mesh.VB->GetGPUVirtualAddress();
+	view.VBV.StrideInBytes = stride;
+	view.VBV.SizeInBytes = (UINT)sizeofVertices;
+
+	renderCMDList_Master->CopyBufferRegion(mesh.VB.Get(), 0, uploadVertexBuffer.Get(), 0, sizeofVertices);
+
+	auto vtxResBar = CD3DX12_RESOURCE_BARRIER::Transition(
+		mesh.VB.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER
+	);
+	renderCMDList_Master->ResourceBarrier(1, &vtxResBar);
+
+
+	uploadBufferList.push_back(std::move(uploadVertexBuffer));
+
+
+	if (!CreateIndexResource(src.indices, src.subMeshes, vertexCount, mesh, view, uploadBufferList))
+	{
+		uploadBufferList.push_back(mesh.VB);
+		return false;
+	}
+
+	return true;
+}
+
+bool D3D12Renderer::CreateIndexResource(const std::vector<DataHub::VIndex>& indices, const std::vector<DataHub::SubMesh>& subMeshes, UINT vertexCount, DX12_Mesh& mesh, DX12_MeshView& view, vector<ComPtr<ID3D12Resource>>& uploadBufferList)
+{
+	using namespace DataHub;
+
+	ID3D12Device* device = D3D12Core::getInstance().GetDevice();
+
+	const CD3DX12_RANGE readRange(0, 0);
+	UINT8* pDataBegin;
+
+	const UINT indexCount = (UINT)indices.size();
+
+	if (indexCount == 0)
+		return false;
+
+	mesh.indexCount = indexCount;
+
+	const UINT64 sizeofIndices = (UINT64)indexCount * sizeof(VIndex);
+
+
+	ComPtr<ID3D12Resource> uploadIndexBuffer;
+	auto idxResDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeofIndices);
+
+	HRESULT hr = device->CreateCommittedResource(
+		&DEFAULT_HEAP_PROPS,
+		D3D12_HEAP_FLAG_NONE,
+		&idxResDesc,
+		D3D12_RESOURCE_STATE_COMMON,
+		nullptr,
+		IID_PPV_ARGS(&mesh.IB)
+	);
+
+	if (SUCCEEDED(hr))
+	{
+		hr = device->CreateCommittedResource(
+			&UPLOAD_HEAP_PROPS,
+			D3D12_HEAP_FLAG_NONE,
+			&idxResDesc,
+			D3D12_RESOURCE_STATE_GENERIC_READ,
+			nullptr,
+			IID_PPV_ARGS(&uploadIndexBuffer)
+		);
+	}
+
+	if (FAILED(hr))
+	{
+		DebugReport(RenderReport_Contract, L"[Mesh] 인덱스 버퍼 생성 실패");
+		return false;
+	}
+
+	uploadIndexBuffer->Map(0, &readRange, (void**)(&pDataBegin));
+	memcpy(pDataBegin, indices.data(), sizeofIndices);
+	uploadIndexBuffer->Unmap(0, nullptr);
+
+	view.IBV.BufferLocation = mesh.IB->GetGPUVirtualAddress();
+	view.IBV.Format = MESH_INDEX_FORMAT;
+	view.IBV.SizeInBytes = (UINT)sizeofIndices;
+
+	renderCMDList_Master->CopyBufferRegion(mesh.IB.Get(), 0, uploadIndexBuffer.Get(), 0, sizeofIndices);
+
+	auto idxResBar = CD3DX12_RESOURCE_BARRIER::Transition(
+		mesh.IB.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_INDEX_BUFFER
+	);
+	renderCMDList_Master->ResourceBarrier(1, &idxResBar);
+
+
+	view.subMeshes.clear();
+
+	if (subMeshes.empty())
+	{
+		view.subMeshes.push_back(DX12_SubMesh{ 0, indexCount, 0 });
+	}
+	else
+	{
+		for (size_t s = 0; s < subMeshes.size(); s++)
+		{
+			const SubMesh& subSrc = subMeshes[s];
+			DX12_SubMesh sub = { subSrc.indexStart, subSrc.indexCount, (INT)subSrc.baseVertex };
+
+			if (sub.indexStart >= indexCount || subSrc.baseVertex >= vertexCount)
+			{
+				DebugReport(DataHub::RenderReport_Contract, L"[Mesh] 서브메쉬 시작이 인덱스 / 정점 범위 밖 (빈 서브메쉬로)");
+				sub.indexStart = 0;
+				sub.indexCount = 0;
+			}
+			else if (sub.indexStart + sub.indexCount > indexCount)
+			{
+				DebugReport(DataHub::RenderReport_Contract, L"[Mesh] 서브메쉬 끝이 인덱스 범위 밖 (잘라냄)");
+				sub.indexCount = indexCount - sub.indexStart;
+			}
+
+			view.subMeshes.push_back(sub);
+		}
+	}
+
+
+	uploadBufferList.push_back(std::move(uploadIndexBuffer));
+
+	return true;
+}
+
+bool D3D12Renderer::CreateBufferResource(const DataHub::ComputeBuffer& src, DX12_Buffer& buffer, DX12_BufferView& view, vector<ComPtr<ID3D12Resource>>& uploadBufferList)
+{
+	ID3D12Device* device = D3D12Core::getInstance().GetDevice();
+
+	const UINT64 sizeofData = (UINT64)src.stride * src.count;
+
+	if (src.stride == 0 || src.stride % 4 != 0 || src.count == 0)
+		return false;
+
+	if (!src.data.empty() && src.data.size() != sizeofData)
+		return false;
+
+
+	buffer = {};
+	view = {};
+	buffer.stride = src.stride;
+	buffer.count = src.count;
+
+	auto resDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeofData, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+
+	ComPtr<ID3D12Resource> uploadBuffer;
+	auto uploadDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeofData);
+
+	HRESULT hr = device->CreateCommittedResource(
+		&DEFAULT_HEAP_PROPS,
+		D3D12_HEAP_FLAG_NONE,
+		&resDesc,
+		D3D12_RESOURCE_STATE_COMMON,
+		nullptr,
+		IID_PPV_ARGS(&buffer.Res)
+	);
+
+	if (SUCCEEDED(hr) && !src.data.empty())
+	{
+		hr = device->CreateCommittedResource(
+			&UPLOAD_HEAP_PROPS,
+			D3D12_HEAP_FLAG_NONE,
+			&uploadDesc,
+			D3D12_RESOURCE_STATE_GENERIC_READ,
+			nullptr,
+			IID_PPV_ARGS(&uploadBuffer)
+		);
+	}
+
+	if (FAILED(hr))
+	{
+		DebugReport(DataHub::RenderReport_Contract, L"[CSBuffer] 버퍼 생성 실패");
+		return false;
+	}
+
+	view.address = buffer.Res->GetGPUVirtualAddress();
+
+
+	if (src.data.empty())
+	{
+		auto resBar = CD3DX12_RESOURCE_BARRIER::Transition(
+			buffer.Res.Get(),
+			D3D12_RESOURCE_STATE_COMMON,
+			CSBUFFER_HOME_STATE
+		);
+		renderCMDList_Master->ResourceBarrier(1, &resBar);
+
+		return true;
+	}
+
+
+	const CD3DX12_RANGE readRange(0, 0);
+	UINT8* pDataBegin;
+
+	uploadBuffer->Map(0, &readRange, (void**)(&pDataBegin));
+	memcpy(pDataBegin, src.data.data(), sizeofData);
+	uploadBuffer->Unmap(0, nullptr);
+
+	renderCMDList_Master->CopyBufferRegion(buffer.Res.Get(), 0, uploadBuffer.Get(), 0, sizeofData);
+
+	auto resBar = CD3DX12_RESOURCE_BARRIER::Transition(
+		buffer.Res.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		CSBUFFER_HOME_STATE
+	);
+	renderCMDList_Master->ResourceBarrier(1, &resBar);
+
+
+	uploadBufferList.push_back(std::move(uploadBuffer));
+
+	return true;
+}
+
+bool D3D12Renderer::CreateTextureResource(const DataHub::Texture& src, DX12_Texture& texture, vector<ComPtr<ID3D12Resource>>& uploadBufferList)
+{
+	using namespace DataHub;
+
+	ID3D12Device* device = D3D12Core::getInstance().GetDevice();
+
+	auto& data = src.data;
+
+
+	D3D12_CLEAR_VALUE optClear = {};
+	D3D12_CLEAR_VALUE* pOptClear = nullptr;
+	D3D12_RESOURCE_STATES resState = {};
+
+
+	D3D12_RESOURCE_DESC textureDesc = {};
+
+	switch (src.usage)
+	{
+	default:
+	case TextureUsage_ReadOnly:
+		textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+		textureDesc.Format = ToDXGI(data.format);
+
+		resState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+		break;
+
+	case TextureUsage_RT:
+		textureDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+		textureDesc.Format = ToDXGI(data.format);
+
+		optClear.Format = textureDesc.Format;
+		memcpy(optClear.Color, src.clearValue.color, sizeof(optClear.Color));
+		pOptClear = &optClear;
+
+		resState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+		break;
+
+	case TextureUsage_DS:
+		textureDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+		textureDesc.Format = GetDSFormat(data.format);
+
+		optClear.Format = GetDSVFormat(textureDesc.Format);
+		optClear.DepthStencil = D3D12_DEPTH_STENCIL_VALUE{ src.clearValue.depth, src.clearValue.stencil };
+		pOptClear = &optClear;
+
+		resState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_DEPTH_READ;
+		break;
+
+	case TextureUsage_Compute:
+		textureDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+		textureDesc.Format = ToDXGI(data.format);
+
+		resState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+		break;
+	}
+
+	if (textureDesc.Format == DXGI_FORMAT_UNKNOWN)
+	{
+		DebugReport(RenderReport_Contract, L"[Tex] 포맷 UNKNOWN (표에 없는 포맷 / DS 인데 깊이 포맷 아님)");
+		return false;
+	}
+
+	textureDesc.SampleDesc.Count = 1;
+	textureDesc.SampleDesc.Quality = 0;
+
+	textureDesc.MipLevels = data.mipLevels;
+	textureDesc.Width = data.width;
+	textureDesc.Height = data.height;
+
+
+	switch (data.textureType)
+	{
+	default:
+	case TextureType_2D:
+		textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+		textureDesc.DepthOrArraySize = data.arraySize;
+		break;
+
+	case TextureType_Cube:
+		if (data.arraySize < 6 || data.arraySize % 6 != 0)
+		{
+			DebugReport(RenderReport_Contract, L"[Tex] Cube 타입인데 arraySize 가 6의 배수가 아님");
+			return false;
+		}
+
+		textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+		textureDesc.DepthOrArraySize = data.arraySize;
+		break;
+
+	case TextureType_1D:
+		textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE1D;
+		textureDesc.DepthOrArraySize = data.arraySize;
+		break;
+
+	case TextureType_3D:
+		textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE3D;
+		textureDesc.DepthOrArraySize = data.depth;
+		break;
+	}
+
+
+	ComPtr<ID3D12Resource> resource;
+
+	const UINT numSubresources = (UINT)src.subresources.size();
+	const UINT expectedSubresources = data.mipLevels * (textureDesc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE3D ? 1 : data.arraySize);
+
+	if (numSubresources != 0 && numSubresources != expectedSubresources)
+	{
+		DebugReport(RenderReport_Contract, L"[Tex] 서브리소스 수가 mipLevels * arraySize 와 다름 (3D 는 mipLevels)");
+		return false;
+	}
+
+	if (numSubresources == 0)
+	{
+		HRESULT hr = device->CreateCommittedResource(
+			&DEFAULT_HEAP_PROPS,
+			D3D12_HEAP_FLAG_NONE,
+			&textureDesc,
+			resState,
+			pOptClear,
+			IID_PPV_ARGS(&resource));
+
+		if (FAILED(hr))
+		{
+			DebugReport(RenderReport_Contract, L"[Tex] 텍스처 리소스 생성 실패 (포맷 / 용도 / 차원 / 크기 조합 확인)");
+			return false;
+		}
+	}
+	else
+	{
+		HRESULT hr = device->CreateCommittedResource(
+			&DEFAULT_HEAP_PROPS,
+			D3D12_HEAP_FLAG_NONE,
+			&textureDesc,
+			D3D12_RESOURCE_STATE_COPY_DEST,
+			pOptClear,
+			IID_PPV_ARGS(&resource));
+
+		if (FAILED(hr))
+		{
+			DebugReport(RenderReport_Contract, L"[Tex] 텍스처 리소스 생성 실패 (포맷 / 용도 / 차원 / 크기 조합 확인)");
+			return false;
+		}
+
+
+		const UINT64 uploadTextureSize = GetRequiredIntermediateSize(resource.Get(), 0, numSubresources);
+		ComPtr<ID3D12Resource> uploadTexture;
+
+		auto resDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadTextureSize);
+
+		hr = device->CreateCommittedResource(
+			&UPLOAD_HEAP_PROPS,
+			D3D12_HEAP_FLAG_NONE,
+			&resDesc,
+			D3D12_RESOURCE_STATE_GENERIC_READ,
+			nullptr,
+			IID_PPV_ARGS(&uploadTexture));
+
+		if (FAILED(hr))
+		{
+			DebugReport(RenderReport_Contract, L"[Tex] 텍스처 업로드 버퍼 생성 실패");
+			return false;
+		}
+
+
+		vector<D3D12_SUBRESOURCE_DATA> subResData(numSubresources, {});
+
+		const std::byte* base = src.rawData.data();
+		for (size_t i = 0; i < numSubresources; ++i)
+		{
+			subResData[i].pData = base + src.subresources[i].offset;
+			subResData[i].RowPitch = static_cast<LONG_PTR>(src.subresources[i].rowPitch);
+			subResData[i].SlicePitch = static_cast<LONG_PTR>(src.subresources[i].slicePitch);
+		}
+
+
+		const UINT64 uploaded = UpdateSubresources(renderCMDList_Master.Get(), resource.Get(), uploadTexture.Get(),
+							0,
+							0, numSubresources,
+							subResData.data());
+
+		if (uploaded == 0)
+		{
+			DebugReport(RenderReport_Contract, L"[Tex] 텍스처 데이터 업로드 실패 (서브리소스 크기 / pitch 확인)");
+			return false;
+		}
+
+
+		auto resBar = CD3DX12_RESOURCE_BARRIER::Transition(
+			resource.Get(),
+			D3D12_RESOURCE_STATE_COPY_DEST,
+			resState
+		);
+
+		renderCMDList_Master->ResourceBarrier(1, &resBar);
+
+
+		uploadBufferList.push_back(move(uploadTexture));
+	}
+
+
+	texture = DX12_Texture{
+		move(resource),
+		textureDesc.DepthOrArraySize,
+		textureDesc.MipLevels,
+		textureDesc.Format,
+		textureDesc.Dimension,
+		data.textureType == TextureType_Cube
+	};
+
+	return true;
+}
+
+bool D3D12Renderer::BuildCombinedView(const DataHub::TextureProp& prop, UINT& rvStartIndex)
+{
+	D3D12_SHADER_RESOURCE_VIEW_DESC descList[CTEX_COMBINED_SIZE] = {};
+	D3D12_SHADER_RESOURCE_VIEW_DESC* srvDescList[CTEX_COMBINED_SIZE] = {};
+	ID3D12Resource* subresList[CTEX_COMBINED_SIZE] = {};
+
+	for (size_t i = 0; i < CTEX_COMBINED_SIZE; i++)
+	{
+		const TexID texId = prop.texId[i];
+
+		if (texId >= textureList.size())
+		{
+			subresList[i] = textureList[0].Tex.Get();
+			DebugReport(DataHub::RenderReport_Contract, L"[CTex] texProp 의 texId 범위 밖 (기본 텍스처로 대체)");
+			continue;
+		}
+
+		if (releaseTexIdMask[texId])
+		{
+			subresList[i] = textureList[0].Tex.Get();
+			DebugReport(DataHub::RenderReport_Contract, L"[CTex] 삭제된 텍스처를 texProp 이 참조 (기본 텍스처로 대체)");
+			continue;
+		}
+
+		const DX12_Texture& texInfo = textureList[texId];
+
+		subresList[i] = texInfo.Tex.Get();
+		srvDescList[i] = &descList[i];
+
+		FillTextureSRVDesc(texInfo, descList[i]);
+		if (prop.texMipLevels[i] != 0)
+			descList[i].Texture2D.MipLevels = prop.texMipLevels[i];
+	}
+
+	return rvHeap->SetCombinedSRV(subresList, srvDescList, CTEX_COMBINED_SIZE, rvStartIndex);
 }
 
 
@@ -2433,6 +3491,7 @@ bool D3D12Renderer::CompileShader(ShaderID shaderId, uint8_t variant, ComPtr<IDx
 
 	static const wchar_t* VS_PROFILES[] = { L"vs_6_0", L"vs_6_1", L"vs_6_2", L"vs_6_3", L"vs_6_4", L"vs_6_5", L"vs_6_6" };
 	static const wchar_t* PS_PROFILES[] = { L"ps_6_0", L"ps_6_1", L"ps_6_2", L"ps_6_3", L"ps_6_4", L"ps_6_5", L"ps_6_6" };
+	static const wchar_t* CS_PROFILES[] = { L"cs_6_0", L"cs_6_1", L"cs_6_2", L"cs_6_3", L"cs_6_4", L"cs_6_5", L"cs_6_6" };
 
 	const size_t smIdx = (size_t)(shaderModel - D3D_SHADER_MODEL_6_0);
 
@@ -2443,6 +3502,7 @@ bool D3D12Renderer::CompileShader(ShaderID shaderId, uint8_t variant, ComPtr<IDx
 	{
 	case ShaderType_VS:	entry = L"VSMain";	profile = VS_PROFILES[smIdx];	break;
 	case ShaderType_PS:	entry = L"PSMain";	profile = PS_PROFILES[smIdx];	break;
+	case ShaderType_CS:	entry = L"CSMain";	profile = CS_PROFILES[smIdx];	break;
 	default:			return false;
 	}
 
@@ -2590,54 +3650,46 @@ IDxcBlob* D3D12Renderer::GetCompiledShader(ShaderID shaderId, uint8_t variant)
 	return entry.failed ? nullptr : compiledShaderList.back().blob.Get();
 }
 
-
-uint8_t D3D12Renderer::ShaderVariantVS(DataHub::VertexType vertexType)
-{
-	return (uint8_t)vertexType + 1;
-}
-
-uint8_t D3D12Renderer::ShaderVariantPS(DataHub::Action_OutputLayout layout)
-{
-	return (uint8_t)layout;
-}
-
-
-DX12_OutputSignature D3D12Renderer::PackOutputSignature(const DX12_OutputSignatureDesc& desc)
-{
-	DX12_OutputSignature sig = {};
-
-	for (uint8_t r = 0; r < RENDER_TARGET_MAX; r++)
-	{
-		sig.RTFormats |= (UINT64)((UINT32)desc.rtFormats[r] & 0xFF) << (r * OUTSIG_RTFORMAT_BITS);
-		sig.RTBlendNDSFormat |= (UINT64)((UINT32)desc.rtBlendOpts[r] & 0x7) << (r * OUTSIG_RTBLEND_BITS);
-	}
-
-	sig.RTBlendNDSFormat |= (UINT64)((UINT32)desc.dsFormat & 0xFF) << OUTSIG_DSFORMAT_SHIFT;
-	sig.RTBlendNDSFormat |= (UINT64)((UINT32)desc.dsOpt & 0xFF) << OUTSIG_DSOPT_SHIFT;
-	sig.RTBlendNDSFormat |= (UINT64)desc.sampleCount << OUTSIG_SAMPLE_SHIFT;
-	sig.RTBlendNDSFormat |= (UINT64)((UINT32)desc.outputLayout & 0xFF) << OUTSIG_LAYOUT_SHIFT;
-
-	return sig;
-}
-
-DX12_OutputSignatureDesc D3D12Renderer::UnpackOutputSignature(const DX12_OutputSignature& sig)
+ID3D12PipelineState* D3D12Renderer::GetComputePSO(ShaderID csId)
 {
 	using namespace DataHub;
 
-	DX12_OutputSignatureDesc desc = {};
+	if (csId == 0 || csId >= shaderList.size() || shaderList[csId].second != ShaderType_CS)
+		return nullptr;
 
-	for (uint8_t r = 0; r < RENDER_TARGET_MAX; r++)
+	if (computePSOList.size() <= csId)
+		computePSOList.resize((size_t)csId + 1);
+
+	DX12_ComputePSO& entry = computePSOList[csId];
+
+	if (entry.pso != nullptr || entry.failed)
+		return entry.pso.Get();
+
+
+	IDxcBlob* blob = GetCompiledShader(csId, SHADER_VARIANT_NONE);
+
+	if (blob == nullptr)
 	{
-		desc.rtFormats[r] = (DXGI_FORMAT)((sig.RTFormats >> (r * OUTSIG_RTFORMAT_BITS)) & 0xFF);
-		desc.rtBlendOpts[r] = (Action_Output_BlendOption)((sig.RTBlendNDSFormat >> (r * OUTSIG_RTBLEND_BITS)) & 0x7);
+		entry.failed = true;
+		DebugReport(RenderReport_Contract, L"[PSO] 컴퓨트 셰이더 컴파일 실패 (해당 디스패치 스킵됨)");
+		return nullptr;
 	}
 
-	desc.dsFormat = (DXGI_FORMAT)((sig.RTBlendNDSFormat >> OUTSIG_DSFORMAT_SHIFT) & 0xFF);
-	desc.dsOpt = (Action_Output_DepthOption)((sig.RTBlendNDSFormat >> OUTSIG_DSOPT_SHIFT) & 0xFF);
-	desc.sampleCount = (uint8_t)((sig.RTBlendNDSFormat >> OUTSIG_SAMPLE_SHIFT) & 0xFF);
-	desc.outputLayout = (Action_OutputLayout)((sig.RTBlendNDSFormat >> OUTSIG_LAYOUT_SHIFT) & 0xFF);
 
-	return desc;
+	D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
+	psoDesc.pRootSignature = computeRootSig.Get();
+	psoDesc.CS = { blob->GetBufferPointer(), blob->GetBufferSize() };
+
+	HRESULT hr = D3D12Core::getInstance().GetDevice()->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&entry.pso));
+
+	if (FAILED(hr))
+	{
+		entry.pso.Reset();
+		entry.failed = true;
+		DebugReport(RenderReport_Contract, L"[PSO] 컴퓨트 PSO 생성 실패 (해당 디스패치 스킵됨)");
+	}
+
+	return entry.pso.Get();
 }
 
 

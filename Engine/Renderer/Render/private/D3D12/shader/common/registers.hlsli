@@ -15,8 +15,10 @@ cbuffer ConditionCB : register(b0, space0)
     float  g_Time;
     float4 g_LAmb;
     float4 g_LCol;
-    float3 g_LDir;      // 표면 -> 빛 방향 (dot(N, g_LDir) 로 바로 씀)
-    matrix g_LVP;       // 전역조명 뷰프로젝션
+    float3 g_LDir;      // 빛이 진행하는 방향 (빛 -> 표면). 셰이더에서 뒤집어서 L = -g_LDir 로 씀
+    matrix g_LVP[4];    // 전역조명 캐스케이드별 뷰프로젝션 (RENDER_BUILTIN_CSM_MAX, 하나만 쓰면 [0])
+    float4 g_LSplit;    // 캐스케이드 i 가 덮는 뷰 깊이의 끝
+    float4 g_LTile[4];  // 섀도우 아틀라스 타일 (xy = uv 스케일, zw = uv 오프셋)
 };
 
 struct Light

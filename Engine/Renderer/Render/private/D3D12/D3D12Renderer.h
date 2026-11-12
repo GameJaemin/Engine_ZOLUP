@@ -1,33 +1,18 @@
 #pragma once
 
+#include "RenderAdapter.h"
+#include "RenderFactory.h"
 #include "RenderOption.h"
 
 #include "D3D12Renderer_Types.h"
 
-#include <cstdint>
 #include <memory>
 
 
 namespace Hakko
 {
 
-struct RenderLimits
-{
-	uint32_t rvDescriptors = 262144;
-	uint32_t rtvDescriptors = 1024;
-	uint32_t dsvDescriptors = 1024;
-	uint32_t cbAreaInitNum = 1024;
-	uint32_t cbAreaShrinkFreq = 180;
-	uint32_t cbAreaShrinkThreshold = 4;
-};
-
-struct RenderTuning
-{
-	uint32_t resCollectFreq = 4096;
-	uint32_t texCollectThreshold = 4096;
-};
-
-class D3D12Renderer
+class D3D12Renderer : public RenderAdapter
 {
 private:
 	template <typename T> using vector = std::vector<T>;
@@ -68,11 +53,17 @@ private:
 	const UINT				CB_AREA_SHRINK_THRESHOLD;
 
 	const UINT 				CB_AREA_SIZE_CONDITION = RENDER_LAYER_MAX * (UINT)(sizeof(DataHub::RenderCondition) / 256);
-	const UINT 				CB_AREA_SIZE_LIGHT = RENDER_LIGHT_MAX;
 
 
 	static const PSOID		SKYBOX_PASS_PSOID = RESERVED_DRAWPROP_SKYBOX_ID;
 	static const PSOID		BG_PASS_PSOID = RESERVED_DRAWPROP_BG_ID;
+
+	static constexpr INT	DEPTH_BIAS_SHADOWCASTER = DEPTHBIAS_SHADOWCASTER_BIAS;
+	static constexpr FLOAT	DEPTH_BIAS_SLOPE_SHADOWCASTER = DEPTHBIAS_SHADOWCASTER_SLOPE;
+	static constexpr FLOAT	DEPTH_BIAS_CLAMP_SHADOWCASTER = DEPTHBIAS_SHADOWCASTER_CLAMP;
+	static constexpr INT	DEPTH_BIAS_DECAL = DEPTHBIAS_DECAL_BIAS;
+	static constexpr FLOAT	DEPTH_BIAS_SLOPE_DECAL = DEPTHBIAS_DECAL_SLOPE;
+	static constexpr FLOAT	DEPTH_BIAS_CLAMP_DECAL = DEPTHBIAS_DECAL_CLAMP;
 
 
 	const CD3DX12_HEAP_PROPERTIES 	DEFAULT_HEAP_PROPS;
@@ -89,11 +80,13 @@ private:
 	bool								tearingSupported;
 	bool								suspended;
 	std::wstring						defaultShaderDir;
+	
 
 	ComPtr<IDXGISwapChain3> 			swapChain;
 
-	ComPtr<ID3D12CommandQueue> 			renderCMDQueue;
+	ID3D12CommandQueue* 				renderCMDQueue = nullptr;
 	ComPtr<ID3D12CommandAllocator> 		renderCMDAllocators[FRAME_COUNT];
+	ComPtr<ID3D12CommandAllocator> 		uploadCMDAllocator;
 	ComPtr<ID3D12GraphicsCommandList> 	renderCMDList_Master;
 
 
@@ -125,6 +118,8 @@ private:
 	UINT 								bbWidth;
 	UINT 								bbHeight;
 
+	D3D12_CPU_DESCRIPTOR_HANDLE 		nullRTVHandle;
+
 	ComPtr<ID3D12Resource> 				backBuffers[FRAME_COUNT];
 	D3D12_CPU_DESCRIPTOR_HANDLE 		bbvCPUHandles[FRAME_COUNT];
 
@@ -133,7 +128,7 @@ private:
 	UINT64								currentFrameCount;
 
 	ComPtr<ID3D12Fence> 				fence;
-	HANDLE 								fenceEvent;
+	HANDLE 								fenceEvent = nullptr;
 	UINT64 								currentFenceValue;
 	UINT64 								frameFenceValues[FRAME_COUNT];
 	
@@ -152,6 +147,9 @@ private:
 	vector<DataHub::ShaderInfo> 			shaderList;
 	vector<DX12_CompiledShader>				compiledShaderList;
 
+	ComPtr<ID3D12RootSignature> 			computeRootSig;
+	vector<DX12_ComputePSO>					computePSOList;
+
 	DX12_OutputSignature					outputSigIds[OUTPUT_SIGNATURE_MAX];
 	array<bool, RENDER_TARGET_MAX>			outputSigBlendableMasks[OUTPUT_SIGNATURE_MAX];
 	uint8_t									outputSigCount = 1;
@@ -163,6 +161,10 @@ private:
 
 	vector<DX12_Mesh>						meshList;
 	vector<DX12_MeshView>					meshViewList;
+	vector<CSBufferID>						csRefList_Mesh;
+
+	vector<DX12_Buffer>						csBufferList;
+	vector<DX12_BufferView>					csBufferViewList;
 
 
     vector<DX12_Texture> 					textureList;
@@ -175,9 +177,11 @@ private:
 
 	
 	vector<DX12_CombinedTextureView> 		combinedTextureList;
+	vector<DataHub::TextureProp>			combinedTextureBodyList;
 	vector<DX12_SingleTextureView> 			singleTextureList;
 	vector<UINT16>							frameMarkList_STex;
 	vector<DX12_WritableTextureView>		writableTextureList;
+	vector<D3D12_CLEAR_VALUE>				writableClearList;
 	vector<uint16_t>						blankedIdxList_WTex;
 
 	vector<DX12_SingleTextureView> 			rtSTexInstantLists[FRAME_COUNT];
@@ -187,26 +191,23 @@ private:
 	vector<DX12_WritableTextureView>		dsvReadOnlyInstantLists[FRAME_COUNT];
 
 
-	vector<DX12_InstantLogical>				rtInstantLogicalList;
-	vector<DX12_InstantLogical>				dsInstantLogicalList;
-	vector<uint16_t>						instantFreeList;
-	vector<D3D12_RESOURCE_STATES>			rtInstantSimStates;
-	vector<D3D12_RESOURCE_STATES>			dsInstantSimStates;
-	vector<D3D12_RESOURCE_BARRIER>			barrierScratch;
-
-
 	vector<bool>							releaseMeshIdMask;
-	int 									meshReleaseCount;
+	int 									meshReleaseCount = -1;
 	vector<bool>							releaseTexIdMask;
-	int 									texReleaseCount;
+	int 									texReleaseCount = -1;
+	vector<bool>							releaseCSBufferIdMask;
+	int 									csBufferReleaseCount = -1;
 	vector<bool>							releasePSOIdMask;
-	int 									psoReleaseCount;
+	int 									psoReleaseCount = -1;
 	vector<bool>							releaseCTexIdMask;
-	int 									cTexReleaseCount;
+	int 									cTexReleaseCount = -1;
 
-
-	vector<bool>							instantClearedRT;
-	vector<bool>							instantClearedDS;
+	vector<DX12_Mesh>						retiredMeshLists[FRAME_COUNT];
+	vector<DX12_Texture>					retiredTextureLists[FRAME_COUNT];
+	vector<DX12_Buffer>						retiredCSBufferLists[FRAME_COUNT];
+	vector<DX12_PSOGenerator>				retiredPSOLists[FRAME_COUNT];
+	vector<DX12_STexView>					retiredSTexViewLists[FRAME_COUNT];
+	vector<DX12_CTexView>					retiredCTexViewLists[FRAME_COUNT];
 	
 	#pragma endregion
 
@@ -220,19 +221,16 @@ private:
 	
 
 	unique_ptr<CBArea<DataHub::RenderCondition>>	cbArea_Condition[FRAME_COUNT];
-	vector<CBArea<DataHub::DataBox_RenderLight>>	cbArea_Light[FRAME_COUNT];
-	
+
 	vector<CBAreaRaw>								cbArea_DataBox[FRAME_COUNT];
+	vector<CBAreaRaw>								cbArea_Light;
 	vector<CBAreaRaw>								cbArea_LightMatrix;
 
 
-	vector<ComPtr<ID3D12Resource>>					retiredCBAreas;
-	vector<uint32_t>								tidCounts;
+	vector<ComPtr<ID3D12Resource>>					retiredCBAreaList;
 
-	vector<vector<uint32_t>>						dataSlotLUT;
-	vector<vector<uint32_t>>						dataSlotStamp;
-	
-	vector<DX12_RenderRequestProxy>					sortScratch;
+	vector<vector<uint32_t>>						dataSlotLUTList;
+	vector<vector<uint32_t>>						dataSlotStampList;
 
 	#pragma endregion
 
@@ -243,15 +241,15 @@ private:
 
 	#pragma region Lifecycle
 public:
-	bool Init(HWND hwnd, int width, int height);
-	void Finalize();
+	bool Init(HWND hwnd, int width, int height) override;
+	void Finalize() override;
 
-	void OnResize(int width, int height);
-	void SetVSync(bool enable);
-	void SetTuning(const RenderTuning& tuning);
+	void OnResize(int width, int height) override;
+	void SetVSync(bool enable) override;
+	void SetTuning(const RenderTuning& tuning) override;
 
-	void Sketch();
-	void Render();
+	void Sketch() override;
+	void Render() override;
 
 	// Sketch 하위 동작
 private:
@@ -259,6 +257,10 @@ private:
 	void GetConditionData();
 	void GetDataFromSortedId();
 	void UploadRenderData();
+
+	// Render 하위 동작
+	void RecordActionBarriers(ID3D12GraphicsCommandList* cmdList, const DX12_RenderLayer& layer, const vector<DX12_ActionBarrier>& barriers, UINT frameIdx);
+	void RecordComputeAction(ID3D12GraphicsCommandList* cmdList, const DX12_RenderLayer& layer, size_t actionIdx, UINT frameIdx, D3D12_GPU_DESCRIPTOR_HANDLE defaultSRHandle);
 
 	#pragma endregion
 
@@ -294,8 +296,10 @@ private:
 	void ScheduledReleaseResource();
 
 
-	void UploadMesh();	
-	void UploadTexture();
+	void UploadMesh(vector<ComPtr<ID3D12Resource>>& uploadBufferList);	
+	void UploadTexture(vector<ComPtr<ID3D12Resource>>& uploadBufferList);
+	void UploadCSBuffer(vector<ComPtr<ID3D12Resource>>& uploadBufferList);
+	void LinkCSBufferMesh(vector<ComPtr<ID3D12Resource>>& uploadBufferList);
 	void GetShaderInfo();
 
 	void BuildPSOBody();
@@ -303,8 +307,18 @@ private:
 	void BuildCombinedTexture();
 
 
+	void UpdateMesh(vector<ComPtr<ID3D12Resource>>& uploadBufferList);
+	void UpdateTexture(vector<ComPtr<ID3D12Resource>>& uploadBufferList);
+	void UpdateCSBuffer(vector<ComPtr<ID3D12Resource>>& uploadBufferList);
+	void UpdatePSOBody();
+	void UpdateCombinedTexture();
+
+	void ReleaseRetiredResource();
+
+
 	void ReleaseMesh(vector<bool>& releaseResIdMask);
 	void ReleaseTexture(vector<bool>& releaseResIdMask);
+	void ReleaseCSBuffer(vector<bool>& releaseResIdMask);
 
 	void ReleasePSOBody(vector<bool>& releaseResIdMask);
 	void ReleaseCombinedTexture(vector<bool>& releaseResIdMask);
@@ -313,16 +327,23 @@ private:
 	void ResizeTextureInstant();
 
 
+	void BeginUploadCommands();
+	void FlushUploadCommands();
+
 	void MarkOrBuildSingleTexture(TexID texId);
+	void BuildWritableTexture(const DX12_Texture& texture, const DataHub::Texture& src, DX12_WTexRef& ref);
+	void ReleaseWritableTexture(DX12_WTexRef& ref);
+
+	bool CreateMeshResource(const DataHub::Mesh& src, DX12_Mesh& mesh, DX12_MeshView& view, vector<ComPtr<ID3D12Resource>>& uploadBufferList);
+	bool CreateIndexResource(const std::vector<DataHub::VIndex>& indices, const std::vector<DataHub::SubMesh>& subMeshes, UINT vertexCount, DX12_Mesh& mesh, DX12_MeshView& view, vector<ComPtr<ID3D12Resource>>& uploadBufferList);
+	void UnlinkMesh(MeshID meshId, UINT retireSlot);
+	bool CreateTextureResource(const DataHub::Texture& src, DX12_Texture& texture, vector<ComPtr<ID3D12Resource>>& uploadBufferList);
+	bool CreateBufferResource(const DataHub::ComputeBuffer& src, DX12_Buffer& buffer, DX12_BufferView& view, vector<ComPtr<ID3D12Resource>>& uploadBufferList);
+	bool BuildCombinedView(const DataHub::TextureProp& prop, UINT& rvStartIndex);
 
 	bool CompileShader(ShaderID shaderId, uint8_t variant, ComPtr<IDxcBlob>& outBlob);
 	IDxcBlob* GetCompiledShader(ShaderID shaderId, uint8_t variant);
-
-	static uint8_t ShaderVariantVS(DataHub::VertexType vertexType);
-	static uint8_t ShaderVariantPS(DataHub::Action_OutputLayout layout);
-
-	static DX12_OutputSignature PackOutputSignature(const DX12_OutputSignatureDesc& desc);
-	static DX12_OutputSignatureDesc UnpackOutputSignature(const DX12_OutputSignature& sig);
+	ID3D12PipelineState* GetComputePSO(ShaderID csId);
 
 	OutputSignatureID GetOutputSignatureId(DX12_OutputSignature outputSig);
 	
@@ -338,7 +359,8 @@ private:
 	void ReadLayerOption();
 	void ReadActionNode();
 
-	void ReadUploadRequest();
+	void ReadUploadRequest(vector<ComPtr<ID3D12Resource>>& uploadBufferList);
+	void ReadUpdateRequest(vector<ComPtr<ID3D12Resource>>& uploadBufferList);
 	void ReadReleaseRequest();
 
 
@@ -347,9 +369,7 @@ private:
 	static const DataHub::RTB_Action& GetActionSource(const DataHub::RTB_Layer& layerDesc, ActionID id);
 	
 	void BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB_Layer& layerDesc);
-	void BuildActionBarriers(DX12_RenderAction& action);
-
-	void RecordActionBarriers(ID3D12GraphicsCommandList* cmdList, const DX12_RenderLayer& layer, const vector<DX12_ActionBarrier>& barriers, UINT frameIdx);
+	void BuildActionBarriers(DX12_RenderAction& action, vector<D3D12_RESOURCE_STATES>& rtInstantSimStateList, vector<D3D12_RESOURCE_STATES>& dsInstantSimStateList);
 
 	#pragma endregion
 

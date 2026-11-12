@@ -10,7 +10,7 @@
 namespace Hakko::DataHub
 {
 
-    // 미구현: Structured 는 등록 시 리포트 후 Constant 로 취급
+    // (미구현) Structured 는 등록 시 리포트 후 Constant 로 취급
     enum DataBoxUploadMode
     {
         DataBoxUploadMode_Constant,
@@ -71,9 +71,11 @@ namespace Hakko::DataHub
 
         static void RemoveDataBox(DataBoxTID tid, DataBoxID dataId);
 
-        // [주의]
-        // 벡터 직접 조작은 권장되진 않습니다
-        // IDtBProvider 값 갱신 필요
+        template <std::derived_from<DataBox_Custom> CustomDataBox>
+        static bool UpdateDataBox(DataBoxID dataId, const CustomDataBox& dataBox);
+
+        // 값 수정용: 받은 리스트의 원소 값은 바로 고쳐 써도 됩니다
+        // 길이는 여기서 바꾸지 마세요 (추가 / 삭제는 AddDataBox / RemoveDataBox 로, 프로바이더가 길이와 주소를 따로 들고 있음)
         template <std::derived_from<DataBox_Custom> CustomDataBox>
         static std::vector<CustomDataBox>& GetDataBoxList();
 
@@ -109,6 +111,12 @@ template <>
 inline DataBoxTID DataBoxCustomizer::GetTypeId<DataBox_Render2DScreen>()
 {
     return DataBoxType_DtB_2DScreen;
+}
+
+template <>
+inline DataBoxTID DataBoxCustomizer::GetTypeId<DataBox_RenderShadowView>()
+{
+    return DataBoxType_DtB_ShadowView;
 }
 
 #pragma endregion
@@ -206,6 +214,30 @@ inline void DataBoxCustomizer::RemoveDataBox(DataBoxTID tid, DataBoxID dataId)
 }
 
 template <std::derived_from<DataBox_Custom> CustomDataBox>
+bool DataBoxCustomizer::UpdateDataBox(DataBoxID dataId, const CustomDataBox& dataBox)
+{
+    DataBoxTID tid = GetTypeId<CustomDataBox>();
+
+    if (providerList.size() <= tid || providerList[tid] == nullptr)
+    {
+        DataHub::Internal::PushHubReport(HubReport_Contract, L"[Hub] 데이터박스 타입 미등록 (Init 시점에 등록 필요)");
+        return false;
+    }
+
+    DataBoxProvider<CustomDataBox>* provider = static_cast<DataBoxProvider<CustomDataBox>*>(providerList[tid].get());
+
+    if (dataId == 0 || dataId >= provider->dataBoxList.size())
+    {
+        DataHub::Internal::PushHubReport(HubReport_Contract, L"[Hub] UpdateDataBox: 데이터 id 범위 밖 또는 예약 0번 (무시됨)");
+        return false;
+    }
+
+    provider->dataBoxList[dataId] = dataBox;
+
+    return true;
+}
+
+template <std::derived_from<DataBox_Custom> CustomDataBox>
 std::vector<CustomDataBox>& DataBoxCustomizer::GetDataBoxList()
 {
     DataBoxTID tid = GetTypeId<CustomDataBox>();
@@ -244,5 +276,40 @@ inline DataBoxTID DataBoxCustomizer::GetProviderCount()
 {
     return (DataBoxTID)providerList.size();
 }
+
+#pragma region DataBoxControl
+
+// 데이터박스 추가 / 삭제: Light / LightMatrix 는 전용 리스트 (특수화), 그 외는 커스터마이저
+template <std::derived_from<DataBox> T>
+DataBoxID AddDataBox(const T& dataBox)
+{
+    static_assert(std::derived_from<T, DataBox_Custom>, "Condition / Light 는 전용 경로, 그 외는 DataBox_Custom 상속 필요");
+    return DataBoxCustomizer::AddDataBox<T>(T(dataBox));
+}
+
+template <>
+DataBoxID AddDataBox<DtB_Light>(const DtB_Light& dataBox);
+
+template <>
+DataBoxID AddDataBox<DtB_LightMatrix>(const DtB_LightMatrix& dataBox);
+
+void RemoveDataBox(DataBoxTID tid, DataBoxID id);
+
+// 데이터박스 값 바꾸기: 한 칸을 통째로 덮어씀 (일부 필드만 / 여러 칸을 고칠 땐 GetDataBoxList 로 직접)
+template <std::derived_from<DataBox> T>
+bool UpdateDataBox(DataBoxID id, const T& dataBox)
+{
+    static_assert(std::derived_from<T, DataBox_Custom>, "Condition / Light 는 전용 경로, 그 외는 DataBox_Custom 상속 필요");
+    return DataBoxCustomizer::UpdateDataBox<T>(id, dataBox);
+}
+
+template <>
+bool UpdateDataBox<DtB_Light>(DataBoxID id, const DtB_Light& dataBox);
+
+template <>
+bool UpdateDataBox<DtB_LightMatrix>(DataBoxID id, const DtB_LightMatrix& dataBox);
+
+#pragma endregion
+
 
 }

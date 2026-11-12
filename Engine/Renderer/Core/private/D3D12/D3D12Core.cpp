@@ -44,8 +44,9 @@ void D3D12Core::Init()
 
 void D3D12Core::Finalize()
 {
+    directQueue.Reset();
     device.Reset();
-    adapter.Reset();
+	adapter.Reset();
     factory.Reset();
 }
 
@@ -121,6 +122,20 @@ IDXGIAdapter1 *D3D12Core::GetAdapter()
 ID3D12Device *D3D12Core::GetDevice()
 {
     return device.Get();
+}
+
+ID3D12CommandQueue *D3D12Core::GetDirectQueue()
+{
+    if (directQueue == nullptr)
+    {
+        D3D12_COMMAND_QUEUE_DESC queueDesc = {};
+        queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+        queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+
+        device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&directQueue));
+    }
+
+    return directQueue.Get();
 }
 
 }
