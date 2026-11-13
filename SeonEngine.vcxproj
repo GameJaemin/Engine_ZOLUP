@@ -37,6 +37,7 @@
     <ClCompile Include="Engine\Source\Core\Math\Vector3.cpp" />
     <ClCompile Include="Engine\Source\GameObject.cpp" />
     <ClCompile Include="Engine\Source\GLTFLoader.cpp" />
+    <ClCompile Include="Engine\Source\LevelLoader.cpp" />
     <ClCompile Include="Engine\Source\ImageLoader.cpp" />
     <ClCompile Include="Engine\Source\WindowsApplication.cpp" />
     <ClCompile Include="Engine\Source\World.cpp" />
@@ -74,6 +75,7 @@
     <ClInclude Include="Engine\Source\GameObject.h" />
     <ClInclude Include="Engine\Source\GLTFDocument.h" />
     <ClInclude Include="Engine\Source\GLTFLoader.h" />
+    <ClInclude Include="Engine\Source\LevelLoader.h" />
     <ClInclude Include="Engine\Source\WindowsApplication.h" />
     <ClInclude Include="Engine\Source\World.h" />
     <ClInclude Include="Engine\Source\Renderer\Material.h" />

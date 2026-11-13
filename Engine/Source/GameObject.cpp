@@ -15,6 +15,16 @@ GameObject::GameObject(World& targetWorld)
 
 GameObject::~GameObject() = default;
 
+const std::string& GameObject::GetName() const
+{
+	return name;
+}
+
+void GameObject::SetName(std::string newName)
+{
+	name = std::move(newName);
+}
+
 World& GameObject::GetWorld() const
 {
 	return world;

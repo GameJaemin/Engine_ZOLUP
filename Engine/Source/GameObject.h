@@ -4,6 +4,7 @@
 
 #include <concepts>
 #include <memory>
+#include <string>
 #include <vector>
 
 class World;
@@ -23,6 +24,17 @@ public:
 	GameObject& operator=(const GameObject&) = delete;
 	GameObject(GameObject&&) = delete;
 	GameObject& operator=(GameObject&&) = delete;
+
+	// 이름
+public:
+	/** 객체의 수명 동안 표시용 이름을 빌려준다. */
+	const std::string& GetName() const;
+
+	/** 표시용 이름을 바꾼다. 다른 객체와 같은 이름을 쓸 수 있다. */
+	void SetName(std::string newName);
+
+private:
+	std::string name = "GameObject";
 
 	// 소속 월드
 public:

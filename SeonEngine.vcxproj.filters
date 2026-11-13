@@ -111,6 +111,9 @@
     <ClCompile Include="Engine\Source\GLTFLoader.cpp">
       <Filter>Engine\Source</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Source\LevelLoader.cpp">
+      <Filter>Engine\Source</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Source\ImageLoader.cpp">
       <Filter>Engine\Source</Filter>
     </ClCompile>
@@ -222,6 +225,9 @@
       <Filter>Engine\Source</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\GLTFLoader.h">
+      <Filter>Engine\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\LevelLoader.h">
       <Filter>Engine\Source</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Core\FileHelper.h">

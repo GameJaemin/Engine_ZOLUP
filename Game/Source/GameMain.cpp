@@ -3,15 +3,21 @@
 #include "Component/DirectionalLightComponent.h"
 #include "Component/StaticMeshComponent.h"
 #include "Component/TransformComponent.h"
+#include "Core/Log.h"
 #include "Core/Math/EulerAngles.h"
+#include "Core/Math/Transform.h"
 #include "Core/Math/Vector3.h"
 #include "Engine.h"
 #include "GameObject.h"
+#include "LevelLoader.h"
+#include "Paths.h"
 #include "PlayerObject.h"
 #include "Renderer/Material.h"
 #include "Texture/Texture.h"
 
 #include <cstddef>
+#include <filesystem>
+#include <format>
 #include <memory>
 #include <optional>
 #include <string_view>
@@ -42,9 +48,9 @@ namespace
 
 	/**
 	 * model의 배치표대로 객체들을 만들어, position(cm)에 놓은 빈 루트 객체 아래에 붙인다.
-	 * 메시가 있는 노드에는 모두 material을 쓴다. 루트 객체를 반환한다.
+	 * 메시가 있는 노드에는 overrideMaterial을 쓰고, nullptr면 모델의 메시별 기본 재질을 쓴다. 루트 객체를 반환한다.
 	 */
-	GameObject* AddModel(World& world, const Model& model, const Vector3& position, const std::shared_ptr<const Material>& material)
+	GameObject* AddModel(World& world, const Model& model, const Vector3& position, const std::shared_ptr<const Material>& overrideMaterial)
 	{
 		// 루트는 놓을 위치를 맡고, 노드 객체는 파일에 적힌 배치를 그대로 유지한다.
 		std::unique_ptr<GameObject> rootObject = std::make_unique<GameObject>(world);
@@ -61,9 +67,11 @@ namespace
 
 			if (sceneNode.mesh.has_value())
 			{
+				const std::size_t meshIndex = sceneNode.mesh.value();
+
 				std::unique_ptr<StaticMeshComponent> mesh = std::make_unique<StaticMeshComponent>();
-				mesh->SetStaticMesh(model.meshes[sceneNode.mesh.value()]);
-				mesh->SetMaterial(material);
+				mesh->SetStaticMesh(model.meshes[meshIndex]);
+				mesh->SetMaterial(overrideMaterial != nullptr ? overrideMaterial : model.meshMaterials[meshIndex]);
 				nodeObject->AddComponent(std::move(mesh));
 			}
 
@@ -92,6 +100,27 @@ int main()
 	}
 
 	World& world = engine.GetWorld();
+	std::filesystem::path levelPath;
+	if (!Paths::GetAbsolutePath("Game/Content/Maps/DevMap.json", levelPath))
+	{
+		Log::Write(LogLevel::Error, "Level", "Could not resolve Game/Content/Maps/DevMap.json from the repository root");
+		return 1;
+	}
+
+	const std::optional<std::vector<GameObject*>> loadedObjects = LoadLevel(levelPath, world);
+	if (!loadedObjects.has_value()) { return 1; }
+
+	// 맵의 빈 객체는 화면에 보이지 않으므로 복원된 값을 콘솔에서 확인한다.
+	Log::Write(LogLevel::Info, "Level", std::format("Loaded {} objects", loadedObjects->size()));
+	for (const GameObject* object : *loadedObjects)
+	{
+		const Transform transform = object->GetComponent<TransformComponent>()->GetTransform();
+		const Vector3& position = transform.position;
+		const Quaternion& rotation = transform.rotation;
+		const Vector3& scale = transform.scale;
+		Log::Write(LogLevel::Info, "Level", std::format("{}: position(cm) [{}, {}, {}], rotation [{}, {}, {}, {}], scale [{}, {}, {}]", object->GetName(), position.x, position.y, position.z, rotation.x, rotation.y, rotation.z, rotation.w, scale.x, scale.y, scale.z));
+	}
+
 	GameObject* player = world.AddGameObject(std::make_unique<PlayerObject>(world));
 	// World에 등록된 객체의 카메라만 지정할 수 있으므로 AddGameObject 뒤에 지정한다.
 	if (player != nullptr) { world.SetActiveCamera(player->GetComponent<CameraComponent>()); }
