@@ -20,7 +20,11 @@ void SampleSurface(PSInput input, out float4 albedo, out float3 worldNormal, out
 {
     const float4 texColor = g_Tex[0].Sample(g_SamplerAnisoWrap, input.uv);
     const float4 normalVal = g_Tex[1].Sample(g_SamplerAnisoWrap, input.uv);
-    const float4 orm = g_Tex[2].Sample(g_SamplerAnisoWrap, input.uv);
+    // [임시] ORM 분리 테스트 (glTF) : 4 = Occlusion (r), 5 = MetallicRoughness (g = Rough, b = Metal)
+    // const float4 orm = g_Tex[2].Sample(g_SamplerAnisoWrap, input.uv);
+    const float3 orm = float3(
+        g_Tex[4].Sample(g_SamplerAnisoWrap, input.uv).r,
+        g_Tex[5].Sample(g_SamplerAnisoWrap, input.uv).gb);
     emission = g_Tex[3].Sample(g_SamplerAnisoWrap, input.uv).rgb;
 
     albedo = texColor * obj_Col;
