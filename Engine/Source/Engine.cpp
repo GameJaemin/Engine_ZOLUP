@@ -59,7 +59,6 @@ int Engine::Run()
 		return 1;
 	}
 
-	// 신기능 (인터페이스)
 	Hakko::DataHub::SetLayerBackground(RESERVED_TEX_NONE_DIFFUSE_ID);
 	Hakko::DataHub::SetLayerBackgroundColor(0.3f, 0.05f, 0.1f, 1.0f);
 

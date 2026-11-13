@@ -8,13 +8,16 @@
 #include "GameObject.h"
 #include "Mesh/StaticMesh.h"
 #include "Renderer/Material.h"
+#include "Texture/Texture.h"
 
 #include "DataHub.h"
 #include "DataHub_Interface.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -35,7 +38,6 @@ void RenderScene::RemoveStaticMeshComponent(StaticMeshComponent* component)
 	const auto objectData = objectDataIds.find(component);
 	if (objectData != objectDataIds.end())
 	{
-		// 빌트인 타입은 enum 인자로도 가능
 		Hakko::DataHub::RemoveDataBox(Hakko::DataHub::DataBoxType_DtB_3DGeneral, objectData->second);
 		objectDataIds.erase(objectData);
 	}
@@ -108,13 +110,196 @@ bool RenderScene::PrepareStaticMeshes()
 			return false;
 		}
 
-		// 사양 변경 (비트 조합식)
-		Hakko::DataHub::RTB_UpdateResources upload = {};
+		Hakko::DataHub::RTB_UpdateResources upload{};
 		upload.command = Hakko::DataHub::RTBCMD_Upload_Resource;
-
-		// 인터페이스
 		Hakko::DataHub::SendRTB(upload);
 	}
+
+	return true;
+}
+
+bool RenderScene::PrepareTexture(const Texture& texture, Hakko::DataHub::TexID& outTextureID)
+{
+	outTextureID = 0;
+
+	const TextureFormat format = texture.GetFormat();
+	switch (format)
+	{
+	case TextureFormat::RGBA8UNorm:
+	case TextureFormat::RGBA8SRGB:
+		break;
+	default:
+		Log::Write(LogLevel::Error, "RenderScene", "Unsupported texture format");
+		return false;
+	}
+
+	if (texture.GetPath().empty())
+	{
+		Log::Write(LogLevel::Error, "RenderScene", "Texture registration requires an asset path");
+		return false;
+	}
+	if (texture.GetWidth() == 0 || texture.GetHeight() == 0)
+	{
+		Log::Write(LogLevel::Error, "RenderScene", "Texture dimensions must be nonzero");
+		return false;
+	}
+
+	// RGBA8의 행과 전체 이미지 크기를 바이트 단위로 계산한다.
+	const std::uint64_t rowPitch = static_cast<std::uint64_t>(texture.GetWidth()) * 4;
+	const std::uint32_t maxPitch = (std::numeric_limits<std::uint32_t>::max)();
+	if (rowPitch > maxPitch)
+	{
+		Log::Write(LogLevel::Error, "RenderScene", "Texture row pitch exceeds the Hakko limit");
+		return false;
+	}
+
+	const std::uint64_t slicePitch = rowPitch * texture.GetHeight();
+	if (slicePitch > maxPitch)
+	{
+		Log::Write(LogLevel::Error, "RenderScene", "Texture slice pitch exceeds the Hakko limit");
+		return false;
+	}
+	if (slicePitch != texture.GetPixels().size())
+	{
+		Log::Write(LogLevel::Error, "RenderScene", "Texture pixel size does not match its dimensions");
+		return false;
+	}
+
+	const std::string& path = texture.GetPath();
+	const std::u8string pathUtf8(path.begin(), path.end());
+	const std::filesystem::path assetPath = std::filesystem::path(pathUtf8).lexically_normal();
+	std::wstring name = assetPath.generic_wstring();
+
+	// 같은 파일도 GPU 형식이 다르면 별도 자원으로 구분한다.
+	switch (format)
+	{
+	case TextureFormat::RGBA8UNorm:
+		name += L"|RGBA8UNorm";
+		break;
+	case TextureFormat::RGBA8SRGB:
+		name += L"|RGBA8SRGB";
+		break;
+	default:
+		return false;
+	}
+
+	const Hakko::DataHub::TexID existingTextureID = Hakko::DataHub::GetTexId(name);
+	if (existingTextureID != 0)
+	{
+		outTextureID = existingTextureID;
+		return true;
+	}
+
+	Hakko::DataHub::Texture renderTexture{};
+
+	switch (format)
+	{
+	case TextureFormat::RGBA8UNorm:
+		renderTexture.data.format = Hakko::DataHub::TextureReadFormat::RGBA8_UNorm;
+		break;
+	case TextureFormat::RGBA8SRGB:
+		renderTexture.data.format = Hakko::DataHub::TextureReadFormat::RGBA8_SRGB;
+		break;
+	default:
+		return false;
+	}
+
+	renderTexture.data.textureType = Hakko::DataHub::TextureType_2D;
+	renderTexture.data.width = texture.GetWidth();
+	renderTexture.data.height = texture.GetHeight();
+	renderTexture.data.depth = 1;
+	renderTexture.data.mipLevels = 1;
+	renderTexture.data.arraySize = 1;
+	renderTexture.usage = Hakko::DataHub::TextureUsage_ReadOnly;
+
+	// 공유 CPU 에셋의 픽셀은 유지하고 업로드용 복사본을 만든다.
+	renderTexture.rawData = texture.GetPixels();
+
+	// 원본 해상도의 2D 이미지 한 장이며 픽셀 배열의 처음부터 읽는다.
+	renderTexture.subresources.push_back({
+		.offset = 0,
+		.rowPitch = static_cast<std::uint32_t>(rowPitch),
+		.slicePitch = static_cast<std::uint32_t>(slicePitch)
+	});
+
+	const Hakko::DataHub::TexID textureID = Hakko::DataHub::CreateTexture(name.c_str(), std::move(renderTexture));
+	if (textureID == 0)
+	{
+		Log::Write(LogLevel::Error, "RenderScene", "Failed to register texture: " + path);
+		return false;
+	}
+
+	// 다른 자원 요청 비트를 유지하면서 이번 프레임의 업로드를 요청한다.
+	Hakko::DataHub::RTB_UpdateResources upload{};
+	upload.command = Hakko::DataHub::RTBCMD_Upload_Resource;
+	Hakko::DataHub::SendRTB(upload);
+
+	outTextureID = textureID;
+	return true;
+}
+
+bool RenderScene::PrepareTextureProp(const Material* material, Hakko::DataHub::TexPropID& outTexturePropID)
+{
+	outTexturePropID = 0;
+
+	// 미지정 재질이나 색상 텍스처는 오류용 조합 0을 사용한다.
+	if (material == nullptr) { return true; }
+	if (material->baseColorTexture == nullptr) { return true; }
+
+	const Texture& texture = *material->baseColorTexture;
+
+	Hakko::DataHub::TexID baseColorTextureID = 0;
+	if (!PrepareTexture(texture, baseColorTextureID))
+	{
+		return false;
+	}
+
+	const std::string& path = texture.GetPath();
+	const std::u8string pathUtf8(path.begin(), path.end());
+	const std::filesystem::path assetPath = std::filesystem::path(pathUtf8).lexically_normal();
+	const std::u8string normalizedPathUtf8 = assetPath.generic_u8string();
+
+	std::string name(normalizedPathUtf8.begin(), normalizedPathUtf8.end());
+
+	switch (texture.GetFormat())
+	{
+	case TextureFormat::RGBA8UNorm:
+		name += "|RGBA8UNorm";
+		break;
+	case TextureFormat::RGBA8SRGB:
+		name += "|RGBA8SRGB";
+		break;
+	default:
+		return false;
+	}
+
+	const Hakko::DataHub::TexPropID existingTexturePropID = Hakko::DataHub::GetTexPropId(name);
+	if (existingTexturePropID != 0)
+	{
+		outTexturePropID = existingTexturePropID;
+		return true;
+	}
+
+	Hakko::DataHub::TextureProp prop{};
+	prop.texId[0] = baseColorTextureID;
+	prop.texId[1] = RESERVED_TEX_NONE_NORMAL_ID;
+
+	// ORM을 모두 1로 샘플링해 재질의 거칠기와 금속성 계수를 그대로 적용한다.
+	prop.texId[2] = RESERVED_TEX_NONE_DIFFUSE_ID;
+	prop.texId[3] = RESERVED_TEX_NONE_EMISSION_ID;
+
+	const Hakko::DataHub::TexPropID texturePropID = Hakko::DataHub::CreateTexProp(name.c_str(), prop);
+	if (texturePropID == 0)
+	{
+		Log::Write(LogLevel::Error, "RenderScene", "Failed to register texture combination: " + path);
+		return false;
+	}
+
+	Hakko::DataHub::RTB_UpdateResources upload{};
+	upload.command = Hakko::DataHub::RTBCMD_Upload_Prop;
+	Hakko::DataHub::SendRTB(upload);
+
+	outTexturePropID = texturePropID;
 
 	return true;
 }
@@ -136,17 +321,11 @@ bool RenderScene::PrepareCamera(const CameraViewInfo& cameraViewInfo, float aspe
 		return DirectX::XMMatrixTranspose(DirectX::XMLoadFloat4x4(&values));
 	};
 
-	// 신기능 (인터페이스)
-	Hakko::DataHub::RTB_SetCamera camera = {};
+	Hakko::DataHub::RTB_SetCamera camera{};
 	camera.view = toShaderMatrix(viewMatrix);
 	camera.proj = toShaderMatrix(projectionMatrix);
 	camera.viewProj = toShaderMatrix(viewProjectionMatrix);
-	camera.eyePos = {
-		cameraViewInfo.position.x,
-		cameraViewInfo.position.y,
-		cameraViewInfo.position.z
-	};
-
+	camera.eyePos = { cameraViewInfo.position.x, cameraViewInfo.position.y, cameraViewInfo.position.z };
 	Hakko::DataHub::SendRTB(camera);
 
 	return true;
@@ -154,8 +333,7 @@ bool RenderScene::PrepareCamera(const CameraViewInfo& cameraViewInfo, float aspe
 
 void RenderScene::PrepareDirectionalLight()
 {
-	// 신기능 (인터페이스)
-	Hakko::DataHub::RTB_SetGlobalLight light = {};
+	Hakko::DataHub::RTB_SetGlobalLight light{};
 
 	// 사용할 조명이 없어도 이전 프레임의 빛이 남지 않게 한다.
 	light.ambient = { 0.0f, 0.0f, 0.0f, 1.0f };
@@ -184,7 +362,6 @@ void RenderScene::PrepareDirectionalLight()
 
 bool RenderScene::PrepareDrawRequests()
 {
-	// 신기능 (인터페이스)
 	Hakko::DataHub::ClearOpaqueDrawRequests();
 
 	for (const StaticMeshComponent* component : staticMeshComponents)
@@ -201,12 +378,11 @@ bool RenderScene::PrepareDrawRequests()
 		if (meshId == 0)
 		{
 			Log::Write(LogLevel::Error, "RenderScene", "Static mesh is not registered: " + path);
-
 			Hakko::DataHub::ClearOpaqueDrawRequests();
 			return false;
 		}
 
-		const Matrix4x4 worldMatrix = transform->GetTransform().ToMatrix();
+		const Matrix4x4 worldMatrix = transform->GetWorldMatrix();
 		DirectX::XMFLOAT4X4 values;
 		std::memcpy(&values, worldMatrix.m, sizeof(values));
 
@@ -220,6 +396,13 @@ bool RenderScene::PrepareDrawRequests()
 		objectData.metalic = 0.0f;
 
 		const std::shared_ptr<const Material>& material = component->GetMaterial();
+		Hakko::DataHub::TexPropID texturePropID = 0;
+		if (!PrepareTextureProp(material.get(), texturePropID))
+		{
+			Hakko::DataHub::ClearOpaqueDrawRequests();
+			return false;
+		}
+
 		if (material != nullptr)
 		{
 			const Vector3& color = material->baseColor;
@@ -236,27 +419,27 @@ bool RenderScene::PrepareDrawRequests()
 			if (dataId == 0)
 			{
 				Log::Write(LogLevel::Error, "RenderScene", "Failed to register static mesh object data");
+				Hakko::DataHub::ClearOpaqueDrawRequests();
 				return false;
 			}
 
 			objectDataIds.emplace(component, dataId);
 		}
-		else
+		else if (!Hakko::DataHub::UpdateDataBox(found->second, objectData))
 		{
-			// 신기능 (하나 바꿀때는 리스트 안가져와도 됨)
-			Hakko::DataHub::UpdateDataBox(found->second, objectData);
+			Log::Write(LogLevel::Error, "RenderScene", "Failed to update static mesh object data");
+			Hakko::DataHub::ClearOpaqueDrawRequests();
+			return false;
 		}
 
 		const Hakko::DataHub::DataBoxID objectDataId = objectDataIds.at(component);
 
-		// 간결한 사용법 (추천) ...이지만 뭐 기호에 맞춰서 사용하세요
-		Hakko::DataHub::RTB_DrawOPQ request = {};
+		Hakko::DataHub::RTB_DrawOPQ request{};
 		request.drawProp = RESERVED_DRAWPROP_OPAQUE_ID;
-		request.texProp = 0; // 임시 대체 조합. 정상적인 기본 표면 연결은 후속 단계다.
+		request.texProp = texturePropID;
 		request.meshId = meshId;
 		request.subMeshId = 0;
 		request.generalId = objectDataId;
-
 		Hakko::DataHub::SendRTB(request);
 	}
 

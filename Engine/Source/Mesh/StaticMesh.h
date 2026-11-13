@@ -13,7 +13,10 @@
 class StaticMesh : public Asset
 {
 public:
-	/** UTF-8 표시 이름과 저장소 루트 기준 상대 경로를 받는다. 파일 없이 생성하면 빈 경로를 사용한다. */
+	/**
+	 * UTF-8 표시 이름과 저장소 루트 기준 상대 경로를 받는다. 파일 없이 생성하면 빈 경로를 사용한다.
+	 * 파일 안의 여러 메시 중 하나면 경로 뒤에 "#번호"가 붙는다.
+	 */
 	StaticMesh(std::string newName, std::string newPath);
 
 public:

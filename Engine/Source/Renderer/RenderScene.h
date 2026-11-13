@@ -7,7 +7,9 @@
 
 class DirectionalLightComponent;
 class StaticMeshComponent;
+class Texture;
 struct CameraViewInfo;
+struct Material;
 
 /**
  * 한 World의 정적 메시와 방향광 컴포넌트 등록 목록을 관리한다. 메인 스레드에서 사용하며 World가 소유한다.
@@ -64,6 +66,28 @@ public:
 	 */
 	bool PrepareStaticMeshes();
 
+	// Hakko 텍스처 등록
+private:
+	/**
+	 * DataHub 초기화 후 메인 스레드의 렌더링 준비 중 CPU 텍스처를 Hakko에 등록한다.
+	 * 정규화한 경로와 형식으로 기존 등록을 재사용한다. 같은 경로와 형식의 픽셀은 등록 후 변경하지 않는다.
+	 * 새 등록에는 픽셀 복사본을 전달하고 업로드를 요청한다. 같은 프레임에 렌더러가 요청을 처리해야 한다.
+	 * 성공하면 ID를 출력하고 true를 반환하며, GPU 업로드 완료를 뜻하지는 않는다.
+	 * 잘못된 입력이나 등록 실패는 false를 반환하고 outTextureID는 0으로 유지한다.
+	 * 경로 변환과 할당 실패 예외는 전파한다.
+	 */
+	bool PrepareTexture(const Texture& texture, Hakko::DataHub::TexID& outTextureID);
+
+	/**
+	 * DataHub 초기화 후 메인 스레드의 렌더링 준비 중 재질의 텍스처 조합을 준비한다.
+	 * 재질 또는 색상 텍스처가 미지정이면 오류용 조합 0을 출력하고 true를 반환한다.
+	 * 색상 텍스처의 정규화한 경로와 형식으로 조합을 재사용하며, 나머지 슬롯은 기본 노멀, 흰색 ORM과 검정 발광으로 고정한다.
+	 * 새 조합은 같은 프레임에 렌더러가 업로드 요청을 처리해야 한다. 성공 시 ID를 출력하며 GPU 준비 완료를 뜻하지는 않는다.
+	 * 텍스처 준비나 조합 등록에 실패하면 false를 반환하고 outTexturePropID는 0으로 유지한다.
+	 * PrepareTexture의 예외와 같은 프레임 업로드 계약을 따른다. 실패 전에 등록한 텍스처는 유지한다.
+	 */
+	bool PrepareTextureProp(const Material* material, Hakko::DataHub::TexPropID& outTexturePropID);
+
 	// Hakko 카메라 준비
 public:
 	/**
@@ -86,10 +110,12 @@ public:
 	/**
 	 * DataHub 초기화와 메시 준비 성공 후 Sketch 전에 호출한다. 기존 기본 레이어의 불투명 요청 목록을 비우고 다시 만든다.
 	 * 메시와 TransformComponent가 있는 대상의 객체 데이터를 갱신하고 첫 서브메시의 그리기 요청을 추가한다.
-	 * 메시 ID는 에셋 경로로 매번 조회하며, 미등록 메시나 객체 데이터 등록 실패 시 false를 반환한다.
-	 * 요청 생성부터 Sketch의 요청 소비까지 메시 ID를 재배치하거나 DataHub를 종료하면 안 된다.
+	 * 메시 ID는 에셋 경로로 매번 조회하며 재질의 텍스처 조합을 준비해 요청에 연결한다.
+	 * 미등록 메시, 텍스처 또는 조합 준비 실패나 객체 데이터 등록 실패 시 false를 반환한다.
+	 * 요청 생성부터 렌더러의 요청 소비까지 메시, 텍스처와 조합 ID를 재배치하거나 DataHub를 종료하면 안 된다.
+	 * 새 텍스처와 조합의 업로드 요청은 같은 프레임에 렌더러가 처리해야 한다.
 	 * 경로 변환과 할당 실패 예외는 전파한다.
-	 * 텍스처 조합은 현재 임시 대체 조합 0을 사용한다. 정상적인 기본 표면 연결은 후속 단계다.
+	 * 재질 또는 색상 텍스처 미지정은 오류용 조합 0을 사용한다.
 	 */
 	bool PrepareDrawRequests();
 

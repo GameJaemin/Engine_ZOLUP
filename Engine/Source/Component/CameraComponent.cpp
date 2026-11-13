@@ -51,7 +51,7 @@ bool CameraComponent::GetCameraViewInfo(CameraViewInfo& outCameraViewInfo) const
 	const TransformComponent* transformComponent = owner->GetComponent<TransformComponent>();
 	if (transformComponent == nullptr) { return false; }
 
-	const Transform transform = transformComponent->GetTransform();
+	const Transform transform = transformComponent->GetWorldTransform();
 	outCameraViewInfo.position = transform.position;
 	outCameraViewInfo.rotation = transform.rotation;
 	outCameraViewInfo.projectionMode = projectionMode;

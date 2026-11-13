@@ -63,7 +63,7 @@ private:
 	// 시점 값
 public:
 	/**
-	 * 같은 객체의 TransformComponent 위치와 회전, 이 카메라의 투영 설정으로 시점 값을 채운다. 크기는 쓰지 않는다.
+	 * 같은 객체의 부모까지 합친 월드 위치와 회전, 이 카메라의 투영 설정으로 시점 값을 채운다. 크기는 쓰지 않는다.
 	 * 부착 전이거나 TransformComponent가 없으면 출력값을 유지하고 false를 반환한다.
 	 */
 	bool GetCameraViewInfo(CameraViewInfo& outCameraViewInfo) const;
