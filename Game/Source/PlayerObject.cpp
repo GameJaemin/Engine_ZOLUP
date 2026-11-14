@@ -31,6 +31,9 @@ PlayerObject::PlayerObject(World& targetWorld)
 	input->BindKey(Key::S, KeyTrigger::Held, [this](float deltaTime) { Move(Vector3{ 0.0f, 0.0f, -1.0f }, deltaTime); });
 	input->BindKey(Key::A, KeyTrigger::Held, [this](float deltaTime) { Move(Vector3{ -1.0f, 0.0f, 0.0f }, deltaTime); });
 	input->BindKey(Key::D, KeyTrigger::Held, [this](float deltaTime) { Move(Vector3{ 1.0f, 0.0f, 0.0f }, deltaTime); });
+	// +Y는 위쪽이다. 에디터 카메라에서 흔한 배치를 따라 E는 위, Q는 아래로 움직인다.
+	input->BindKey(Key::E, KeyTrigger::Held, [this](float deltaTime) { Move(Vector3{ 0.0f, 1.0f, 0.0f }, deltaTime); });
+	input->BindKey(Key::Q, KeyTrigger::Held, [this](float deltaTime) { Move(Vector3{ 0.0f, -1.0f, 0.0f }, deltaTime); });
 	input->BindKey(Key::Space, KeyTrigger::Pressed, [this](float) { PrintPosition("Space Pressed"); });
 	input->BindKey(Key::Space, KeyTrigger::Released, [this](float) { PrintPosition("Space Released"); });
 
