@@ -1,16 +1,16 @@
 #include "Engine.h"
 
-#include "CameraViewInfo.h"
-#include "Component/CameraComponent.h"
 #include "Core/FrameTimer.h"
 #include "Core/Log.h"
-#include "Input/InputDispatcher.h"
+#include "IApplication.h"
+#include "Renderer/RenderScene.h"
 
 #include "D3D12Renderer.h"
 #include "DataHub.h"
 #include "DataHub_Interface.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 Engine::Engine() = default;
@@ -20,48 +20,69 @@ Engine::~Engine()
 	Shutdown();
 }
 
+int Engine::Run(IApplication& application)
+{
+	if (hasRun) { return 1; }
+	hasRun = true;
+
+	int exitCode = 1;
+	if (Initialize())
+	{
+		if (application.OnInitialize())
+		{
+			exitCode = RunFrameLoop(application);
+		}
+
+		application.OnShutdown();
+	}
+
+	if (!Shutdown()) { return 1; }
+
+	return exitCode;
+}
+
 bool Engine::Initialize()
 {
 	if (!windowsApplication.Initialize()) { return false; }
 
-	canRun = true;
-	return true;
-}
-
-bool Engine::Shutdown()
-{
-	canRun = false;
-	if (renderer)
+	int clientWidth = 0;
+	int clientHeight = 0;
+	if (!windowsApplication.GetClientSize(clientWidth, clientHeight) || clientWidth <= 0 || clientHeight <= 0)
 	{
-		// GPU 작업을 마친 뒤 객체 데이터 ID 맵과 DataHub를 비우고, 렌더러 객체를 창보다 먼저 해제한다.
-		renderer->Finalize();
-		world.GetRenderScene().ClearObjectDataIds();
-		Hakko::DataHub::Finalize();
-		renderer.reset();
+		Log::Write(LogLevel::Error, "Engine", "Invalid client size for rendering");
+		return false;
 	}
 
-	return windowsApplication.Shutdown();
-}
-
-World& Engine::GetWorld()
-{
-	return world;
-}
-
-int Engine::Run()
-{
-	if (!canRun) { return 1; }
-	canRun = false;
-
-	if (!InitializeRendering())
+	std::unique_ptr<Hakko::D3D12Renderer> newRenderer = std::make_unique<Hakko::D3D12Renderer>(Hakko::RenderLimits{});
+	// 렌더러 초기화에서 예약 리소스와 그리기 설정을 읽으므로 DataHub를 먼저 준비한다.
+	shouldFinalizeDataHub = true;
+	if (!Hakko::DataHub::Init())
 	{
-		Shutdown();
-		return 1;
+		Log::Write(LogLevel::Error, "Engine", "DataHub initialization failed");
+		return false;
 	}
+
+	if (!newRenderer->Init(windowsApplication.GetWindowHandle(), clientWidth, clientHeight))
+	{
+		Log::Write(LogLevel::Error, "Engine", "D3D12 renderer initialization failed");
+		// Init에 실패한 렌더러는 GPU 펜스 상태를 보장할 수 없어 Finalize하지 않는다.
+		return false;
+	}
+
+	renderer = std::move(newRenderer);
+	renderWidth = clientWidth;
+	renderHeight = clientHeight;
+
+	Log::Write(LogLevel::Info, "Engine", "D3D12 renderer initialized");
 
 	Hakko::DataHub::SetLayerBackground(RESERVED_TEX_NONE_DIFFUSE_ID);
 	Hakko::DataHub::SetLayerBackgroundColor(0.3f, 0.05f, 0.1f, 1.0f);
 
+	return true;
+}
+
+int Engine::RunFrameLoop(IApplication& application)
+{
 	Log::Write(LogLevel::Info, "Engine", "Run loop started");
 
 	// 초기화와 World 구성 시간을 첫 측정에서 빼려고 루프 직전에 만든다.
@@ -70,9 +91,9 @@ int Engine::Run()
 
 	while (windowsApplication.ProcessMessages(exitCode))
 	{
-		Tick(frameTimer.Tick());
+		application.OnUpdate(windowsApplication.GetInputState(), frameTimer.Tick());
 
-		// 최소화 중에도 월드와 시간은 갱신하고, 렌더링 작업만 생략한다.
+		// 최소화 중에도 애플리케이션과 시간을 갱신한다.
 		if (windowsApplication.IsMinimized()) { continue; }
 
 		int clientWidth = 0;
@@ -80,7 +101,6 @@ int Engine::Run()
 		if (!windowsApplication.GetClientSize(clientWidth, clientHeight))
 		{
 			Log::Write(LogLevel::Error, "Engine", "Failed to get client size for rendering");
-			Shutdown();
 			return 1;
 		}
 
@@ -93,81 +113,35 @@ int Engine::Run()
 			renderHeight = clientHeight;
 		}
 
-		const CameraComponent* camera = world.GetActiveCamera();
-		if (camera == nullptr) { continue; }
+		const std::optional<SceneView> sceneView = application.GetSceneView();
+		if (!sceneView.has_value()) { continue; }
 
-		CameraViewInfo cameraViewInfo;
-		if (!camera->GetCameraViewInfo(cameraViewInfo)) { continue; }
-
+		RenderScene& scene = sceneView->scene.get();
 		const float aspectRatio = static_cast<float>(clientWidth) / static_cast<float>(clientHeight);
-		if (!world.GetRenderScene().PrepareCamera(cameraViewInfo, aspectRatio)) { continue; }
+		if (!scene.PrepareCamera(sceneView->camera, aspectRatio)) { continue; }
 
-		world.GetRenderScene().PrepareDirectionalLight();
-
-		if (!world.GetRenderScene().PrepareStaticMeshes())
-		{
-			Shutdown();
-			return 1;
-		}
-
-		if (!world.GetRenderScene().PrepareDrawRequests())
-		{
-			Shutdown();
-			return 1;
-		}
+		scene.PrepareDirectionalLight();
+		if (!scene.PrepareStaticMeshes() || !scene.PrepareDrawRequests()) { return 1; }
 
 		renderer->Sketch();
 		renderer->Render();
 	}
 
-	if (!Shutdown()) { return 1; }
-
 	return exitCode;
 }
 
-bool Engine::InitializeRendering()
+bool Engine::Shutdown()
 {
-	int clientWidth = 0;
-	int clientHeight = 0;
-	if (!windowsApplication.GetClientSize(clientWidth, clientHeight) || clientWidth <= 0 || clientHeight <= 0)
+	if (renderer)
 	{
-		Log::Write(LogLevel::Error, "Engine", "Invalid client size for rendering");
-		return false;
+		renderer->Finalize();
 	}
-
-	std::unique_ptr<Hakko::D3D12Renderer> newRenderer = std::make_unique<Hakko::D3D12Renderer>(Hakko::RenderLimits{});
-	// 렌더러 초기화에서 예약 리소스와 그리기 설정을 읽으므로 DataHub를 먼저 준비한다.
-	if (!Hakko::DataHub::Init())
+	if (shouldFinalizeDataHub)
 	{
-		Log::Write(LogLevel::Error, "Engine", "DataHub initialization failed");
-		
 		Hakko::DataHub::Finalize();
-		
-		return false;
+		shouldFinalizeDataHub = false;
 	}
+	renderer.reset();
 
-	if (!newRenderer->Init(windowsApplication.GetWindowHandle(), clientWidth, clientHeight))
-	{
-		Log::Write(LogLevel::Error, "Engine", "D3D12 renderer initialization failed");
-
-		// Finalize는 생성된 GPU 펜스를 전제로 하므로 Init 실패 경로에서 호출하지 않는다.
-		Hakko::DataHub::Finalize();
-		
-		return false;
-	}
-
-	renderer = std::move(newRenderer);
-	renderWidth = clientWidth;
-	renderHeight = clientHeight;
-
-	Log::Write(LogLevel::Info, "Engine", "D3D12 renderer initialized");
-
-	return true;
-}
-
-void Engine::Tick(float deltaTime)
-{
-	// 입력 바인딩을 먼저 실행한 뒤 일반 갱신을 한다.
-	world.GetInputDispatcher().Dispatch(windowsApplication.GetInputState(), deltaTime);
-	world.Tick(deltaTime);
+	return windowsApplication.Shutdown();
 }

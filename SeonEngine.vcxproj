@@ -16,6 +16,7 @@
     <ClCompile Include="Engine\Source\Core\Math\Quaternion.cpp" />
     <ClCompile Include="Engine\Source\Core\Math\Transform.cpp" />
     <ClCompile Include="Game\Source\GameMain.cpp" />
+    <ClCompile Include="Game\Source\GameApplication.cpp" />
     <ClCompile Include="Game\Source\PlayerObject.cpp" />
     <ClCompile Include="Engine\Source\Asset.cpp" />
     <ClCompile Include="Engine\Source\Mesh\StaticMesh.cpp" />
@@ -52,11 +53,13 @@
     <ClInclude Include="Engine\Source\ImageLoader.h" />
     <ClInclude Include="Engine\Source\AssetManager.h" />
     <ClInclude Include="Engine\Source\Engine.h" />
+    <ClInclude Include="Engine\Source\IApplication.h" />
     <ClInclude Include="Engine\Source\Core\FileHelper.h" />
     <ClInclude Include="Engine\Source\Core\FrameTimer.h" />
     <ClInclude Include="Engine\Source\Core\Log.h" />
     <ClInclude Include="Engine\Source\Paths.h" />
     <ClInclude Include="Game\Source\PlayerObject.h" />
+    <ClInclude Include="Game\Source\GameApplication.h" />
     <ClInclude Include="Engine\Source\Input\InputState.h" />
     <ClInclude Include="Engine\Source\Input\Key.h" />
     <ClInclude Include="Engine\Source\Input\InputDispatcher.h" />

@@ -120,7 +120,10 @@ public:
 	 */
 	bool PrepareDrawRequests();
 
-	/** GPU 작업 완료 후 DataHub 종료에 맞춰 ID 맵만 비운다. 실제 객체 데이터는 DataHub 종료 시 정리한다. */
+	/**
+	 * 종료 시 장면 제출을 중단한 뒤 ID 맵만 비운다. 이후 이 장면을 제출하지 않는다.
+	 * 실제 객체 데이터는 DataHub에 남으며 GPU 작업 완료 뒤 DataHub 종료에서 정리한다.
+	 */
 	void ClearObjectDataIds();
 
 private:

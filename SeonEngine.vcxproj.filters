@@ -48,6 +48,9 @@
     <ClCompile Include="Game\Source\GameMain.cpp">
       <Filter>Game\Source</Filter>
     </ClCompile>
+    <ClCompile Include="Game\Source\GameApplication.cpp">
+      <Filter>Game\Source</Filter>
+    </ClCompile>
     <ClCompile Include="Game\Source\PlayerObject.cpp">
       <Filter>Game\Source</Filter>
     </ClCompile>
@@ -146,6 +149,9 @@
     <ClInclude Include="Game\Source\PlayerObject.h">
       <Filter>Game\Source</Filter>
     </ClInclude>
+    <ClInclude Include="Game\Source\GameApplication.h">
+      <Filter>Game\Source</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\Source\Asset.h">
       <Filter>Engine\Source</Filter>
     </ClInclude>
@@ -159,6 +165,9 @@
       <Filter>Engine\Source</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Engine.h">
+      <Filter>Engine\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\IApplication.h">
       <Filter>Engine\Source</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\World.h">
