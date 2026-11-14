@@ -5,12 +5,14 @@
 #include <filesystem>
 #include <map>
 #include <memory>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 struct Material;
+struct Prefab;
 class StaticMesh;
 class Texture;
 enum class TextureFormat;
@@ -69,12 +71,13 @@ public:
 
 private:
 	/**
-	 * glTF 재질 설명으로 Material을 만든다. 색 텍스처는 modelDirectory(저장소 루트 기준 모델 폴더) 기준으로 불러온다.
+	 * glTF 재질 설명으로 Material을 만든다. 색 텍스처(sRGB), 노멀 텍스처와 ORM 텍스처(선형)는 modelDirectory(저장소 루트 기준 모델 폴더) 기준으로 불러온다.
+	 * 차폐 텍스처는 금속성-거칠기 텍스처와 같은 이미지일 때만 ORM의 R로 쓰이며, 아니면 경고 로그를 남기고 무시한다.
 	 * 텍스처를 불러오지 못하면 nullptr를 반환한다.
 	 */
 	std::shared_ptr<const Material> CreateMaterial(const GLTFModelMaterial& source, const std::filesystem::path& modelDirectory);
 
-	std::unordered_map<std::filesystem::path, std::shared_ptr<const Model>> models;
+	std::unordered_map<std::string, std::shared_ptr<const Model>> models;
 
 	// 텍스처
 public:
@@ -86,5 +89,16 @@ public:
 	std::shared_ptr<const Texture> LoadTexture(std::string_view relativePath, TextureFormat format);
 
 private:
-	std::map<std::pair<std::filesystem::path, TextureFormat>, std::shared_ptr<const Texture>> textures;
+	std::map<std::pair<std::string, TextureFormat>, std::shared_ptr<const Texture>> textures;
+
+	// 프리팹
+public:
+	/**
+	 * 저장소 루트 기준 UTF-8 상대 경로에서 프리팹을 불러오고 같은 경로 요청에 재사용한다.
+	 * 실패하면 nullptr를 반환한다. 모델이 생략된 프리팹도 유효하다.
+	 */
+	[[nodiscard]] std::shared_ptr<const Prefab> LoadPrefab(std::string_view relativePath);
+
+private:
+	std::unordered_map<std::string, std::shared_ptr<const Prefab>> prefabs;
 };

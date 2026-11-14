@@ -6,14 +6,28 @@
 #include "ImageLoader.h"
 #include "Mesh/StaticMesh.h"
 #include "Paths.h"
+#include "Prefab.h"
 #include "Renderer/Material.h"
 #include "Texture/Texture.h"
 
 #include <cassert>
 #include <cstddef>
+#include <format>
 #include <optional>
 #include <string>
 #include <utility>
+
+namespace
+{
+	/** 모델 폴더 기준 UTF-8 uri를 modelDirectory와 합쳐 저장소 루트 기준 UTF-8 상대 경로로 바꾼다. */
+	std::string MakeModelImagePath(const std::filesystem::path& modelDirectory, const std::string& uri)
+	{
+		const std::u8string uriUtf8(uri.begin(), uri.end());
+		const std::filesystem::path imagePath = (modelDirectory / std::filesystem::path(uriUtf8)).lexically_normal();
+		const std::u8string imagePathUtf8 = imagePath.generic_u8string();
+		return std::string(imagePathUtf8.begin(), imagePathUtf8.end());
+	}
+}
 
 AssetManager* AssetManager::instance = nullptr;
 
@@ -46,7 +60,11 @@ std::shared_ptr<const Model> AssetManager::LoadModel(std::string_view relativePa
 	absolutePath = absolutePath.lexically_normal();
 	absolutePath.make_preferred();
 
-	const auto cachedModel = models.find(absolutePath);
+	const std::u8string absolutePathUtf8 = absolutePath.u8string();
+	const std::string pathText(absolutePathUtf8.begin(), absolutePathUtf8.end());
+	const std::string cacheKey = Paths::MakeAssetKey(pathText);
+
+	const auto cachedModel = models.find(cacheKey);
 	if (cachedModel != models.end()) { return cachedModel->second; }
 
 	GLTFModel gltfModel;
@@ -113,7 +131,7 @@ std::shared_ptr<const Model> AssetManager::LoadModel(std::string_view relativePa
 	model.sceneNodes = std::move(gltfModel.sceneNodes);
 
 	std::shared_ptr<const Model> result = std::make_shared<const Model>(std::move(model));
-	models.emplace(std::move(absolutePath), result);
+	models.emplace(cacheKey, result);
 	return result;
 }
 
@@ -127,15 +145,36 @@ std::shared_ptr<const Material> AssetManager::CreateMaterial(const GLTFModelMate
 
 	if (!source.baseColorImageUri.empty())
 	{
-		// uri는 UTF-8이며 모델 파일 폴더 기준이다. 폴더와 합쳐 저장소 루트 기준 경로로 만든다.
-		const std::u8string uriUtf8(source.baseColorImageUri.begin(), source.baseColorImageUri.end());
-		const std::filesystem::path imagePath = (modelDirectory / std::filesystem::path(uriUtf8)).lexically_normal();
-		const std::u8string imagePathUtf8 = imagePath.generic_u8string();
-		const std::string relativePath(imagePathUtf8.begin(), imagePathUtf8.end());
-
 		// glTF 색 텍스처의 RGB는 sRGB 값이다. 같은 이미지는 LoadTexture가 캐시해 공유한다.
-		material.baseColorTexture = LoadTexture(relativePath, TextureFormat::RGBA8SRGB);
+		material.baseColorTexture = LoadTexture(MakeModelImagePath(modelDirectory, source.baseColorImageUri), TextureFormat::RGBA8SRGB);
 		if (material.baseColorTexture == nullptr) { return nullptr; }
+	}
+
+	if (!source.normalImageUri.empty())
+	{
+		// 노멀 텍스처의 RGB는 색이 아니라 방향 값이라 sRGB 변환 없이 선형으로 읽는다.
+		material.normalTexture = LoadTexture(MakeModelImagePath(modelDirectory, source.normalImageUri), TextureFormat::RGBA8UNorm);
+		if (material.normalTexture == nullptr) { return nullptr; }
+	}
+
+	if (!source.metallicRoughnessImageUri.empty())
+	{
+		// glTF 금속성-거칠기 텍스처의 G, B는 엔진 ORM의 거칠기, 금속성 자리와 같아 그대로 ORM으로 쓴다.
+		// 차폐가 따로 묶여 있지 않으면 R은 파일에 든 값이 차폐로 읽힌다.
+		material.ormTexture = LoadTexture(MakeModelImagePath(modelDirectory, source.metallicRoughnessImageUri), TextureFormat::RGBA8UNorm);
+		if (material.ormTexture == nullptr) { return nullptr; }
+	}
+
+	if (!source.occlusionImageUri.empty())
+	{
+		// 엔진은 ORM 한 장만 받으므로 차폐는 금속성-거칠기 텍스처와 같은 이미지(R 채널)일 때만 쓰인다.
+		// uri 표기가 달라도(./orm.png와 orm.png) 같은 파일로 보도록 정리한 경로끼리 비교한다.
+		const bool isPackedWithMetallicRoughness = !source.metallicRoughnessImageUri.empty()
+			&& MakeModelImagePath(modelDirectory, source.occlusionImageUri) == MakeModelImagePath(modelDirectory, source.metallicRoughnessImageUri);
+		if (!isPackedWithMetallicRoughness)
+		{
+			Log::Write(LogLevel::Warning, "AssetManager", std::format("Material '{}': occlusion texture is not packed with the metallic-roughness texture; ignored", source.name));
+		}
 	}
 
 	return std::make_shared<const Material>(std::move(material));
@@ -160,7 +199,10 @@ std::shared_ptr<const Texture> AssetManager::LoadTexture(std::string_view relati
 	absolutePath = absolutePath.lexically_normal();
 	absolutePath.make_preferred();
 
-	const std::pair<std::filesystem::path, TextureFormat> cacheKey(absolutePath, format);
+	const std::u8string absolutePathUtf8 = absolutePath.u8string();
+	const std::string pathText(absolutePathUtf8.begin(), absolutePathUtf8.end());
+	const std::pair<std::string, TextureFormat> cacheKey(Paths::MakeAssetKey(pathText), format);
+
 	const auto cachedTexture = textures.find(cacheKey);
 	if (cachedTexture != textures.end()) { return cachedTexture->second; }
 
@@ -188,4 +230,39 @@ std::shared_ptr<const Texture> AssetManager::LoadTexture(std::string_view relati
 
 	textures.emplace(cacheKey, texture);
 	return texture;
+}
+
+std::shared_ptr<const Prefab> AssetManager::LoadPrefab(std::string_view relativePath)
+{
+	std::filesystem::path absolutePath;
+	if (!Paths::GetAbsolutePath(relativePath, absolutePath))
+	{
+		Log::Write(LogLevel::Error, "AssetManager", "Failed to resolve prefab path: " + std::string(relativePath));
+		return nullptr;
+	}
+
+	const std::u8string absolutePathUtf8 = absolutePath.u8string();
+	const std::string pathText(absolutePathUtf8.begin(), absolutePathUtf8.end());
+	const std::string cacheKey = Paths::MakeAssetKey(pathText);
+
+	const auto cachedPrefab = prefabs.find(cacheKey);
+	if (cachedPrefab != prefabs.end()) { return cachedPrefab->second; }
+
+	std::optional<std::string> modelPath;
+	if (!ReadPrefabModelPath(absolutePath, modelPath)) { return nullptr; }
+
+	Prefab prefab{};
+	if (modelPath.has_value())
+	{
+		prefab.model = LoadModel(*modelPath);
+		if (prefab.model == nullptr)
+		{
+			Log::Write(LogLevel::Error, "AssetManager", std::format("{}: could not load model {}", relativePath, *modelPath));
+			return nullptr;
+		}
+	}
+
+	std::shared_ptr<const Prefab> result = std::make_shared<const Prefab>(std::move(prefab));
+	prefabs.emplace(cacheKey, result);
+	return result;
 }

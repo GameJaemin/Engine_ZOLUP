@@ -16,6 +16,14 @@ struct Material
 	// 각 성분은 0부터 1까지이며, 흰색이면 텍스처 색상을 유지한다.
 	Vector3 baseColor = { 1.0f, 1.0f, 1.0f };
 
+	// 접선 공간 노멀 텍스처다. RGB가 방향 값이라 선형(RGBA8UNorm) 형식이어야 한다.
+	// nullptr이면 노멀맵이 없는 정상 상태이며 평평한 기본 노멀을 쓴다.
+	std::shared_ptr<const Texture> normalTexture;
+
+	// 차폐-거칠기-금속성(ORM) 텍스처다. R은 차폐, G는 거칠기, B는 금속성이며 선형(RGBA8UNorm) 형식이어야 한다.
+	// nullptr이면 ORM 텍스처가 없는 정상 상태이며 차폐 없이 거칠기와 금속성 계수만 쓴다.
+	std::shared_ptr<const Texture> ormTexture;
+
 	// ORM의 G에 곱할 거칠기 계수다. 범위는 0부터 1까지다.
 	// 1이면 텍스처 값을 유지하고, 0이면 최종 거칠기가 0이 된다.
 	float roughness = 1.0f;

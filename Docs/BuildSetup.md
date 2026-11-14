@@ -42,7 +42,7 @@ Debug, Release의 추가 포함 디렉터리에 `$(ProjectDir)Engine\Source`를 
 | --- | --- |
 | `directx-headers` | Direct3D 12 API 헤더와 `d3dx12.h` 보조 타입 |
 | `directx-dxc` | 렌더러 초기화 시 기본 HLSL 셰이더 컴파일 |
-| `directxtex` | GPU 텍스처 생성 시 DXGI 형식을 sRGB 형식으로 변환 |
+| `imgui` | 에디터 UI에 사용할 Dear ImGui. `docking-experimental`, `win32-binding`, `dx12-binding` 기능을 설치 |
 
 ### Windows 시스템 라이브러리
 
@@ -77,6 +77,8 @@ MSBuild가 자동으로 읽는 [Directory.Build.props](../Directory.Build.props)
 ## 자산 폴더
 
 게임 자산은 `Game/Content/`, 엔진 기본 자산은 `Engine/Content/`에 둡니다. 코드에서는 `Game/Content/Meshes/Box.gltf`처럼 저장소 루트 기준 상대 경로로 가리키며, `Engine/Source/Paths.h`의 `Paths::GetAbsolutePath`가 이를 절대 경로로 바꿉니다.
+
+경로 표기, 자산 조회 키 및 실패 로그는 [자산 경로 규칙](Conventions/PathConvention.md)을 따릅니다.
 
 자산은 출력 폴더로 복사하지 않습니다. `Paths::GetRootDirectory`는 실행 파일이 위 `OutDir` 배치(`Binaries` 아래 세 단계)에 있다는 전제로 저장소 루트를 구하므로, 실행 파일만 다른 위치로 옮기면 자산을 찾지 못합니다. `OutDir`의 깊이를 바꾸면 이 함수도 함께 고칩니다.
 

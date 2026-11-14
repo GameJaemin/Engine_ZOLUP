@@ -39,6 +39,16 @@ struct GLTFModelMaterial
 	// 색 텍스처 이미지의 .gltf 폴더 기준 UTF-8 상대 경로. 비어 있으면 색 텍스처가 없다.
 	// glTF uri의 퍼센트 인코딩(%20 등)은 풀지 않은 그대로다.
 	std::string baseColorImageUri;
+	// 접선 공간 노멀 텍스처 이미지의 .gltf 폴더 기준 UTF-8 상대 경로. 비어 있으면 노멀 텍스처가 없다.
+	// 퍼센트 인코딩은 baseColorImageUri와 같이 풀지 않은 그대로다.
+	std::string normalImageUri;
+	// 금속성-거칠기 텍스처 이미지의 .gltf 폴더 기준 UTF-8 상대 경로. 비어 있으면 금속성-거칠기 텍스처가 없다.
+	// G는 거칠기, B는 금속성이며 선형 값이다. 퍼센트 인코딩은 baseColorImageUri와 같이 풀지 않은 그대로다.
+	std::string metallicRoughnessImageUri;
+	// 차폐 텍스처 이미지의 .gltf 폴더 기준 UTF-8 상대 경로. R 채널만 쓰며 선형 값이다.
+	// 비어 있으면 차폐 텍스처가 없거나 지원하지 않는 형식이다. 금속성-거칠기 텍스처와 같은 이미지(한 장에 묶은 ORM)일 수 있다.
+	// 퍼센트 인코딩은 baseColorImageUri와 같이 풀지 않은 그대로다.
+	std::string occlusionImageUri;
 	// 금속성 계수. 0 이상 1 이하다.
 	float metallic = 1.0f;
 	// 거칠기 계수. 0 이상 1 이하다.

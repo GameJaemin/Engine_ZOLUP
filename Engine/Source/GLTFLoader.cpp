@@ -1,6 +1,7 @@
 #include "GLTFLoader.h"
 
 #include "Core/FileHelper.h"
+#include "Core/Log.h"
 #include "Core/Math/Matrix4x4.h"
 #include "Core/Math/Transform.h"
 #include "Core/Math/Vector3.h"
@@ -15,6 +16,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <format>
 #include <optional>
 #include <string>
 #include <utility>
@@ -285,7 +287,33 @@ namespace
 		return textureInfo;
 	}
 
-	/** materials 배열을 읽는다. 배열이 없으면 빈 배열을 돌려준다. pbrMetallicRoughness 외의 항목은 읽지 않는다. */
+	/** 재질의 노멀 텍스처 참조(normalTextureInfo) 객체 하나를 읽는다. */
+	GLTFNormalTextureInfo ReadNormalTextureInfo(const rapidjson::Value& item)
+	{
+		GLTFNormalTextureInfo normalTextureInfo;
+
+		// 부모 부분(index, texCoord)만 가리키는 참조로 대입해 scale은 그대로 둔다.
+		GLTFTextureInfo& textureInfo = normalTextureInfo;
+		textureInfo = ReadTextureInfo(item);
+		if (item.HasMember("scale")) { normalTextureInfo.scale = item["scale"].GetFloat(); }
+
+		return normalTextureInfo;
+	}
+
+	/** 재질의 차폐 텍스처 참조(occlusionTextureInfo) 객체 하나를 읽는다. */
+	GLTFOcclusionTextureInfo ReadOcclusionTextureInfo(const rapidjson::Value& item)
+	{
+		GLTFOcclusionTextureInfo occlusionTextureInfo;
+
+		// 부모 부분(index, texCoord)만 가리키는 참조로 대입해 strength는 그대로 둔다.
+		GLTFTextureInfo& textureInfo = occlusionTextureInfo;
+		textureInfo = ReadTextureInfo(item);
+		if (item.HasMember("strength")) { occlusionTextureInfo.strength = item["strength"].GetFloat(); }
+
+		return occlusionTextureInfo;
+	}
+
+	/** materials 배열을 읽는다. 배열이 없으면 빈 배열을 돌려준다. pbrMetallicRoughness, normalTexture 및 occlusionTexture 외의 항목은 읽지 않는다. */
 	std::vector<GLTFMaterial> ReadMaterials(const rapidjson::Value& document)
 	{
 		std::vector<GLTFMaterial> materials;
@@ -315,7 +343,11 @@ namespace
 				if (pbrItem.HasMember("baseColorTexture")) { pbr.baseColorTexture = ReadTextureInfo(pbrItem["baseColorTexture"]); }
 				if (pbrItem.HasMember("metallicFactor")) { pbr.metallicFactor = pbrItem["metallicFactor"].GetFloat(); }
 				if (pbrItem.HasMember("roughnessFactor")) { pbr.roughnessFactor = pbrItem["roughnessFactor"].GetFloat(); }
+				if (pbrItem.HasMember("metallicRoughnessTexture")) { pbr.metallicRoughnessTexture = ReadTextureInfo(pbrItem["metallicRoughnessTexture"]); }
 			}
+
+			if (item.HasMember("normalTexture")) { material.normalTexture = ReadNormalTextureInfo(item["normalTexture"]); }
+			if (item.HasMember("occlusionTexture")) { material.occlusionTexture = ReadOcclusionTextureInfo(item["occlusionTexture"]); }
 
 			materials.push_back(std::move(material));
 		}
@@ -696,8 +728,33 @@ namespace
 	}
 
 	/**
+	 * 텍스처 참조를 textures -> images 순서로 따라가 이미지 uri를 찾아 채운다.
+	 * TEXCOORD_0이 아니거나, 번호가 범위를 벗어나거나, source가 없거나, data URI 또는 bufferView 이미지면 출력값을 유지하고 false를 반환한다.
+	 */
+	bool FindTextureImageUri(const GLTFDocument& gltfDocument, const GLTFTextureInfo& textureInfo, std::string& outUri)
+	{
+		// 정점에는 TEXCOORD_0만 담으므로 다른 UV를 쓰는 텍스처는 바르게 붙일 수 없다.
+		if (textureInfo.texCoord != 0) { return false; }
+		if (textureInfo.index >= gltfDocument.textures.size()) { return false; }
+
+		// source가 없으면 확장이 이미지를 정하는데, 확장은 지원하지 않는다.
+		const GLTFTexture& texture = gltfDocument.textures[textureInfo.index];
+		if (!texture.source.has_value() || texture.source.value() >= gltfDocument.images.size()) { return false; }
+
+		// .glb 안(bufferView)이나 data URI의 이미지는 아직 지원하지 않는다.
+		const GLTFImage& image = gltfDocument.images[texture.source.value()];
+		if (image.uri.empty() || image.uri.starts_with("data:")) { return false; }
+
+		outUri = image.uri;
+
+		return true;
+	}
+
+	/**
 	 * LoadDocument로 채운 원본 문서의 materialIndex번 재질을 엔진 재질 설명으로 바꿔 채운다.
-	 * 계수가 0~1 밖이거나 번호가 범위를 벗어나거나, 지원하지 않는 형식의 색 텍스처면 출력값을 유지하고 false를 반환한다.
+	 * 계수가 0~1 밖이거나 번호가 범위를 벗어나거나, 지원하지 않는 형식의 색, 노멀 또는 금속성-거칠기 텍스처면 출력값을 유지하고 false를 반환한다.
+	 * 노멀 scale이 1이 아니면 경고 로그를 남기고 1로 본다.
+	 * 차폐 strength가 1이 아니면 경고 로그를 남기고 1로 본다. 차폐 텍스처를 찾지 못하면 경고 로그를 남기고 비워 둔다.
 	 */
 	bool ConvertMaterial(const GLTFDocument& gltfDocument, std::size_t materialIndex, GLTFModelMaterial& outMaterial)
 	{
@@ -717,24 +774,42 @@ namespace
 		material.roughness = pbr.roughnessFactor;
 		material.name = source.name;
 
-		// 색 텍스처는 재질 -> textures -> images 순서로 번호를 따라가 이미지 경로를 찾는다.
 		if (pbr.baseColorTexture.has_value())
 		{
-			const GLTFTextureInfo& textureInfo = pbr.baseColorTexture.value();
+			if (!FindTextureImageUri(gltfDocument, pbr.baseColorTexture.value(), material.baseColorImageUri)) { return false; }
+		}
 
-			// 정점에는 TEXCOORD_0만 담으므로 다른 UV를 쓰는 텍스처는 바르게 붙일 수 없다.
-			if (textureInfo.texCoord != 0) { return false; }
-			if (textureInfo.index >= gltfDocument.textures.size()) { return false; }
+		if (source.normalTexture.has_value())
+		{
+			const GLTFNormalTextureInfo& normalTexture = source.normalTexture.value();
 
-			// source가 없으면 확장이 이미지를 정하는데, 확장은 지원하지 않는다.
-			const GLTFTexture& texture = gltfDocument.textures[textureInfo.index];
-			if (!texture.source.has_value() || texture.source.value() >= gltfDocument.images.size()) { return false; }
+			// 렌더러가 노멀 배율을 받지 않아 1로 그린다. 세기가 달라지므로 경고만 남기고 노멀 텍스처는 그대로 쓴다.
+			if (normalTexture.scale != 1.0f)
+			{
+				Log::Write(LogLevel::Warning, "GLTFLoader", std::format("Material {} ('{}'): normalTexture.scale {} is not supported; using 1", materialIndex, source.name, normalTexture.scale));
+			}
+			if (!FindTextureImageUri(gltfDocument, normalTexture, material.normalImageUri)) { return false; }
+		}
 
-			// .glb 안(bufferView)이나 data URI의 이미지는 아직 지원하지 않는다.
-			const GLTFImage& image = gltfDocument.images[texture.source.value()];
-			if (image.uri.empty() || image.uri.starts_with("data:")) { return false; }
+		if (pbr.metallicRoughnessTexture.has_value())
+		{
+			if (!FindTextureImageUri(gltfDocument, pbr.metallicRoughnessTexture.value(), material.metallicRoughnessImageUri)) { return false; }
+		}
 
-			material.baseColorImageUri = image.uri;
+		if (source.occlusionTexture.has_value())
+		{
+			const GLTFOcclusionTextureInfo& occlusionTexture = source.occlusionTexture.value();
+
+			// 렌더러가 차폐 세기를 받지 않아 1로 그린다. 노멀 scale과 같이 경고만 남긴다.
+			if (occlusionTexture.strength != 1.0f)
+			{
+				Log::Write(LogLevel::Warning, "GLTFLoader", std::format("Material {} ('{}'): occlusionTexture.strength {} is not supported; using 1", materialIndex, source.name, occlusionTexture.strength));
+			}
+			// 차폐가 없어도 모양과 재질은 맞게 그려지므로, 경로를 못 찾으면 모델을 실패시키지 않고 차폐만 뺀다.
+			if (!FindTextureImageUri(gltfDocument, occlusionTexture, material.occlusionImageUri))
+			{
+				Log::Write(LogLevel::Warning, "GLTFLoader", std::format("Material {} ('{}'): occlusionTexture is not supported; ignored", materialIndex, source.name));
+			}
 		}
 
 		outMaterial = std::move(material);

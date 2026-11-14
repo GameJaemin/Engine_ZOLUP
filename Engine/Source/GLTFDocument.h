@@ -81,6 +81,20 @@ struct GLTFTextureInfo
 	std::size_t texCoord = 0;
 };
 
+/** glTF material.normalTexture. 텍스처 참조(textureInfo)에 노멀 배율을 더한 형태다. */
+struct GLTFNormalTextureInfo : GLTFTextureInfo
+{
+	// 선택. 노멀맵에서 읽은 노멀의 X, Y에 곱하는 배율. 없으면 1
+	float scale = 1.0f;
+};
+
+/** glTF material.occlusionTexture. 텍스처 참조(textureInfo)에 차폐 세기를 더한 형태다. */
+struct GLTFOcclusionTextureInfo : GLTFTextureInfo
+{
+	// 선택. 차폐를 적용하는 세기(0~1). 0이면 차폐 없음, 1이면 텍스처 값 그대로. 없으면 1
+	float strength = 1.0f;
+};
+
 /** glTF material.pbrMetallicRoughness. 금속성-거칠기 모델의 값이다. */
 struct GLTFPBRMetallicRoughness
 {
@@ -92,15 +106,21 @@ struct GLTFPBRMetallicRoughness
 	float metallicFactor = 1.0f;
 	// 선택. 거칠기 계수(0~1). 없으면 1
 	float roughnessFactor = 1.0f;
+	// 선택. 금속성-거칠기 텍스처. G는 거칠기, B는 금속성이며 선형 값이다. R은 glTF에서 쓰지 않는다.
+	std::optional<GLTFTextureInfo> metallicRoughnessTexture;
 };
 
-/** glTF materials의 항목 하나. 지금은 pbrMetallicRoughness만 담는다. */
+/** glTF materials의 항목 하나. 지금은 pbrMetallicRoughness, normalTexture 및 occlusionTexture만 담는다. */
 struct GLTFMaterial
 {
 	// 선택. 사람이 보기 위한 이름
 	std::string name;
 	// 선택. 없으면 모든 값이 기본값이다.
 	GLTFPBRMetallicRoughness pbrMetallicRoughness;
+	// 선택. 접선 공간(tangent space) 노멀 텍스처
+	std::optional<GLTFNormalTextureInfo> normalTexture;
+	// 선택. 차폐 텍스처. R 채널만 쓰며 선형 값이다.
+	std::optional<GLTFOcclusionTextureInfo> occlusionTexture;
 };
 
 struct GLTFPrimitive;

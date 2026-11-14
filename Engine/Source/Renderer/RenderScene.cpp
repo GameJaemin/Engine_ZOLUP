@@ -7,6 +7,7 @@
 #include "Core/Log.h"
 #include "GameObject.h"
 #include "Mesh/StaticMesh.h"
+#include "Paths.h"
 #include "Renderer/Material.h"
 #include "Texture/Texture.h"
 
@@ -21,6 +22,30 @@
 #include <memory>
 #include <string>
 #include <utility>
+
+namespace
+{
+	/** 텍스처 조합 이름에 쓸 "경로 키|형식" 조각을 만든다. 지원하지 않는 형식이면 출력값을 유지하고 false를 반환한다. */
+	bool MakeTexturePropNamePart(const Texture& texture, std::string& outName)
+	{
+		std::string name = Paths::MakeAssetKey(texture.GetPath());
+
+		switch (texture.GetFormat())
+		{
+		case TextureFormat::RGBA8UNorm:
+			name += "|RGBA8UNorm";
+			break;
+		case TextureFormat::RGBA8SRGB:
+			name += "|RGBA8SRGB";
+			break;
+		default:
+			return false;
+		}
+
+		outName = std::move(name);
+		return true;
+	}
+}
 
 void RenderScene::AddStaticMeshComponent(StaticMeshComponent* component)
 {
@@ -77,8 +102,11 @@ bool RenderScene::PrepareStaticMeshes()
 			return false;
 		}
 
-		// Hakko는 wchar_t 이름을 받으므로 UTF-8 경로를 변환한다.
-		const std::wstring name = std::filesystem::path(std::u8string(path.begin(), path.end())).wstring();
+		// Hakko 메시 API는 wchar_t 이름을 받으므로 UTF-8 키를 변환한다.
+		const std::string assetKey = Paths::MakeAssetKey(path);
+		const std::u8string assetKeyUtf8(assetKey.begin(), assetKey.end());
+		const std::filesystem::path keyPath(assetKeyUtf8);
+		const std::wstring name = keyPath.generic_wstring();
 		if (Hakko::DataHub::GetMeshId(name) != 0) { continue; }
 
 		Hakko::DataHub::Mesh renderMesh{};
@@ -166,9 +194,10 @@ bool RenderScene::PrepareTexture(const Texture& texture, Hakko::DataHub::TexID& 
 	}
 
 	const std::string& path = texture.GetPath();
-	const std::u8string pathUtf8(path.begin(), path.end());
-	const std::filesystem::path assetPath = std::filesystem::path(pathUtf8).lexically_normal();
-	std::wstring name = assetPath.generic_wstring();
+	const std::string assetKey = Paths::MakeAssetKey(path);
+	const std::u8string assetKeyUtf8(assetKey.begin(), assetKey.end());
+	const std::filesystem::path keyPath(assetKeyUtf8);
+	std::wstring name = keyPath.generic_wstring();
 
 	// 같은 파일도 GPU 형식이 다르면 별도 자원으로 구분한다.
 	switch (format)
@@ -255,22 +284,34 @@ bool RenderScene::PrepareTextureProp(const Material* material, Hakko::DataHub::T
 	}
 
 	const std::string& path = texture.GetPath();
-	const std::u8string pathUtf8(path.begin(), path.end());
-	const std::filesystem::path assetPath = std::filesystem::path(pathUtf8).lexically_normal();
-	const std::u8string normalizedPathUtf8 = assetPath.generic_u8string();
+	std::string name;
+	if (!MakeTexturePropNamePart(texture, name)) { return false; }
 
-	std::string name(normalizedPathUtf8.begin(), normalizedPathUtf8.end());
-
-	switch (texture.GetFormat())
+	// 노멀 텍스처가 없으면 평평한 기본 노멀을 쓰고 조합 이름도 색 텍스처 조각만 쓴다.
+	// 있으면 이름에 노멀 조각을 더해, 색이 같고 노멀만 다른 재질이 같은 조합을 쓰지 않게 한다.
+	Hakko::DataHub::TexID normalTextureID = RESERVED_TEX_NONE_NORMAL_ID;
+	if (material->normalTexture != nullptr)
 	{
-	case TextureFormat::RGBA8UNorm:
-		name += "|RGBA8UNorm";
-		break;
-	case TextureFormat::RGBA8SRGB:
-		name += "|RGBA8SRGB";
-		break;
-	default:
-		return false;
+		const Texture& normalTexture = *material->normalTexture;
+		if (!PrepareTexture(normalTexture, normalTextureID)) { return false; }
+
+		std::string normalName;
+		if (!MakeTexturePropNamePart(normalTexture, normalName)) { return false; }
+		name += "|N=" + normalName;
+	}
+
+	// ORM 텍스처가 없으면 흰색(모두 1)을 써서 차폐 없이 거칠기와 금속성 계수를 그대로 적용한다.
+	// 있으면 이름에 ORM 조각을 더해, 색과 노멀이 같고 ORM만 다른 재질이 같은 조합을 쓰지 않게 한다.
+	// 노멀과 ORM 조각은 형식이 같을 수 있어 N=, O= 표시로 자리를 구분한다.
+	Hakko::DataHub::TexID ormTextureID = RESERVED_TEX_NONE_DIFFUSE_ID;
+	if (material->ormTexture != nullptr)
+	{
+		const Texture& ormTexture = *material->ormTexture;
+		if (!PrepareTexture(ormTexture, ormTextureID)) { return false; }
+
+		std::string ormName;
+		if (!MakeTexturePropNamePart(ormTexture, ormName)) { return false; }
+		name += "|O=" + ormName;
 	}
 
 	const Hakko::DataHub::TexPropID existingTexturePropID = Hakko::DataHub::GetTexPropId(name);
@@ -282,10 +323,8 @@ bool RenderScene::PrepareTextureProp(const Material* material, Hakko::DataHub::T
 
 	Hakko::DataHub::TextureProp prop{};
 	prop.texId[0] = baseColorTextureID;
-	prop.texId[1] = RESERVED_TEX_NONE_NORMAL_ID;
-
-	// ORM을 모두 1로 샘플링해 재질의 거칠기와 금속성 계수를 그대로 적용한다.
-	prop.texId[2] = RESERVED_TEX_NONE_DIFFUSE_ID;
+	prop.texId[1] = normalTextureID;
+	prop.texId[2] = ormTextureID;
 	prop.texId[3] = RESERVED_TEX_NONE_EMISSION_ID;
 
 	const Hakko::DataHub::TexPropID texturePropID = Hakko::DataHub::CreateTexProp(name.c_str(), prop);
@@ -373,7 +412,10 @@ bool RenderScene::PrepareDrawRequests()
 		if (transform == nullptr) { continue; }
 
 		const std::string& path = mesh->GetPath();
-		const std::wstring name = std::filesystem::path(std::u8string(path.begin(), path.end())).wstring();
+		const std::string assetKey = Paths::MakeAssetKey(path);
+		const std::u8string assetKeyUtf8(assetKey.begin(), assetKey.end());
+		const std::filesystem::path keyPath(assetKeyUtf8);
+		const std::wstring name = keyPath.generic_wstring();
 		const Hakko::DataHub::MeshID meshId = Hakko::DataHub::GetMeshId(name);
 		if (meshId == 0)
 		{

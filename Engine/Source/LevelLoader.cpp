@@ -1,10 +1,13 @@
 #include "LevelLoader.h"
 
+#include "AssetManager.h"
+#include "Component/StaticMeshComponent.h"
 #include "Component/TransformComponent.h"
 #include "Core/FileHelper.h"
 #include "Core/Log.h"
 #include "Core/Math/Transform.h"
 #include "GameObject.h"
+#include "Prefab.h"
 #include "World.h"
 
 #include "rapidjson/document.h"
@@ -13,12 +16,14 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <filesystem>
 #include <format>
 #include <limits>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace
 {
@@ -70,7 +75,60 @@ namespace
 		const auto scale = fields.FindMember("scale");
 		if (scale == fields.MemberEnd() || !IsFloatArray(scale->value, 3)) { return ".transform.scale must contain three finite floats"; }
 
+		const auto prefab = object.FindMember("prefab");
+		if (prefab != object.MemberEnd())
+		{
+			if (!prefab->value.IsString()) { return ".prefab must be a string"; }
+
+			const std::string_view prefabPath(prefab->value.GetString(), prefab->value.GetStringLength());
+			if (prefabPath.empty() || prefabPath.find('\0') != std::string_view::npos)
+			{
+				return ".prefab must be non-empty and contain no NUL";
+			}
+
+			const std::filesystem::path path(std::u8string(prefabPath.begin(), prefabPath.end()));
+			const std::filesystem::path normalizedPath = path.lexically_normal();
+			const bool goesOutsideRoot = normalizedPath.begin() != normalizedPath.end() && *normalizedPath.begin() == "..";
+			if (path.has_root_path() || goesOutsideRoot) { return ".prefab must be a repository-relative path"; }
+		}
+
 		return {};
+	}
+
+	// root는 같은 월드에 등록되어 있어야 한다. 모델의 인덱스와 계층은 로더가 검증한다.
+	void ApplyPrefab(GameObject& root, const Prefab& prefab)
+	{
+		if (prefab.model == nullptr) { return; }
+
+		World& world = root.GetWorld();
+		const Model& model = *prefab.model;
+		std::vector<GameObject*> nodeObjects;
+		nodeObjects.reserve(model.sceneNodes.size());
+
+		for (const GLTFSceneNode& sceneNode : model.sceneNodes)
+		{
+			std::unique_ptr<GameObject> nodeObject = std::make_unique<GameObject>(world);
+			nodeObject->GetComponent<TransformComponent>()->SetTransform(sceneNode.localTransform);
+
+			if (sceneNode.mesh.has_value())
+			{
+				const std::size_t meshIndex = *sceneNode.mesh;
+				std::unique_ptr<StaticMeshComponent> mesh = std::make_unique<StaticMeshComponent>();
+				mesh->SetStaticMesh(model.meshes[meshIndex]);
+				mesh->SetMaterial(model.meshMaterials[meshIndex]);
+				nodeObject->AddComponent(std::move(mesh));
+			}
+
+			nodeObjects.push_back(world.AddGameObject(std::move(nodeObject)));
+		}
+
+		// SetParent는 월드에 등록된 객체끼리만 연결할 수 있다.
+		for (std::size_t i = 0; i < model.sceneNodes.size(); ++i)
+		{
+			const std::optional<std::size_t>& parentIndex = model.sceneNodes[i].parent;
+			GameObject* parent = parentIndex.has_value() ? nodeObjects[*parentIndex] : &root;
+			nodeObjects[i]->SetParent(parent);
+		}
 	}
 }
 
@@ -133,12 +191,32 @@ std::optional<std::vector<GameObject*>> LoadLevel(const std::filesystem::path& p
 	}
 
 	// ----------
+	// 참조된 프리팹 로드
+	// ----------
+	std::vector<std::shared_ptr<const Prefab>> prefabs(entries.Size());
+	for (rapidjson::SizeType i = 0; i < entries.Size(); ++i)
+	{
+		const rapidjson::Value& entry = entries[i];
+		const auto prefab = entry.FindMember("prefab");
+		if (prefab == entry.MemberEnd()) { continue; }
+
+		const std::string_view prefabPath(prefab->value.GetString(), prefab->value.GetStringLength());
+		prefabs[i] = AssetManager::Get().LoadPrefab(prefabPath);
+		if (prefabs[i] == nullptr)
+		{
+			Log::Write(LogLevel::Error, "Level", std::format("{}: objects[{}].prefab could not load {}", pathText, i, prefabPath));
+			return std::nullopt;
+		}
+	}
+
+	// ----------
 	// 월드에 루트 객체 복원
 	// ----------
 	std::vector<GameObject*> loadedObjects;
 	loadedObjects.reserve(entries.Size());
-	for (const rapidjson::Value& entry : entries)
+	for (rapidjson::SizeType i = 0; i < entries.Size(); ++i)
 	{
+		const rapidjson::Value& entry = entries[i];
 		// 위에서 필수 필드의 타입, 배열 길이와 숫자 범위를 검사했다.
 		const rapidjson::Value& name = entry["name"];
 		const rapidjson::Value& fields = entry["transform"];
@@ -155,7 +233,12 @@ std::optional<std::vector<GameObject*>> LoadLevel(const std::filesystem::path& p
 		object->SetName(std::string(name.GetString(), name.GetStringLength()));
 		object->GetComponent<TransformComponent>()->SetTransform(transform);
 		// World가 소유권을 가져가고 호출부에는 빌린 포인터를 돌려준다.
-		loadedObjects.push_back(world.AddGameObject(std::move(object)));
+		GameObject* root = world.AddGameObject(std::move(object));
+		if (prefabs[i] != nullptr)
+		{
+			ApplyPrefab(*root, *prefabs[i]);
+		}
+		loadedObjects.push_back(root);
 	}
 	return loadedObjects;
 }

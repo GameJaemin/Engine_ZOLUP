@@ -28,6 +28,9 @@
     <Filter Include="Engine\Source\Renderer">
       <UniqueIdentifier>{3be6eb0d-16e0-42ae-8ffb-ddf98ddda2a4}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Engine\Source\Editor">
+      <UniqueIdentifier>{e6ca61c1-78b1-48ea-82c3-541af6712892}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Engine\Renderer">
       <UniqueIdentifier>{f21a0e8d-8e2c-448f-b6a2-55c3d857ff04}</UniqueIdentifier>
     </Filter>
@@ -112,6 +115,12 @@
       <Filter>Engine\Source</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Source\LevelLoader.cpp">
+      <Filter>Engine\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Editor\LevelInspector.cpp">
+      <Filter>Engine\Source\Editor</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Prefab.cpp">
       <Filter>Engine\Source</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Source\ImageLoader.cpp">
@@ -228,6 +237,12 @@
       <Filter>Engine\Source</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\LevelLoader.h">
+      <Filter>Engine\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Editor\LevelInspector.h">
+      <Filter>Engine\Source\Editor</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Prefab.h">
       <Filter>Engine\Source</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Core\FileHelper.h">

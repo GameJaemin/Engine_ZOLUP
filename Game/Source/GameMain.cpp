@@ -12,31 +12,24 @@
 #include "LevelLoader.h"
 #include "Paths.h"
 #include "PlayerObject.h"
-#include "Renderer/Material.h"
-#include "Texture/Texture.h"
 
 #include <cstddef>
 #include <filesystem>
 #include <format>
 #include <memory>
 #include <optional>
-#include <string_view>
 #include <utility>
 #include <vector>
 
 namespace
 {
-	// 저장소 루트 기준 경로다.
-	constexpr std::string_view TeapotMeshPath = "Game/Content/Meshes/UtahTeapot/UtahTeapot.gltf";
-	constexpr std::string_view CheckerTexturePath = "Engine/Content/Textures/Checker.png";
-
 	/** 위에서 아래로 비스듬히 빛을 보내는 방향광을 World에 추가한다. */
 	void AddDirectionalLight(World& world)
 	{
 		std::unique_ptr<GameObject> lightObject = std::make_unique<GameObject>(world);
 
 		TransformComponent* transform = lightObject->GetComponent<TransformComponent>();
-		transform->SetRotation(EulerAngles{ .pitch = 45.0f, .yaw = -30.0f, .roll = 0.0f });
+		transform->SetRotation(EulerAngles{ .pitch = 45.0f, .yaw = -80.0f, .roll = 0.0f });
 
 		std::unique_ptr<DirectionalLightComponent> light = std::make_unique<DirectionalLightComponent>();
 		light->SetColor(Vector3{ 1.0f, 1.0f, 1.0f });
@@ -55,7 +48,9 @@ namespace
 		// 루트는 놓을 위치를 맡고, 노드 객체는 파일에 적힌 배치를 그대로 유지한다.
 		std::unique_ptr<GameObject> rootObject = std::make_unique<GameObject>(world);
 		rootObject->GetComponent<TransformComponent>()->SetPosition(position);
+		rootObject->GetComponent<TransformComponent>()->SetScale({3, 3, 3});
 		GameObject* root = world.AddGameObject(std::move(rootObject));
+
 
 		// 배치표 한 줄마다 객체를 만들어 등록한다. nodeObjects의 번호는 배치표 번호와 같다.
 		std::vector<GameObject*> nodeObjects;
@@ -126,21 +121,6 @@ int main()
 	if (player != nullptr) { world.SetActiveCamera(player->GetComponent<CameraComponent>()); }
 
 	AddDirectionalLight(world);
-
-	Material materialData;
-	materialData.baseColorTexture = AssetManager::Get().LoadTexture(CheckerTexturePath, TextureFormat::RGBA8SRGB);
-	// 이번 주전자는 비금속 표면으로 지정한다.
-	materialData.metallic = 0.0f;
-
-	const std::shared_ptr<const Material> teapotMaterial = std::make_shared<const Material>(std::move(materialData));
-
-	// 플레이어 앞에 좌우로 놓는다. 두 주전자는 한 번 불러온 모델의 메시를 공유한다.
-	const std::shared_ptr<const Model> teapotModel = AssetManager::Get().LoadModel(TeapotMeshPath);
-	if (teapotModel != nullptr)
-	{
-		AddModel(world, *teapotModel, Vector3{ -1000.0f, 0.0f, 3000.0f }, teapotMaterial);
-		AddModel(world, *teapotModel, Vector3{ 1000.0f, 0.0f, 3000.0f }, teapotMaterial);
-	}
 
 	return engine.Run();
 }

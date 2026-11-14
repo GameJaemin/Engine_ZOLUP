@@ -11,6 +11,8 @@
 #include <climits>
 #include <cstddef>
 #include <cstdint>
+#include <format>
+#include <string>
 #include <utility>
 
 namespace
@@ -65,7 +67,10 @@ bool ImageLoader::LoadPNG(const std::filesystem::path& path, Image& outImage)
 	const HRESULT decoderResult = factory->CreateDecoderFromFilename(path.c_str(), nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand, decoder.GetAddressOf());
 	if (FAILED(decoderResult))
 	{
-		Log::Write(LogLevel::Error, "ImageLoader", "Failed to create image decoder from file");
+		const std::u8string pathUtf8 = path.u8string();
+		const std::string pathText(pathUtf8.begin(), pathUtf8.end());
+		const std::string message = std::format("Failed to create image decoder for '{}', HRESULT 0x{:08X}", pathText, static_cast<std::uint32_t>(decoderResult));
+		Log::Write(LogLevel::Error, "ImageLoader", message);
 		return false;
 	}
 
