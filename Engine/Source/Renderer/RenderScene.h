@@ -5,17 +5,20 @@
 #include <unordered_map>
 #include <vector>
 
-class AmbientLightComponent;
-class DirectionalLightComponent;
-class PointLightComponent;
+class LightComponent;
 class StaticMeshComponent;
-class Texture;
 struct CameraViewInfo;
-struct Material;
+
+enum class FramePreparationResult
+{
+	Ready,
+	SkipFrame,
+	Failed
+};
 
 /**
  * 한 World의 정적 메시와 조명 컴포넌트 등록 목록을 관리한다. 메인 스레드에서 사용하며 World가 소유한다.
- * 정적 메시와 조명 컴포넌트는 부착 시 여기에 등록하고 소멸 전에 스스로 해제한다.
+ * 정적 메시와 조명 컴포넌트는 부착 시 여기에 등록하고 소멸 시 스스로 해제한다.
  */
 class RenderScene
 {
@@ -43,53 +46,32 @@ private:
 	// 비소유이며 추가한 순서를 유지한다.
 	std::vector<StaticMeshComponent*> staticMeshComponents;
 
-	// 방향광
+	// 조명
 public:
 	/**
 	 * nullptr와 중복 등록은 무시한다. 할당 실패 예외는 전파한다.
-	 * 대상은 소멸 전에 RemoveDirectionalLightComponent로 제거되어야 한다.
+	 * 대상은 소멸 시 RemoveLightComponent로 제거되어야 한다.
 	 */
-	void AddDirectionalLightComponent(DirectionalLightComponent* component);
+	void AddLightComponent(LightComponent* component);
 
 	/** 등록되지 않은 대상은 무시한다. */
-	void RemoveDirectionalLightComponent(DirectionalLightComponent* component);
+	void RemoveLightComponent(LightComponent* component);
 
 private:
 	// 비소유이며 등록 순서를 유지한다.
-	std::vector<DirectionalLightComponent*> directionalLightComponents;
+	std::vector<LightComponent*> lightComponents;
 
-	// 점광원
+	// Hakko 프레임 준비
 public:
 	/**
-	 * nullptr와 중복 등록은 무시한다. 할당 실패 예외는 전파한다.
-	 * 대상은 소멸 전에 RemovePointLightComponent로 제거되어야 한다.
+	 * DataHub 초기화 후 호출한다. aspectRatio는 그릴 영역의 가로를 세로로 나눈 값이다.
+	 * 카메라 투영 계산에 실패하면 SkipFrame을, 조명이나 리소스 및 그리기 요청 준비에 실패하면 Failed를 반환한다.
+	 * Ready를 반환한 프레임은 Sketch에서 준비한 요청을 소비해야 한다.
 	 */
-	void AddPointLightComponent(PointLightComponent* component);
-
-	/** 등록되지 않은 대상은 무시한다. */
-	void RemovePointLightComponent(PointLightComponent* component);
-
-private:
-	// 비소유이며 등록 순서를 유지한다.
-	std::vector<PointLightComponent*> pointLightComponents;
-
-	// 환경광
-public:
-	/**
-	 * nullptr와 중복 등록은 무시한다. 할당 실패 예외는 전파한다.
-	 * 대상은 소멸 전에 RemoveAmbientLightComponent로 제거되어야 한다.
-	 */
-	void AddAmbientLightComponent(AmbientLightComponent* component);
-
-	/** 등록되지 않은 대상은 무시한다. */
-	void RemoveAmbientLightComponent(AmbientLightComponent* component);
-
-private:
-	// 비소유이며 등록 순서를 유지한다.
-	std::vector<AmbientLightComponent*> ambientLightComponents;
+	FramePreparationResult PrepareFrame(const CameraViewInfo& cameraViewInfo, float aspectRatio);
 
 	// Hakko 메시 등록
-public:
+private:
 	/**
 	 * DataHub 초기화 후 호출한다. 등록된 컴포넌트의 메시를 Hakko에 등록하고 이미 등록한 메시는 재사용한다.
 	 * 빈 메시 참조는 건너뛰며 에셋 경로가 비어 있거나 등록에 실패하면 false를 반환한다.
@@ -98,31 +80,7 @@ public:
 	 */
 	bool PrepareStaticMeshes();
 
-	// Hakko 텍스처 등록
-private:
-	/**
-	 * DataHub 초기화 후 메인 스레드의 렌더링 준비 중 CPU 텍스처를 Hakko에 등록한다.
-	 * 정규화한 경로와 형식으로 기존 등록을 재사용한다. 같은 경로와 형식의 픽셀은 등록 후 변경하지 않는다.
-	 * 새 등록에는 픽셀 복사본을 전달하고 업로드를 요청한다. 같은 프레임에 렌더러가 요청을 처리해야 한다.
-	 * 성공하면 ID를 출력하고 true를 반환하며, GPU 업로드 완료를 뜻하지는 않는다.
-	 * 잘못된 입력이나 등록 실패는 false를 반환하고 outTextureID는 0으로 유지한다.
-	 * 경로 변환과 할당 실패 예외는 전파한다.
-	 */
-	bool PrepareTexture(const Texture& texture, Hakko::DataHub::TexID& outTextureID);
-
-	/**
-	 * DataHub 초기화 후 메인 스레드의 렌더링 준비 중 재질의 텍스처 조합을 준비한다.
-	 * 재질 또는 색상 텍스처가 미지정이면 오류용 조합 0을 출력하고 true를 반환한다.
-	 * 색상 텍스처, 노멀 텍스처(있으면) 및 ORM 텍스처(있으면)의 경로 키와 형식으로 조합을 재사용한다.
-	 * 노멀 텍스처가 없으면 기본 노멀을, ORM 텍스처가 없으면 흰색을 쓰며, 발광 슬롯은 검정으로 고정한다.
-	 * 새 조합은 같은 프레임에 렌더러가 업로드 요청을 처리해야 한다. 성공 시 ID를 출력하며 GPU 준비 완료를 뜻하지는 않는다.
-	 * 텍스처 준비나 조합 등록에 실패하면 false를 반환하고 outTexturePropID는 0으로 유지한다.
-	 * PrepareTexture의 예외와 같은 프레임 업로드 계약을 따른다. 실패 전에 등록한 텍스처는 유지한다.
-	 */
-	bool PrepareTextureProp(const Material* material, Hakko::DataHub::TexPropID& outTexturePropID);
-
 	// Hakko 카메라 준비
-public:
 	/**
 	 * DataHub 초기화 후 Sketch 전에 호출해 기본 레이어의 카메라 행렬과 월드 위치를 갱신한다.
 	 * 행렬은 현재 Hakko 셰이더의 열 단위 저장에 맞춰 전치해 전달한다.
@@ -131,7 +89,6 @@ public:
 	bool PrepareCamera(const CameraViewInfo& cameraViewInfo, float aspectRatio);
 
 	// Hakko 전역 조명 준비
-public:
 	/**
 	 * DataHub 초기화 후 Sketch 전에 기본 레이어의 방향광과 환경광을 갱신한다.
 	 * 등록 순서상 처음 방향 조회에 성공한 활성 방향광과 첫 활성 환경광을 각각 사용한다.
@@ -140,19 +97,16 @@ public:
 	void PrepareGlobalLight();
 
 	// Hakko 점광원 준비
-public:
 	/**
 	 * DataHub 초기화 후 Sketch 전에 기본 레이어의 슬롯 1에 첫 유효한 활성 점광원을 연결한다.
 	 * 사용할 점광원이 없으면 빈 조명을 연결한다. 조명 데이터 등록이나 갱신 실패 시 false를 반환한다.
 	 */
 	bool PreparePointLight();
 
-private:
 	// 0은 Hakko의 빈 조명 ID다. 첫 등록 후에는 같은 ID를 갱신하며 DataHub 종료 시 정리된다.
 	Hakko::DataHub::DataBoxID pointLightDataId = 0;
 
 	// Hakko 그리기 요청 준비
-public:
 	/**
 	 * DataHub 초기화와 메시 준비 성공 후 Sketch 전에 호출한다. 기존 기본 레이어의 불투명 요청 목록을 비우고 다시 만든다.
 	 * 메시와 TransformComponent가 있는 대상의 객체 데이터를 갱신하고 첫 서브메시의 그리기 요청을 추가한다.
@@ -165,6 +119,7 @@ public:
 	 */
 	bool PrepareDrawRequests();
 
+public:
 	/**
 	 * 종료 시 장면 제출을 중단한 뒤 ID 맵만 비운다. 이후 이 장면을 제출하지 않는다.
 	 * 실제 객체 데이터는 DataHub에 남으며 GPU 작업 완료 뒤 DataHub 종료에서 정리한다.

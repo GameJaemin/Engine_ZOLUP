@@ -118,11 +118,9 @@ int Engine::RunFrameLoop(IApplication& application)
 
 		RenderScene& scene = sceneView->scene.get();
 		const float aspectRatio = static_cast<float>(clientWidth) / static_cast<float>(clientHeight);
-		if (!scene.PrepareCamera(sceneView->camera, aspectRatio)) { continue; }
-
-		scene.PrepareGlobalLight();
-		if (!scene.PreparePointLight()) { return 1; }
-		if (!scene.PrepareStaticMeshes() || !scene.PrepareDrawRequests()) { return 1; }
+		const FramePreparationResult preparationResult = scene.PrepareFrame(sceneView->camera, aspectRatio);
+		if (preparationResult == FramePreparationResult::SkipFrame) { continue; }
+		if (preparationResult == FramePreparationResult::Failed) { return 1; }
 
 		renderer->Sketch();
 		renderer->Render();

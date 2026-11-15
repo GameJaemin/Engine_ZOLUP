@@ -1,6 +1,28 @@
 #include "LightComponent.h"
 
+#include "GameObject.h"
+#include "Renderer/RenderScene.h"
+#include "World.h"
+
 #include <cmath>
+
+LightComponent::~LightComponent()
+{
+	if (registeredRenderScene != nullptr)
+	{
+		registeredRenderScene->RemoveLightComponent(this);
+	}
+}
+
+void LightComponent::OnRegister()
+{
+	GameObject* owner = GetGameObject();
+	if (owner == nullptr) { return; }
+
+	RenderScene& scene = owner->GetWorld().GetRenderScene();
+	scene.AddLightComponent(this);
+	registeredRenderScene = &scene;
+}
 
 bool LightComponent::SetColor(const Vector3& newColor)
 {

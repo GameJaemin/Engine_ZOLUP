@@ -2,28 +2,8 @@
 
 #include "Component/TransformComponent.h"
 #include "GameObject.h"
-#include "Renderer/RenderScene.h"
-#include "World.h"
 
 #include <cmath>
-
-PointLightComponent::~PointLightComponent()
-{
-	if (registeredRenderScene != nullptr)
-	{
-		registeredRenderScene->RemovePointLightComponent(this);
-	}
-}
-
-void PointLightComponent::OnRegister()
-{
-	GameObject* owner = GetGameObject();
-	if (owner == nullptr) { return; }
-
-	RenderScene& renderScene = owner->GetWorld().GetRenderScene();
-	renderScene.AddPointLightComponent(this);
-	registeredRenderScene = &renderScene;
-}
 
 bool PointLightComponent::GetLightPosition(Vector3& outPosition) const
 {

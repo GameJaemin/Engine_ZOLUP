@@ -3,11 +3,24 @@
 #include "Component.h"
 #include "Core/Math/Vector3.h"
 
-/** 조명 종류가 공유하는 색상, 상대 세기와 활성 여부를 보관한다. */
+class RenderScene;
+
+/** 조명 종류가 공유하는 설정과 RenderScene 등록 수명을 관리한다. */
 class LightComponent : public Component
 {
 protected:
 	LightComponent() = default;
+
+public:
+	/** 등록한 RenderScene에서 이 컴포넌트를 제거한다. */
+	~LightComponent() override;
+
+	/** 소속 World의 RenderScene에 등록한다. GameObject::AddComponent가 호출한다. */
+	void OnRegister() override;
+
+private:
+	// 비소유. World가 컴포넌트보다 오래 유지하는 씬이다.
+	RenderScene* registeredRenderScene = nullptr;
 
 	// 색상
 public:

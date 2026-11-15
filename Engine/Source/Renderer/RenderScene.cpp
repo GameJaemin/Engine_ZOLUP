@@ -3,52 +3,42 @@
 #include "CameraViewInfo.h"
 #include "Component/AmbientLightComponent.h"
 #include "Component/DirectionalLightComponent.h"
+#include "Component/LightComponent.h"
 #include "Component/PointLightComponent.h"
 #include "Component/StaticMeshComponent.h"
 #include "Component/TransformComponent.h"
 #include "Core/Log.h"
 #include "GameObject.h"
+#include "HakkoResources.h"
 #include "Mesh/StaticMesh.h"
-#include "Paths.h"
 #include "Renderer/Material.h"
-#include "Texture/Texture.h"
 
 #include "DataHub.h"
 #include "DataHub_Interface.h"
 
 #include <algorithm>
 #include <cstdint>
-#include <cstring>
-#include <filesystem>
-#include <limits>
 #include <memory>
 #include <string>
-#include <utility>
 
 namespace
 {
 	// 드로우 데이터에서 사용하지 않는 조명 칸은 빈 슬롯 0을 참조한다.
 	constexpr uint16_t pointLightSlot = 1;
 
-	/** 텍스처 조합 이름에 쓸 "경로 키|형식" 조각을 만든다. 지원하지 않는 형식이면 출력값을 유지하고 false를 반환한다. */
-	bool MakeTexturePropNamePart(const Texture& texture, std::string& outName)
+	/** HLSL의 열 단위 저장에 맞춰 전치하고 Hakko가 받는 행렬 타입으로 옮긴다. */
+	DirectX::XMMATRIX ToHakkoMatrix(const Matrix4x4& matrix)
 	{
-		std::string name = Paths::MakeAssetKey(texture.GetPath());
-
-		switch (texture.GetFormat())
+		DirectX::XMFLOAT4X4 values;
+		for (int row = 0; row < 4; ++row)
 		{
-		case TextureFormat::RGBA8UNorm:
-			name += "|RGBA8UNorm";
-			break;
-		case TextureFormat::RGBA8SRGB:
-			name += "|RGBA8SRGB";
-			break;
-		default:
-			return false;
+			for (int col = 0; col < 4; ++col)
+			{
+				values.m[row][col] = matrix.m[col][row];
+			}
 		}
 
-		outName = std::move(name);
-		return true;
+		return DirectX::XMLoadFloat4x4(&values);
 	}
 }
 
@@ -76,60 +66,47 @@ void RenderScene::RemoveStaticMeshComponent(StaticMeshComponent* component)
 	staticMeshComponents.erase(found);
 }
 
-void RenderScene::AddDirectionalLightComponent(DirectionalLightComponent* component)
+void RenderScene::AddLightComponent(LightComponent* component)
 {
 	if (component == nullptr) { return; }
-	if (std::find(directionalLightComponents.begin(), directionalLightComponents.end(), component) != directionalLightComponents.end()) { return; }
+	if (std::find(lightComponents.begin(), lightComponents.end(), component) != lightComponents.end()) { return; }
 
-	directionalLightComponents.push_back(component);
+	lightComponents.push_back(component);
 }
 
-void RenderScene::RemoveDirectionalLightComponent(DirectionalLightComponent* component)
+void RenderScene::RemoveLightComponent(LightComponent* component)
 {
-	const auto found = std::find(directionalLightComponents.begin(), directionalLightComponents.end(), component);
-	if (found == directionalLightComponents.end()) { return; }
+	const auto found = std::find(lightComponents.begin(), lightComponents.end(), component);
+	if (found == lightComponents.end()) { return; }
 
-	directionalLightComponents.erase(found);
+	lightComponents.erase(found);
 }
 
-void RenderScene::AddPointLightComponent(PointLightComponent* component)
+FramePreparationResult RenderScene::PrepareFrame(const CameraViewInfo& cameraViewInfo, float aspectRatio)
 {
-	if (component == nullptr) { return; }
+	if (!PrepareCamera(cameraViewInfo, aspectRatio))
+	{
+		return FramePreparationResult::SkipFrame;
+	}
 
-	const auto found = std::find(
-		pointLightComponents.begin(), pointLightComponents.end(), component);
-	if (found != pointLightComponents.end()) { return; }
+	PrepareGlobalLight();
 
-	pointLightComponents.push_back(component);
-}
+	if (!PreparePointLight())
+	{
+		return FramePreparationResult::Failed;
+	}
 
-void RenderScene::RemovePointLightComponent(PointLightComponent* component)
-{
-	const auto found = std::find(
-		pointLightComponents.begin(), pointLightComponents.end(), component);
-	if (found == pointLightComponents.end()) { return; }
+	if (!PrepareStaticMeshes())
+	{
+		return FramePreparationResult::Failed;
+	}
 
-	pointLightComponents.erase(found);
-}
+	if (!PrepareDrawRequests())
+	{
+		return FramePreparationResult::Failed;
+	}
 
-void RenderScene::AddAmbientLightComponent(AmbientLightComponent* component)
-{
-	if (component == nullptr) { return; }
-
-	const auto found = std::find(
-		ambientLightComponents.begin(), ambientLightComponents.end(), component);
-	if (found != ambientLightComponents.end()) { return; }
-
-	ambientLightComponents.push_back(component);
-}
-
-void RenderScene::RemoveAmbientLightComponent(AmbientLightComponent* component)
-{
-	const auto found = std::find(
-		ambientLightComponents.begin(), ambientLightComponents.end(), component);
-	if (found == ambientLightComponents.end()) { return; }
-
-	ambientLightComponents.erase(found);
+	return FramePreparationResult::Ready;
 }
 
 bool RenderScene::PrepareStaticMeshes()
@@ -140,250 +117,8 @@ bool RenderScene::PrepareStaticMeshes()
 
 		if (mesh == nullptr) { continue; }
 
-		const std::string& path = mesh->GetPath();
-		if (path.empty())
-		{
-			Log::Write(LogLevel::Error, "RenderScene", "Static mesh registration requires an asset path");
-			return false;
-		}
-
-		// Hakko 메시 API는 wchar_t 이름을 받으므로 UTF-8 키를 변환한다.
-		const std::string assetKey = Paths::MakeAssetKey(path);
-		const std::u8string assetKeyUtf8(assetKey.begin(), assetKey.end());
-		const std::filesystem::path keyPath(assetKeyUtf8);
-		const std::wstring name = keyPath.generic_wstring();
-		if (Hakko::DataHub::GetMeshId(name) != 0) { continue; }
-
-		Hakko::DataHub::Mesh renderMesh{};
-		renderMesh.vertexType = Hakko::DataHub::VertexType_Static;
-		renderMesh.verticesStatic.reserve(mesh->vertices.size());
-
-		for (const MeshVertex& vertex : mesh->vertices)
-		{
-			Hakko::DataHub::VertexStatic renderVertex{};
-			renderVertex.Pos = { vertex.position.x, vertex.position.y, vertex.position.z };
-			renderVertex.UV = { vertex.uv.x, vertex.uv.y };
-			renderVertex.Normal = { vertex.normal.x, vertex.normal.y, vertex.normal.z };
-			renderVertex.Tangent = { vertex.tangent.x, vertex.tangent.y, vertex.tangent.z };
-			// 엔진 정점에는 색상이 없으므로 흰색으로 채운다.
-			renderVertex.Color = { 1.0f, 1.0f, 1.0f, 1.0f };
-
-			renderMesh.verticesStatic.push_back(renderVertex);
-		}
-
-		// Hakko의 인덱스 타입이 std::uint32_t로 전환된 것을 전제로 한다.
-		renderMesh.indices = mesh->indices;
-
-		const Hakko::DataHub::MeshID meshId = Hakko::DataHub::CreateMesh(name.c_str(), std::move(renderMesh));
-
-		if (meshId == 0)
-		{
-			Log::Write(LogLevel::Error, "RenderScene", "Failed to register static mesh: " + path);
-
-			return false;
-		}
-
-		Hakko::DataHub::RTB_UpdateResources upload{};
-		upload.command = Hakko::DataHub::RTBCMD_Upload_Resource;
-		Hakko::DataHub::SendRTB(upload);
+		if (!HakkoResources::PrepareStaticMesh(*mesh)) { return false; }
 	}
-
-	return true;
-}
-
-bool RenderScene::PrepareTexture(const Texture& texture, Hakko::DataHub::TexID& outTextureID)
-{
-	outTextureID = 0;
-
-	const TextureFormat format = texture.GetFormat();
-	switch (format)
-	{
-	case TextureFormat::RGBA8UNorm:
-	case TextureFormat::RGBA8SRGB:
-		break;
-	default:
-		Log::Write(LogLevel::Error, "RenderScene", "Unsupported texture format");
-		return false;
-	}
-
-	if (texture.GetPath().empty())
-	{
-		Log::Write(LogLevel::Error, "RenderScene", "Texture registration requires an asset path");
-		return false;
-	}
-	if (texture.GetWidth() == 0 || texture.GetHeight() == 0)
-	{
-		Log::Write(LogLevel::Error, "RenderScene", "Texture dimensions must be nonzero");
-		return false;
-	}
-
-	// RGBA8의 행과 전체 이미지 크기를 바이트 단위로 계산한다.
-	const std::uint64_t rowPitch = static_cast<std::uint64_t>(texture.GetWidth()) * 4;
-	const std::uint32_t maxPitch = (std::numeric_limits<std::uint32_t>::max)();
-	if (rowPitch > maxPitch)
-	{
-		Log::Write(LogLevel::Error, "RenderScene", "Texture row pitch exceeds the Hakko limit");
-		return false;
-	}
-
-	const std::uint64_t slicePitch = rowPitch * texture.GetHeight();
-	if (slicePitch > maxPitch)
-	{
-		Log::Write(LogLevel::Error, "RenderScene", "Texture slice pitch exceeds the Hakko limit");
-		return false;
-	}
-	if (slicePitch != texture.GetPixels().size())
-	{
-		Log::Write(LogLevel::Error, "RenderScene", "Texture pixel size does not match its dimensions");
-		return false;
-	}
-
-	const std::string& path = texture.GetPath();
-	const std::string assetKey = Paths::MakeAssetKey(path);
-	const std::u8string assetKeyUtf8(assetKey.begin(), assetKey.end());
-	const std::filesystem::path keyPath(assetKeyUtf8);
-	std::wstring name = keyPath.generic_wstring();
-
-	// 같은 파일도 GPU 형식이 다르면 별도 자원으로 구분한다.
-	switch (format)
-	{
-	case TextureFormat::RGBA8UNorm:
-		name += L"|RGBA8UNorm";
-		break;
-	case TextureFormat::RGBA8SRGB:
-		name += L"|RGBA8SRGB";
-		break;
-	default:
-		return false;
-	}
-
-	const Hakko::DataHub::TexID existingTextureID = Hakko::DataHub::GetTexId(name);
-	if (existingTextureID != 0)
-	{
-		outTextureID = existingTextureID;
-		return true;
-	}
-
-	Hakko::DataHub::Texture renderTexture{};
-
-	switch (format)
-	{
-	case TextureFormat::RGBA8UNorm:
-		renderTexture.data.format = Hakko::DataHub::TextureReadFormat::RGBA8_UNorm;
-		break;
-	case TextureFormat::RGBA8SRGB:
-		renderTexture.data.format = Hakko::DataHub::TextureReadFormat::RGBA8_SRGB;
-		break;
-	default:
-		return false;
-	}
-
-	renderTexture.data.textureType = Hakko::DataHub::TextureType_2D;
-	renderTexture.data.width = texture.GetWidth();
-	renderTexture.data.height = texture.GetHeight();
-	renderTexture.data.depth = 1;
-	renderTexture.data.mipLevels = 1;
-	renderTexture.data.arraySize = 1;
-	renderTexture.usage = Hakko::DataHub::TextureUsage_ReadOnly;
-
-	// 공유 CPU 에셋의 픽셀은 유지하고 업로드용 복사본을 만든다.
-	renderTexture.rawData = texture.GetPixels();
-
-	// 원본 해상도의 2D 이미지 한 장이며 픽셀 배열의 처음부터 읽는다.
-	renderTexture.subresources.push_back({
-		.offset = 0,
-		.rowPitch = static_cast<std::uint32_t>(rowPitch),
-		.slicePitch = static_cast<std::uint32_t>(slicePitch)
-	});
-
-	const Hakko::DataHub::TexID textureID = Hakko::DataHub::CreateTexture(name.c_str(), std::move(renderTexture));
-	if (textureID == 0)
-	{
-		Log::Write(LogLevel::Error, "RenderScene", "Failed to register texture: " + path);
-		return false;
-	}
-
-	// 다른 자원 요청 비트를 유지하면서 이번 프레임의 업로드를 요청한다.
-	Hakko::DataHub::RTB_UpdateResources upload{};
-	upload.command = Hakko::DataHub::RTBCMD_Upload_Resource;
-	Hakko::DataHub::SendRTB(upload);
-
-	outTextureID = textureID;
-	return true;
-}
-
-bool RenderScene::PrepareTextureProp(const Material* material, Hakko::DataHub::TexPropID& outTexturePropID)
-{
-	outTexturePropID = 0;
-
-	// 미지정 재질이나 색상 텍스처는 오류용 조합 0을 사용한다.
-	if (material == nullptr) { return true; }
-	if (material->baseColorTexture == nullptr) { return true; }
-
-	const Texture& texture = *material->baseColorTexture;
-
-	Hakko::DataHub::TexID baseColorTextureID = 0;
-	if (!PrepareTexture(texture, baseColorTextureID))
-	{
-		return false;
-	}
-
-	const std::string& path = texture.GetPath();
-	std::string name;
-	if (!MakeTexturePropNamePart(texture, name)) { return false; }
-
-	// 노멀 텍스처가 없으면 평평한 기본 노멀을 쓰고 조합 이름도 색 텍스처 조각만 쓴다.
-	// 있으면 이름에 노멀 조각을 더해, 색이 같고 노멀만 다른 재질이 같은 조합을 쓰지 않게 한다.
-	Hakko::DataHub::TexID normalTextureID = RESERVED_TEX_NONE_NORMAL_ID;
-	if (material->normalTexture != nullptr)
-	{
-		const Texture& normalTexture = *material->normalTexture;
-		if (!PrepareTexture(normalTexture, normalTextureID)) { return false; }
-
-		std::string normalName;
-		if (!MakeTexturePropNamePart(normalTexture, normalName)) { return false; }
-		name += "|N=" + normalName;
-	}
-
-	// ORM 텍스처가 없으면 흰색(모두 1)을 써서 차폐 없이 거칠기와 금속성 계수를 그대로 적용한다.
-	// 있으면 이름에 ORM 조각을 더해, 색과 노멀이 같고 ORM만 다른 재질이 같은 조합을 쓰지 않게 한다.
-	// 노멀과 ORM 조각은 형식이 같을 수 있어 N=, O= 표시로 자리를 구분한다.
-	Hakko::DataHub::TexID ormTextureID = RESERVED_TEX_NONE_DIFFUSE_ID;
-	if (material->ormTexture != nullptr)
-	{
-		const Texture& ormTexture = *material->ormTexture;
-		if (!PrepareTexture(ormTexture, ormTextureID)) { return false; }
-
-		std::string ormName;
-		if (!MakeTexturePropNamePart(ormTexture, ormName)) { return false; }
-		name += "|O=" + ormName;
-	}
-
-	const Hakko::DataHub::TexPropID existingTexturePropID = Hakko::DataHub::GetTexPropId(name);
-	if (existingTexturePropID != 0)
-	{
-		outTexturePropID = existingTexturePropID;
-		return true;
-	}
-
-	Hakko::DataHub::TextureProp prop{};
-	prop.texId[0] = baseColorTextureID;
-	prop.texId[1] = normalTextureID;
-	prop.texId[2] = ormTextureID;
-	prop.texId[3] = RESERVED_TEX_NONE_EMISSION_ID;
-
-	const Hakko::DataHub::TexPropID texturePropID = Hakko::DataHub::CreateTexProp(name.c_str(), prop);
-	if (texturePropID == 0)
-	{
-		Log::Write(LogLevel::Error, "RenderScene", "Failed to register texture combination: " + path);
-		return false;
-	}
-
-	Hakko::DataHub::RTB_UpdateResources upload{};
-	upload.command = Hakko::DataHub::RTBCMD_Upload_Prop;
-	Hakko::DataHub::SendRTB(upload);
-
-	outTexturePropID = texturePropID;
 
 	return true;
 }
@@ -396,19 +131,10 @@ bool RenderScene::PrepareCamera(const CameraViewInfo& cameraViewInfo, float aspe
 	const Matrix4x4 viewMatrix = cameraViewInfo.CalculateViewMatrix();
 	const Matrix4x4 viewProjectionMatrix = viewMatrix * projectionMatrix;
 
-	const auto toShaderMatrix = [](const Matrix4x4& matrix)
-	{
-		DirectX::XMFLOAT4X4 values;
-		std::memcpy(&values, matrix.m, sizeof(values));
-
-		// Hakko는 그대로 복사하므로 HLSL 기본 열 단위 저장에 맞춰 전치한다.
-		return DirectX::XMMatrixTranspose(DirectX::XMLoadFloat4x4(&values));
-	};
-
 	Hakko::DataHub::RTB_SetCamera camera{};
-	camera.view = toShaderMatrix(viewMatrix);
-	camera.proj = toShaderMatrix(projectionMatrix);
-	camera.viewProj = toShaderMatrix(viewProjectionMatrix);
+	camera.view = ToHakkoMatrix(viewMatrix);
+	camera.proj = ToHakkoMatrix(projectionMatrix);
+	camera.viewProj = ToHakkoMatrix(viewProjectionMatrix);
 	camera.eyePos = { cameraViewInfo.position.x, cameraViewInfo.position.y, cameraViewInfo.position.z };
 	Hakko::DataHub::SendRTB(camera);
 
@@ -424,31 +150,40 @@ void RenderScene::PrepareGlobalLight()
 	light.direction = { 0.0f, 0.0f, 1.0f };
 	light.color = { 0.0f, 0.0f, 0.0f, 1.0f };
 
-	for (const DirectionalLightComponent* component : directionalLightComponents)
+	bool hasDirectionalLight = false;
+	bool hasAmbientLight = false;
+	for (const LightComponent* lightComponent : lightComponents)
 	{
-		if (!component->IsEnabled()) { continue; }
+		if (!lightComponent->IsEnabled()) { continue; }
 
-		Vector3 direction;
-		if (!component->GetLightDirection(direction)) { continue; }
+		if (!hasDirectionalLight)
+		{
+			if (const auto* component = dynamic_cast<const DirectionalLightComponent*>(lightComponent))
+			{
+				Vector3 direction;
+				if (component->GetLightDirection(direction))
+				{
+					const Vector3 color = component->GetColor();
+					const float intensity = component->GetIntensity();
+					light.direction = { direction.x, direction.y, direction.z };
+					light.color = { color.x * intensity, color.y * intensity, color.z * intensity, 1.0f };
+					hasDirectionalLight = true;
+				}
+			}
+		}
 
-		const Vector3 color = component->GetColor();
-		const float intensity = component->GetIntensity();
+		if (!hasAmbientLight)
+		{
+			if (const auto* component = dynamic_cast<const AmbientLightComponent*>(lightComponent))
+			{
+				const Vector3 color = component->GetColor();
+				const float intensity = component->GetIntensity();
+				light.ambient = { color.x * intensity, color.y * intensity, color.z * intensity, 1.0f };
+				hasAmbientLight = true;
+			}
+		}
 
-		light.direction = { direction.x, direction.y, direction.z };
-
-		light.color = { color.x * intensity, color.y * intensity, color.z * intensity, 1.0f };
-
-		break;
-	}
-
-	for (const AmbientLightComponent* component : ambientLightComponents)
-	{
-		if (!component->IsEnabled()) { continue; }
-
-		const Vector3 color = component->GetColor();
-		const float intensity = component->GetIntensity();
-		light.ambient = { color.x * intensity, color.y * intensity, color.z * intensity, 1.0f };
-		break;
+		if (hasDirectionalLight && hasAmbientLight) { break; }
 	}
 
 	Hakko::DataHub::SendRTB(light);
@@ -461,9 +196,10 @@ bool RenderScene::PreparePointLight()
 	Hakko::DataHub::RTB_SetLight request{};
 	request.slot = pointLightSlot;
 
-	for (const PointLightComponent* component : pointLightComponents)
+	for (const LightComponent* lightComponent : lightComponents)
 	{
-		if (!component->IsEnabled()) { continue; }
+		const auto* component = dynamic_cast<const PointLightComponent*>(lightComponent);
+		if (component == nullptr || !component->IsEnabled()) { continue; }
 
 		Vector3 position;
 		if (!component->GetLightPosition(position)) { continue; }
@@ -508,11 +244,7 @@ bool RenderScene::PrepareDrawRequests()
 		if (transform == nullptr) { continue; }
 
 		const std::string& path = mesh->GetPath();
-		const std::string assetKey = Paths::MakeAssetKey(path);
-		const std::u8string assetKeyUtf8(assetKey.begin(), assetKey.end());
-		const std::filesystem::path keyPath(assetKeyUtf8);
-		const std::wstring name = keyPath.generic_wstring();
-		const Hakko::DataHub::MeshID meshId = Hakko::DataHub::GetMeshId(name);
+		const Hakko::DataHub::MeshID meshId = HakkoResources::FindStaticMeshId(*mesh);
 		if (meshId == 0)
 		{
 			Log::Write(LogLevel::Error, "RenderScene", "Static mesh is not registered: " + path);
@@ -521,13 +253,10 @@ bool RenderScene::PrepareDrawRequests()
 		}
 
 		const Matrix4x4 worldMatrix = transform->GetWorldMatrix();
-		DirectX::XMFLOAT4X4 values;
-		std::memcpy(&values, worldMatrix.m, sizeof(values));
 
 		Hakko::DataHub::DataBox_Render3DGeneral objectData{};
 		objectData.affectLights[0] = pointLightSlot;
-		// 카메라와 동일하게 HLSL의 열 단위 저장에 맞춰 전치한다.
-		objectData.worldMat = DirectX::XMMatrixTranspose(DirectX::XMLoadFloat4x4(&values));
+		objectData.worldMat = ToHakkoMatrix(worldMatrix);
 		// 재질 미지정 시에도 객체 데이터에는 유효한 수치를 채운다.
 		// 정상 표면과 오류용 표면의 구분은 텍스처 조합에서 처리한다.
 		objectData.blendColor = { 1.0f, 1.0f, 1.0f, 1.0f };
@@ -536,7 +265,7 @@ bool RenderScene::PrepareDrawRequests()
 
 		const std::shared_ptr<const Material>& material = component->GetMaterial();
 		Hakko::DataHub::TexPropID texturePropID = 0;
-		if (!PrepareTextureProp(material.get(), texturePropID))
+		if (!HakkoResources::PrepareTextureProp(material.get(), texturePropID))
 		{
 			Hakko::DataHub::ClearOpaqueDrawRequests();
 			return false;

@@ -30,7 +30,6 @@
     <ClCompile Include="Engine\Source\Input\InputState.cpp" />
     <ClCompile Include="Engine\Source\Input\InputDispatcher.cpp" />
     <ClCompile Include="Engine\Source\Component\InputComponent.cpp" />
-    <ClCompile Include="Engine\Source\Component\AmbientLightComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\CameraComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\Component.cpp" />
     <ClCompile Include="Engine\Source\Component\DirectionalLightComponent.cpp" />
@@ -47,6 +46,7 @@
     <ClCompile Include="Engine\Source\WindowsApplication.cpp" />
     <ClCompile Include="Engine\Source\World.cpp" />
     <ClCompile Include="Engine\Source\Renderer\RenderScene.cpp" />
+    <ClCompile Include="Engine\Source\Renderer\HakkoResources.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Engine\Source\CameraViewInfo.h" />
@@ -91,6 +91,7 @@
     <ClInclude Include="Engine\Source\World.h" />
     <ClInclude Include="Engine\Source\Renderer\Material.h" />
     <ClInclude Include="Engine\Source\Renderer\RenderScene.h" />
+    <ClInclude Include="Engine\Source\Renderer\HakkoResources.h" />
     <ClInclude Include="Engine\Source\Mesh\MeshVertex.h" />
     <ClInclude Include="Engine\Source\Mesh\StaticMesh.h" />
     <ClInclude Include="Engine\Source\Texture\Texture.h" />
