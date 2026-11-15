@@ -30,6 +30,7 @@
     <ClCompile Include="Engine\Source\Input\InputState.cpp" />
     <ClCompile Include="Engine\Source\Input\InputDispatcher.cpp" />
     <ClCompile Include="Engine\Source\Component\InputComponent.cpp" />
+    <ClCompile Include="Engine\Source\Component\AmbientLightComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\CameraComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\Component.cpp" />
     <ClCompile Include="Engine\Source\Component\DirectionalLightComponent.cpp" />
@@ -67,6 +68,7 @@
     <ClInclude Include="Engine\Source\Input\InputDispatcher.h" />
     <ClInclude Include="Engine\Source\Input\KeyBinding.h" />
     <ClInclude Include="Engine\Source\Component\InputComponent.h" />
+    <ClInclude Include="Engine\Source\Component\AmbientLightComponent.h" />
     <ClInclude Include="Engine\Source\Component\CameraComponent.h" />
     <ClInclude Include="Engine\Source\Component\Component.h" />
     <ClInclude Include="Engine\Source\Component\DirectionalLightComponent.h" />

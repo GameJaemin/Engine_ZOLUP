@@ -81,6 +81,9 @@
     <ClCompile Include="Engine\Source\Renderer\RenderScene.cpp">
       <Filter>Engine\Source\Renderer</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Source\Component\AmbientLightComponent.cpp">
+      <Filter>Engine\Source\Component</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Source\Component\CameraComponent.cpp">
       <Filter>Engine\Source\Component</Filter>
     </ClCompile>
@@ -190,6 +193,9 @@
     </ClInclude>
     <ClInclude Include="Engine\Source\CameraViewInfo.h">
       <Filter>Engine\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Component\AmbientLightComponent.h">
+      <Filter>Engine\Source\Component</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Component\CameraComponent.h">
       <Filter>Engine\Source\Component</Filter>

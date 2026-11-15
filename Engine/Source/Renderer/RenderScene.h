@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <vector>
 
+class AmbientLightComponent;
 class DirectionalLightComponent;
 class PointLightComponent;
 class StaticMeshComponent;
@@ -14,7 +15,7 @@ struct Material;
 
 /**
  * 한 World의 정적 메시와 조명 컴포넌트 등록 목록을 관리한다. 메인 스레드에서 사용하며 World가 소유한다.
- * StaticMeshComponent와 DirectionalLightComponent는 부착 시 여기에 등록하고 소멸 전에 스스로 해제한다.
+ * 정적 메시와 조명 컴포넌트는 부착 시 여기에 등록하고 소멸 전에 스스로 해제한다.
  */
 class RenderScene
 {
@@ -72,6 +73,21 @@ private:
 	// 비소유이며 등록 순서를 유지한다.
 	std::vector<PointLightComponent*> pointLightComponents;
 
+	// 환경광
+public:
+	/**
+	 * nullptr와 중복 등록은 무시한다. 할당 실패 예외는 전파한다.
+	 * 대상은 소멸 전에 RemoveAmbientLightComponent로 제거되어야 한다.
+	 */
+	void AddAmbientLightComponent(AmbientLightComponent* component);
+
+	/** 등록되지 않은 대상은 무시한다. */
+	void RemoveAmbientLightComponent(AmbientLightComponent* component);
+
+private:
+	// 비소유이며 등록 순서를 유지한다.
+	std::vector<AmbientLightComponent*> ambientLightComponents;
+
 	// Hakko 메시 등록
 public:
 	/**
@@ -114,13 +130,14 @@ public:
 	 */
 	bool PrepareCamera(const CameraViewInfo& cameraViewInfo, float aspectRatio);
 
-	// Hakko 방향광 준비
+	// Hakko 전역 조명 준비
 public:
 	/**
-	 * DataHub 초기화 후 Sketch 전에 기본 레이어의 방향광을 갱신한다.
-	 * 처음으로 방향 조회에 성공한 활성 방향광을 사용하며, 없으면 빛의 색상을 0으로 설정한다.
+	 * DataHub 초기화 후 Sketch 전에 기본 레이어의 방향광과 환경광을 갱신한다.
+	 * 등록 순서상 처음 방향 조회에 성공한 활성 방향광과 첫 활성 환경광을 각각 사용한다.
+	 * 사용할 조명이 없는 종류는 해당 색상의 RGB를 0으로 설정한다.
 	 */
-	void PrepareDirectionalLight();
+	void PrepareGlobalLight();
 
 	// Hakko 점광원 준비
 public:

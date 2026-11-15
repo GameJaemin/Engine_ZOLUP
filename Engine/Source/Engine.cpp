@@ -120,7 +120,7 @@ int Engine::RunFrameLoop(IApplication& application)
 		const float aspectRatio = static_cast<float>(clientWidth) / static_cast<float>(clientHeight);
 		if (!scene.PrepareCamera(sceneView->camera, aspectRatio)) { continue; }
 
-		scene.PrepareDirectionalLight();
+		scene.PrepareGlobalLight();
 		if (!scene.PreparePointLight()) { return 1; }
 		if (!scene.PrepareStaticMeshes() || !scene.PrepareDrawRequests()) { return 1; }
 

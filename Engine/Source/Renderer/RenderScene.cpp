@@ -1,6 +1,7 @@
 #include "RenderScene.h"
 
 #include "CameraViewInfo.h"
+#include "Component/AmbientLightComponent.h"
 #include "Component/DirectionalLightComponent.h"
 #include "Component/PointLightComponent.h"
 #include "Component/StaticMeshComponent.h"
@@ -109,6 +110,26 @@ void RenderScene::RemovePointLightComponent(PointLightComponent* component)
 	if (found == pointLightComponents.end()) { return; }
 
 	pointLightComponents.erase(found);
+}
+
+void RenderScene::AddAmbientLightComponent(AmbientLightComponent* component)
+{
+	if (component == nullptr) { return; }
+
+	const auto found = std::find(
+		ambientLightComponents.begin(), ambientLightComponents.end(), component);
+	if (found != ambientLightComponents.end()) { return; }
+
+	ambientLightComponents.push_back(component);
+}
+
+void RenderScene::RemoveAmbientLightComponent(AmbientLightComponent* component)
+{
+	const auto found = std::find(
+		ambientLightComponents.begin(), ambientLightComponents.end(), component);
+	if (found == ambientLightComponents.end()) { return; }
+
+	ambientLightComponents.erase(found);
 }
 
 bool RenderScene::PrepareStaticMeshes()
@@ -394,7 +415,7 @@ bool RenderScene::PrepareCamera(const CameraViewInfo& cameraViewInfo, float aspe
 	return true;
 }
 
-void RenderScene::PrepareDirectionalLight()
+void RenderScene::PrepareGlobalLight()
 {
 	Hakko::DataHub::RTB_SetGlobalLight light{};
 
@@ -417,6 +438,16 @@ void RenderScene::PrepareDirectionalLight()
 
 		light.color = { color.x * intensity, color.y * intensity, color.z * intensity, 1.0f };
 
+		break;
+	}
+
+	for (const AmbientLightComponent* component : ambientLightComponents)
+	{
+		if (!component->IsEnabled()) { continue; }
+
+		const Vector3 color = component->GetColor();
+		const float intensity = component->GetIntensity();
+		light.ambient = { color.x * intensity, color.y * intensity, color.z * intensity, 1.0f };
 		break;
 	}
 

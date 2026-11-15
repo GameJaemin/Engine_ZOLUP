@@ -1,6 +1,7 @@
 #include "GameApplication.h"
 
 #include "AssetManager.h"
+#include "Component/AmbientLightComponent.h"
 #include "Component/CameraComponent.h"
 #include "Component/DirectionalLightComponent.h"
 #include "Component/PointLightComponent.h"
@@ -56,6 +57,17 @@ namespace
 		light->SetColor({ 1.0f, 0.35f, 0.1f });
 		light->SetIntensity(2.0f);
 		light->SetRange(300.0f);
+
+		lightObject->AddComponent(std::move(light));
+		world.AddGameObject(std::move(lightObject));
+	}
+
+	/** DevMap에 약한 흰색 환경광을 추가한다. */
+	void AddAmbientLight(World& world)
+	{
+		std::unique_ptr<GameObject> lightObject = std::make_unique<GameObject>(world);
+		std::unique_ptr<AmbientLightComponent> light = std::make_unique<AmbientLightComponent>();
+		light->SetIntensity(0.1f);
 
 		lightObject->AddComponent(std::move(light));
 		world.AddGameObject(std::move(lightObject));
@@ -143,6 +155,7 @@ bool GameApplication::OnInitialize()
 
 	AddDirectionalLight(world);
 	AddPointLight(world);
+	AddAmbientLight(world);
 
 	return true;
 }
