@@ -25,7 +25,12 @@ void GameObject::SetName(std::string newName)
 	name = std::move(newName);
 }
 
-World& GameObject::GetWorld() const
+World& GameObject::GetWorld()
+{
+	return world;
+}
+
+const World& GameObject::GetWorld() const
 {
 	return world;
 }

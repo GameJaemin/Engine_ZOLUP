@@ -18,7 +18,8 @@ public:
 	// 소속 객체
 public:
 	/** 소속 설정 전에는 nullptr를 반환한다. 반환 포인터는 소유권을 갖지 않는다. */
-	GameObject* GetGameObject() const;
+	GameObject* GetGameObject();
+	const GameObject* GetGameObject() const;
 
 	/**
 	 * 소속 포인터만 설정하며 소유권을 이전하거나 부착하지 않는다.

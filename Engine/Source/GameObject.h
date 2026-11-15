@@ -38,7 +38,8 @@ private:
 
 	// 소속 월드
 public:
-	World& GetWorld() const;
+	World& GetWorld();
+	const World& GetWorld() const;
 
 private:
 	World& world;
@@ -53,9 +54,13 @@ public:
 	bool SetParent(GameObject* newParent);
 
 	/** 부모를 빌려준다. 부모가 없으면 nullptr를 반환한다. */
-	GameObject* GetParent() const { return parent; }
+	GameObject* GetParent() { return parent; }
+	const GameObject* GetParent() const { return parent; }
 
-	/** 직계 자식 목록을 빌려준다. 목록이 바뀌면 원소 참조와 반복자가 무효화될 수 있다. */
+	/**
+	 * 직계 자식 목록을 빌려준다. 목록이 바뀌면 원소 참조와 반복자가 무효화될 수 있다.
+	 * 기존 호출과의 호환을 위해 const 객체에서도 자식 포인터는 수정 가능한 객체를 가리킨다.
+	 */
 	const std::vector<GameObject*>& GetChildren() const { return children; }
 
 private:
@@ -78,7 +83,23 @@ public:
 	 */
 	template <typename T>
 		requires std::derived_from<T, Component>
-	T* GetComponent() const;
+	T* GetComponent();
+
+	template <typename T>
+		requires std::derived_from<T, Component>
+	const T* GetComponent() const;
+
+	/**
+	 * 기본 TransformComponent를 포함하여 부착 순서대로 각 컴포넌트의 비소유 참조를 visitor에 한 번씩 전달한다.
+	 * 순회 중 이 객체의 컴포넌트 목록에 추가하거나 목록의 구조를 변경하지 않는다.
+	 * visitor가 던진 예외는 전파한다.
+	 */
+	template <typename Visitor>
+	void ForEachComponent(Visitor&& visitor);
+
+	/** 같은 순회 계약을 적용하며 visitor에는 const Component&를 전달한다. */
+	template <typename Visitor>
+	void ForEachComponent(Visitor&& visitor) const;
 
 private:
 	std::vector<std::unique_ptr<Component>> components;
@@ -95,7 +116,7 @@ protected:
 
 template <typename T>
 	requires std::derived_from<T, Component>
-T* GameObject::GetComponent() const
+T* GameObject::GetComponent()
 {
 	for (const std::unique_ptr<Component>& component : components)
 	{
@@ -105,4 +126,37 @@ T* GameObject::GetComponent() const
 		}
 	}
 	return nullptr;
+}
+
+template <typename T>
+	requires std::derived_from<T, Component>
+const T* GameObject::GetComponent() const
+{
+	for (const std::unique_ptr<Component>& component : components)
+	{
+		if (const T* found = dynamic_cast<const T*>(component.get()))
+		{
+			return found;
+		}
+	}
+	return nullptr;
+}
+
+template <typename Visitor>
+void GameObject::ForEachComponent(Visitor&& visitor)
+{
+	for (const std::unique_ptr<Component>& component : components)
+	{
+		visitor(*component);
+	}
+}
+
+template <typename Visitor>
+void GameObject::ForEachComponent(Visitor&& visitor) const
+{
+	for (const std::unique_ptr<Component>& component : components)
+	{
+		const Component& readOnlyComponent = *component;
+		visitor(readOnlyComponent);
+	}
 }

@@ -6,7 +6,12 @@ Component::Component()
 
 Component::~Component() = default;
 
-GameObject* Component::GetGameObject() const
+GameObject* Component::GetGameObject()
+{
+	return gameObject;
+}
+
+const GameObject* Component::GetGameObject() const
 {
 	return gameObject;
 }

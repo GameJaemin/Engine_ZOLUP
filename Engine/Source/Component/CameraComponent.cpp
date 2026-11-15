@@ -8,7 +8,7 @@
 
 CameraComponent::~CameraComponent()
 {
-	const GameObject* owner = GetGameObject();
+	GameObject* owner = GetGameObject();
 	if (owner == nullptr) { return; }
 
 	World& world = owner->GetWorld();

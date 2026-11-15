@@ -49,7 +49,8 @@ public:
 	bool SetActiveCamera(CameraComponent* camera);
 
 	/** 활성 카메라를 빌려준다. 지정하지 않았거나 지정한 카메라가 소멸했으면 nullptr이다. */
-	CameraComponent* GetActiveCamera() const { return activeCamera; }
+	CameraComponent* GetActiveCamera() { return activeCamera; }
+	const CameraComponent* GetActiveCamera() const { return activeCamera; }
 
 private:
 	// 비소유. gameObjects보다 먼저 선언해 더 늦게 파괴한다. 소멸하는 CameraComponent가 지정을 해제할 수 있게 하기 위해서다.
@@ -73,6 +74,18 @@ public:
 	/** 이 World에 등록된 객체인지 확인한다. nullptr는 false다. */
 	bool ContainsGameObject(const GameObject* gameObject) const;
 
+	/**
+	 * 등록 순서대로 각 객체의 비소유 참조를 visitor에 한 번씩 전달한다.
+	 * 순회 중 이 월드의 객체를 생성, 등록, 삭제하거나 등록 목록을 변경하지 않는다.
+	 * visitor가 던진 예외는 전파한다.
+	 */
+	template <typename Visitor>
+	void ForEachGameObject(Visitor&& visitor);
+
+	/** 같은 순회 계약을 적용하며 visitor에는 const GameObject&를 전달한다. */
+	template <typename Visitor>
+	void ForEachGameObject(Visitor&& visitor) const;
+
 private:
 	std::vector<std::unique_ptr<GameObject>> gameObjects;
 
@@ -84,3 +97,22 @@ public:
 	 */
 	void Tick(float deltaTime);
 };
+
+template <typename Visitor>
+void World::ForEachGameObject(Visitor&& visitor)
+{
+	for (const std::unique_ptr<GameObject>& gameObject : gameObjects)
+	{
+		visitor(*gameObject);
+	}
+}
+
+template <typename Visitor>
+void World::ForEachGameObject(Visitor&& visitor) const
+{
+	for (const std::unique_ptr<GameObject>& gameObject : gameObjects)
+	{
+		const GameObject& readOnlyGameObject = *gameObject;
+		visitor(readOnlyGameObject);
+	}
+}
