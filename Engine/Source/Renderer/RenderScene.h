@@ -6,13 +6,14 @@
 #include <vector>
 
 class DirectionalLightComponent;
+class PointLightComponent;
 class StaticMeshComponent;
 class Texture;
 struct CameraViewInfo;
 struct Material;
 
 /**
- * 한 World의 정적 메시와 방향광 컴포넌트 등록 목록을 관리한다. 메인 스레드에서 사용하며 World가 소유한다.
+ * 한 World의 정적 메시와 조명 컴포넌트 등록 목록을 관리한다. 메인 스레드에서 사용하며 World가 소유한다.
  * StaticMeshComponent와 DirectionalLightComponent는 부착 시 여기에 등록하고 소멸 전에 스스로 해제한다.
  */
 class RenderScene
@@ -55,6 +56,21 @@ public:
 private:
 	// 비소유이며 등록 순서를 유지한다.
 	std::vector<DirectionalLightComponent*> directionalLightComponents;
+
+	// 점광원
+public:
+	/**
+	 * nullptr와 중복 등록은 무시한다. 할당 실패 예외는 전파한다.
+	 * 대상은 소멸 전에 RemovePointLightComponent로 제거되어야 한다.
+	 */
+	void AddPointLightComponent(PointLightComponent* component);
+
+	/** 등록되지 않은 대상은 무시한다. */
+	void RemovePointLightComponent(PointLightComponent* component);
+
+private:
+	// 비소유이며 등록 순서를 유지한다.
+	std::vector<PointLightComponent*> pointLightComponents;
 
 	// Hakko 메시 등록
 public:
@@ -105,6 +121,18 @@ public:
 	 * 처음으로 방향 조회에 성공한 활성 방향광을 사용하며, 없으면 빛의 색상을 0으로 설정한다.
 	 */
 	void PrepareDirectionalLight();
+
+	// Hakko 점광원 준비
+public:
+	/**
+	 * DataHub 초기화 후 Sketch 전에 기본 레이어의 슬롯 1에 첫 유효한 활성 점광원을 연결한다.
+	 * 사용할 점광원이 없으면 빈 조명을 연결한다. 조명 데이터 등록이나 갱신 실패 시 false를 반환한다.
+	 */
+	bool PreparePointLight();
+
+private:
+	// 0은 Hakko의 빈 조명 ID다. 첫 등록 후에는 같은 ID를 갱신하며 DataHub 종료 시 정리된다.
+	Hakko::DataHub::DataBoxID pointLightDataId = 0;
 
 	// Hakko 그리기 요청 준비
 public:

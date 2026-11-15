@@ -3,6 +3,7 @@
 #include "AssetManager.h"
 #include "Component/CameraComponent.h"
 #include "Component/DirectionalLightComponent.h"
+#include "Component/PointLightComponent.h"
 #include "Component/StaticMeshComponent.h"
 #include "Component/TransformComponent.h"
 #include "Core/Log.h"
@@ -39,6 +40,22 @@ namespace
 		std::unique_ptr<DirectionalLightComponent> light = std::make_unique<DirectionalLightComponent>();
 		light->SetColor(Vector3{ 1.0f, 1.0f, 1.0f });
 		light->SetIntensity(1.0f);
+
+		lightObject->AddComponent(std::move(light));
+		world.AddGameObject(std::move(lightObject));
+	}
+
+	/** DevMap 주전자 앞에 주황색 점광원을 배치한다. */
+	void AddPointLight(World& world)
+	{
+		std::unique_ptr<GameObject> lightObject = std::make_unique<GameObject>(world);
+		TransformComponent* transform = lightObject->GetComponent<TransformComponent>();
+		transform->SetPosition({ 940.0f, 580.0f, 2880.0f });
+
+		std::unique_ptr<PointLightComponent> light = std::make_unique<PointLightComponent>();
+		light->SetColor({ 1.0f, 0.35f, 0.1f });
+		light->SetIntensity(2.0f);
+		light->SetRange(300.0f);
 
 		lightObject->AddComponent(std::move(light));
 		world.AddGameObject(std::move(lightObject));
@@ -125,6 +142,7 @@ bool GameApplication::OnInitialize()
 	if (player != nullptr) { world.SetActiveCamera(player->GetComponent<CameraComponent>()); }
 
 	AddDirectionalLight(world);
+	AddPointLight(world);
 
 	return true;
 }

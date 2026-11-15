@@ -2,6 +2,7 @@
 
 #include "CameraViewInfo.h"
 #include "Component/DirectionalLightComponent.h"
+#include "Component/PointLightComponent.h"
 #include "Component/StaticMeshComponent.h"
 #include "Component/TransformComponent.h"
 #include "Core/Log.h"
@@ -25,6 +26,9 @@
 
 namespace
 {
+	// 드로우 데이터에서 사용하지 않는 조명 칸은 빈 슬롯 0을 참조한다.
+	constexpr uint16_t pointLightSlot = 1;
+
 	/** 텍스처 조합 이름에 쓸 "경로 키|형식" 조각을 만든다. 지원하지 않는 형식이면 출력값을 유지하고 false를 반환한다. */
 	bool MakeTexturePropNamePart(const Texture& texture, std::string& outName)
 	{
@@ -85,6 +89,26 @@ void RenderScene::RemoveDirectionalLightComponent(DirectionalLightComponent* com
 	if (found == directionalLightComponents.end()) { return; }
 
 	directionalLightComponents.erase(found);
+}
+
+void RenderScene::AddPointLightComponent(PointLightComponent* component)
+{
+	if (component == nullptr) { return; }
+
+	const auto found = std::find(
+		pointLightComponents.begin(), pointLightComponents.end(), component);
+	if (found != pointLightComponents.end()) { return; }
+
+	pointLightComponents.push_back(component);
+}
+
+void RenderScene::RemovePointLightComponent(PointLightComponent* component)
+{
+	const auto found = std::find(
+		pointLightComponents.begin(), pointLightComponents.end(), component);
+	if (found == pointLightComponents.end()) { return; }
+
+	pointLightComponents.erase(found);
 }
 
 bool RenderScene::PrepareStaticMeshes()
@@ -399,6 +423,47 @@ void RenderScene::PrepareDirectionalLight()
 	Hakko::DataHub::SendRTB(light);
 }
 
+bool RenderScene::PreparePointLight()
+{
+	constexpr uint32_t pointLightType = 2;
+
+	Hakko::DataHub::RTB_SetLight request{};
+	request.slot = pointLightSlot;
+
+	for (const PointLightComponent* component : pointLightComponents)
+	{
+		if (!component->IsEnabled()) { continue; }
+
+		Vector3 position;
+		if (!component->GetLightPosition(position)) { continue; }
+
+		const Vector3 color = component->GetColor();
+		const float intensity = component->GetIntensity();
+
+		Hakko::DataHub::DataBox_RenderLight light{};
+		light.type = pointLightType;
+		light.position = { position.x, position.y, position.z };
+		light.range = component->GetRange();
+		light.color = { color.x * intensity, color.y * intensity, color.z * intensity };
+
+		if (pointLightDataId == 0)
+		{
+			pointLightDataId = Hakko::DataHub::AddDataBox(light);
+			if (pointLightDataId == 0) { return false; }
+		}
+		else if (!Hakko::DataHub::UpdateDataBox(pointLightDataId, light))
+		{
+			return false;
+		}
+
+		request.light = pointLightDataId;
+		break;
+	}
+
+	Hakko::DataHub::SendRTB(request);
+	return true;
+}
+
 bool RenderScene::PrepareDrawRequests()
 {
 	Hakko::DataHub::ClearOpaqueDrawRequests();
@@ -429,6 +494,7 @@ bool RenderScene::PrepareDrawRequests()
 		std::memcpy(&values, worldMatrix.m, sizeof(values));
 
 		Hakko::DataHub::DataBox_Render3DGeneral objectData{};
+		objectData.affectLights[0] = pointLightSlot;
 		// 카메라와 동일하게 HLSL의 열 단위 저장에 맞춰 전치한다.
 		objectData.worldMat = DirectX::XMMatrixTranspose(DirectX::XMLoadFloat4x4(&values));
 		// 재질 미지정 시에도 객체 데이터에는 유효한 수치를 채운다.

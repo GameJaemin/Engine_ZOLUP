@@ -121,6 +121,7 @@ int Engine::RunFrameLoop(IApplication& application)
 		if (!scene.PrepareCamera(sceneView->camera, aspectRatio)) { continue; }
 
 		scene.PrepareDirectionalLight();
+		if (!scene.PreparePointLight()) { return 1; }
 		if (!scene.PrepareStaticMeshes() || !scene.PrepareDrawRequests()) { return 1; }
 
 		renderer->Sketch();

@@ -5,8 +5,6 @@
 #include "Renderer/RenderScene.h"
 #include "World.h"
 
-#include <cmath>
-
 DirectionalLightComponent::~DirectionalLightComponent()
 {
 	if (registeredRenderScene != nullptr)
@@ -35,26 +33,4 @@ bool DirectionalLightComponent::GetLightDirection(Vector3& outDirection) const
 
 	outDirection = transform->GetForwardVector();
 	return true;
-}
-
-bool DirectionalLightComponent::SetColor(const Vector3& newColor)
-{
-	if (!std::isfinite(newColor.x) || !std::isfinite(newColor.y) || !std::isfinite(newColor.z)) { return false; }
-	if (newColor.x < 0.0f || newColor.y < 0.0f || newColor.z < 0.0f) { return false; }
-
-	color = newColor;
-	return true;
-}
-
-bool DirectionalLightComponent::SetIntensity(float newIntensity)
-{
-	if (!std::isfinite(newIntensity) || newIntensity < 0.0f) { return false; }
-
-	intensity = newIntensity;
-	return true;
-}
-
-void DirectionalLightComponent::SetEnabled(bool enabled)
-{
-	isEnabled = enabled;
 }

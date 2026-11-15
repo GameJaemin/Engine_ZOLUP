@@ -90,6 +90,12 @@
     <ClCompile Include="Engine\Source\Component\DirectionalLightComponent.cpp">
       <Filter>Engine\Source\Component</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Source\Component\LightComponent.cpp">
+      <Filter>Engine\Source\Component</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Component\PointLightComponent.cpp">
+      <Filter>Engine\Source\Component</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Source\Component\StaticMeshComponent.cpp">
       <Filter>Engine\Source\Component</Filter>
     </ClCompile>
@@ -192,6 +198,12 @@
       <Filter>Engine\Source\Component</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Component\DirectionalLightComponent.h">
+      <Filter>Engine\Source\Component</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Component\LightComponent.h">
+      <Filter>Engine\Source\Component</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Component\PointLightComponent.h">
       <Filter>Engine\Source\Component</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Component\StaticMeshComponent.h">

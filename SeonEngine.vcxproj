@@ -33,6 +33,8 @@
     <ClCompile Include="Engine\Source\Component\CameraComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\Component.cpp" />
     <ClCompile Include="Engine\Source\Component\DirectionalLightComponent.cpp" />
+    <ClCompile Include="Engine\Source\Component\LightComponent.cpp" />
+    <ClCompile Include="Engine\Source\Component\PointLightComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\StaticMeshComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\TransformComponent.cpp" />
     <ClCompile Include="Engine\Source\Core\Math\Vector3.cpp" />
@@ -68,6 +70,8 @@
     <ClInclude Include="Engine\Source\Component\CameraComponent.h" />
     <ClInclude Include="Engine\Source\Component\Component.h" />
     <ClInclude Include="Engine\Source\Component\DirectionalLightComponent.h" />
+    <ClInclude Include="Engine\Source\Component\LightComponent.h" />
+    <ClInclude Include="Engine\Source\Component\PointLightComponent.h" />
     <ClInclude Include="Engine\Source\Component\StaticMeshComponent.h" />
     <ClInclude Include="Engine\Source\Component\TransformComponent.h" />
     <ClInclude Include="Engine\Source\Core\Math\EulerAngles.h" />
