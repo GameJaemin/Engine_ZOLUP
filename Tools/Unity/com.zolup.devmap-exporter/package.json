@@ -1,0 +1,7 @@
+{
+  "name": "com.zolup.devmap-exporter",
+  "version": "0.1.0",
+  "displayName": "ZOLUP DevMap Exporter",
+  "description": "Exports the active scene or a chosen open Unity scene to a ZOLUP DevMap JSON file.",
+  "unity": "2022.3"
+}

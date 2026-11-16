@@ -1,0 +1,26 @@
+{
+  "objects": [
+    {
+      "transform": {
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "position": [
+          141.4372694126118,
+          -144.43285465240479,
+          -21.61591248572242
+        ],
+        "rotation": [
+          0,
+          0.7466381387933305,
+          0,
+          0.6652304034687766
+        ]
+      },
+      "name": "BistroInterior",
+      "prefab": "Game/Content/Prefabs/BistroInterior.prefab.json"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+{
+  "name": "Zolup.DevMapExporter.Editor",
+  "includePlatforms": ["Editor"]
+}
