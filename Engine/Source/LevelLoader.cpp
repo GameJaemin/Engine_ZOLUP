@@ -1,6 +1,7 @@
 #include "LevelLoader.h"
 
 #include "AssetManager.h"
+#include "Component/AnimationComponent.h"
 #include "Component/StaticMeshComponent.h"
 #include "Component/TransformComponent.h"
 #include "Core/FileHelper.h"
@@ -128,6 +129,21 @@ namespace
 			const std::optional<std::size_t>& parentIndex = model.sceneNodes[i].parent;
 			GameObject* parent = parentIndex.has_value() ? nodeObjects[*parentIndex] : &root;
 			nodeObjects[i]->SetParent(parent);
+		}
+
+		// 클립이 있으면 재생 컴포넌트를 붙이고 노드 연결까지만 한다. 무엇을 재생할지는 게임 코드가 Play로 정한다.
+		if (!model.animations.empty())
+		{
+			std::vector<TransformComponent*> nodeTransforms;
+			nodeTransforms.reserve(nodeObjects.size());
+			for (GameObject* nodeObject : nodeObjects)
+			{
+				nodeTransforms.push_back(nodeObject->GetComponent<TransformComponent>());
+			}
+
+			std::unique_ptr<AnimationComponent> animation = std::make_unique<AnimationComponent>();
+			animation->SetNodeTransforms(std::move(nodeTransforms));
+			root.AddComponent(std::move(animation));
 		}
 	}
 }

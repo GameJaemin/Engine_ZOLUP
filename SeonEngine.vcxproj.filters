@@ -99,6 +99,9 @@
     <ClCompile Include="Engine\Source\Renderer\HakkoResources.cpp">
       <Filter>Engine\Source\Renderer</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Source\Component\AnimationComponent.cpp">
+      <Filter>Engine\Source\Component</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Source\Component\CameraComponent.cpp">
       <Filter>Engine\Source\Component</Filter>
     </ClCompile>
@@ -219,6 +222,9 @@
       <Filter>Engine\Source</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Component\AmbientLightComponent.h">
+      <Filter>Engine\Source\Component</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Component\AnimationComponent.h">
       <Filter>Engine\Source\Component</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Component\CameraComponent.h">

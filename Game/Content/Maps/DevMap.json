@@ -8,6 +8,15 @@
 				"rotation": [0.0, 1.0, 0.0, 0.0],
 				"scale": [1.0, 1.0, 1.0]
 			}
+		},
+		{
+			"name": "AnimatedBox",
+			"prefab": "Game/Content/Prefabs/BoxAnimated.prefab.json",
+			"transform": {
+				"position": [0.0, 0.0, 1500.0],
+				"rotation": [0.0, 0.0, 0.0, 1.0],
+				"scale": [2.0, 2.0, 2.0]
+			}
 		}
 	]
 }

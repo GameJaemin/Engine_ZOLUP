@@ -2,6 +2,7 @@
 
 #include "AssetManager.h"
 #include "Component/AmbientLightComponent.h"
+#include "Component/AnimationComponent.h"
 #include "Component/CameraComponent.h"
 #include "Component/DirectionalLightComponent.h"
 #include "Component/PointLightComponent.h"
@@ -18,6 +19,7 @@
 #include "LevelLoader.h"
 #include "Paths.h"
 #include "PlayerObject.h"
+#include "Prefab.h"
 #include "Renderer/RenderScene.h"
 #include "World.h"
 
@@ -136,6 +138,29 @@ namespace
 
 		return root;
 	}
+
+	/** 맵의 AnimatedBox 객체에서 BoxAnimated 프리팹의 첫 클립을 반복 재생한다. 찾지 못하면 경고만 남긴다. */
+	void PlayAnimatedBox(const std::vector<GameObject*>& levelObjects)
+	{
+		// 맵을 읽을 때 같은 경로로 불러 캐시에 있으므로, 노드 목록을 만든 것과 같은 Model을 돌려받는다.
+		const std::shared_ptr<const Prefab> prefab = AssetManager::Get().LoadPrefab("Game/Content/Prefabs/BoxAnimated.prefab.json");
+		if (prefab == nullptr || prefab->model == nullptr || prefab->model->animations.empty())
+		{
+			Log::Write(LogLevel::Warning, "Animation", "BoxAnimated prefab has no animation clip");
+			return;
+		}
+
+		for (GameObject* object : levelObjects)
+		{
+			if (object->GetName() != "AnimatedBox") { continue; }
+
+			AnimationComponent* animation = object->GetComponent<AnimationComponent>();
+			if (animation == nullptr) { break; }
+			animation->Play(prefab->model->animations[0], true);
+			return;
+		}
+		Log::Write(LogLevel::Warning, "Animation", "AnimatedBox with AnimationComponent was not found in the level");
+	}
 }
 
 GameApplication::GameApplication() = default;
@@ -166,6 +191,7 @@ bool GameApplication::OnInitialize()
 		const Vector3& scale = transform.scale;
 		Log::Write(LogLevel::Info, "Level", std::format("{}: position(cm) [{}, {}, {}], rotation [{}, {}, {}, {}], scale [{}, {}, {}]", object->GetName(), position.x, position.y, position.z, rotation.x, rotation.y, rotation.z, rotation.w, scale.x, scale.y, scale.z));
 	}
+	PlayAnimatedBox(*loadedObjects);
 
 	GameObject* player = world.AddGameObject(std::make_unique<PlayerObject>(world));
 	// World에 등록된 객체의 카메라만 지정할 수 있으므로 AddGameObject 뒤에 지정한다.
