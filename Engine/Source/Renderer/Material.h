@@ -6,6 +6,13 @@
 
 class Texture;
 
+/** 표면의 알파를 처리하는 방식이다. */
+enum class MaterialAlphaMode
+{
+	Opaque,
+	Blend
+};
+
 /** 표면 텍스처와 텍스처 값에 곱할 계수를 보관한다. */
 struct Material
 {
@@ -15,6 +22,12 @@ struct Material
 	// 색상 텍스처에 성분별로 곱할 선형 RGB 계수다.
 	// 각 성분은 0부터 1까지이며, 흰색이면 텍스처 색상을 유지한다.
 	Vector3 baseColor = { 1.0f, 1.0f, 1.0f };
+
+	// 표면을 불투명하게 그릴지, 알파로 배경과 합성할지 지정한다.
+	MaterialAlphaMode alphaMode = MaterialAlphaMode::Opaque;
+
+	// Blend에서 색상 텍스처의 알파에 곱하는 선형 계수다. 범위는 0부터 1까지다.
+	float baseColorAlpha = 1.0f;
 
 	// 접선 공간 노멀 텍스처다. RGB가 방향 값이라 선형(RGBA8UNorm) 형식이어야 한다.
 	// nullptr이면 노멀맵이 없는 정상 상태이며 평평한 기본 노멀을 쓴다.

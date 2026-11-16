@@ -154,11 +154,13 @@ struct GLTFMaterialPBRMetallicRoughness
 	std::optional<GLTFTextureInfo> metallicRoughnessTexture;
 };
 
-/** glTF materials의 항목 하나. 지금은 pbrMetallicRoughness, normalTexture 및 occlusionTexture만 담는다. */
+/** glTF materials의 항목 하나. */
 struct GLTFMaterial
 {
 	// 선택. 사람이 보기 위한 이름
 	std::string name;
+	// 선택. 색상의 알파 처리 방식이다. 없으면 OPAQUE다.
+	std::string alphaMode = "OPAQUE";
 	// 선택. 없으면 모든 값이 기본값이다.
 	GLTFMaterialPBRMetallicRoughness pbrMetallicRoughness;
 	// 선택. 접선 공간(tangent space) 노멀 텍스처

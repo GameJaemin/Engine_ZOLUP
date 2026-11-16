@@ -4,6 +4,7 @@
 #include "Core/Math/Transform.h"
 #include "Core/Math/Vector3.h"
 #include "Mesh/StaticMesh.h"
+#include "Renderer/Material.h"
 
 #include <cstddef>
 #include <filesystem>
@@ -35,8 +36,12 @@ struct GLTFSceneNode
  */
 struct GLTFModelMaterial
 {
-	// 색 텍스처 값에 곱할 선형 RGB 계수. 각 성분은 0 이상 1 이하다. glTF의 알파 계수는 아직 쓰지 않는다.
+	// 색 텍스처 값에 곱할 선형 RGB 계수. 각 성분은 0 이상 1 이하다.
 	Vector3 baseColor = { 1.0f, 1.0f, 1.0f };
+	// glTF의 BLEND를 Blend로 변환한다. MASK는 현재 Opaque로 처리한다.
+	MaterialAlphaMode alphaMode = MaterialAlphaMode::Opaque;
+	// Blend에서 색상 텍스처의 알파에 곱하는 선형 계수. 0 이상 1 이하다.
+	float baseColorAlpha = 1.0f;
 	// 색 텍스처 이미지의 .gltf 폴더 기준 UTF-8 상대 경로. 비어 있으면 색 텍스처가 없다.
 	// glTF uri의 퍼센트 인코딩(%20 등)은 풀지 않은 그대로다.
 	std::string baseColorImageUri;
@@ -80,7 +85,8 @@ namespace GLTFLoader
 {
 	/**
 	 * .gltf 파일의 모든 메시, 재질, 배치표와 애니메이션 클립을 채운다. 메시마다 첫 프리미티브만 쓰고, 애니메이션은 노드의 이동, 회전, 크기만 읽는다.
-	 * 재질은 색, 금속성, 거칠기 계수와 색, 노멀, 금속성-거칠기, 차폐 텍스처 경로만 읽는다. 실패하면 출력값을 유지하고 false를 반환한다.
+	 * 재질은 색, 금속성, 거칠기 계수와 알파 모드, 색, 노멀, 금속성-거칠기, 차폐 텍스처 경로를 읽는다.
+	 * BLEND 재질은 색상의 알파 계수도 읽는다. 실패하면 출력값을 유지하고 false를 반환한다.
 	 */
 	bool LoadModel(const std::filesystem::path& path, GLTFModel& outModel);
 }

@@ -21,9 +21,12 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
+#include <numeric>
 #include <string>
 
 namespace
@@ -31,6 +34,52 @@ namespace
 	// 드로우 데이터에서 사용하지 않는 조명 칸은 빈 슬롯 0을 참조한다.
 	constexpr uint16_t pointLightSlot = 1;
 	constexpr uint16_t spotLightSlot = 2;
+
+	void ClearDrawRequests()
+	{
+		Hakko::DataHub::ClearOpaqueDrawRequests();
+		Hakko::DataHub::ClearTranslucentDrawRequests();
+	}
+
+	Vector3 CalculateLocalBoundsCenter(const StaticMesh& mesh)
+	{
+		if (mesh.vertices.empty()) { return {}; }
+
+		Vector3 minimum = mesh.vertices.front().position;
+		Vector3 maximum = minimum;
+		for (const MeshVertex& vertex : mesh.vertices)
+		{
+			const Vector3& position = vertex.position;
+			minimum.x = (std::min)(minimum.x, position.x);
+			minimum.y = (std::min)(minimum.y, position.y);
+			minimum.z = (std::min)(minimum.z, position.z);
+			maximum.x = (std::max)(maximum.x, position.x);
+			maximum.y = (std::max)(maximum.y, position.y);
+			maximum.z = (std::max)(maximum.z, position.z);
+		}
+
+		return {
+			std::midpoint(minimum.x, maximum.x),
+			std::midpoint(minimum.y, maximum.y),
+			std::midpoint(minimum.z, maximum.z)
+		};
+	}
+
+	std::uint16_t CalculateTranslucentDepth(
+		const Vector3& localCenter, const Matrix4x4& worldMatrix, const Matrix4x4& viewMatrix,
+		float nearClipDistance, float farClipDistance)
+	{
+		// 행 벡터를 월드, 카메라 순으로 변환하고 정렬에 필요한 Z만 구한다.
+		const Matrix4x4 worldView = worldMatrix * viewMatrix;
+		const float viewZ = localCenter.x * worldView.m[0][2] + localCenter.y * worldView.m[1][2]
+			+ localCenter.z * worldView.m[2][2] + worldView.m[3][2];
+		const float normalizedDepth = (viewZ - nearClipDistance) / (farClipDistance - nearClipDistance);
+		if (std::isnan(normalizedDepth)) { return 0; }
+
+		// Hakko는 값이 큰 투명 요청부터 그린다.
+		constexpr auto maxDepth = (std::numeric_limits<std::uint16_t>::max)();
+		return static_cast<std::uint16_t>(std::clamp(normalizedDepth, 0.0f, 1.0f) * maxDepth);
+	}
 
 	/** HLSL의 열 단위 저장에 맞춰 전치하고 Hakko가 받는 행렬 타입으로 옮긴다. */
 	DirectX::XMMATRIX ToHakkoMatrix(const Matrix4x4& matrix)
@@ -132,7 +181,9 @@ void RenderScene::PrepareBackground() const
 
 FramePreparationResult RenderScene::PrepareFrame(const CameraViewInfo& cameraViewInfo, float aspectRatio)
 {
-	if (!PrepareCamera(cameraViewInfo, aspectRatio))
+	ClearDrawRequests();
+	const Matrix4x4 viewMatrix = cameraViewInfo.CalculateViewMatrix();
+	if (!PrepareCamera(cameraViewInfo, viewMatrix, aspectRatio))
 	{
 		return FramePreparationResult::SkipFrame;
 	}
@@ -155,7 +206,7 @@ FramePreparationResult RenderScene::PrepareFrame(const CameraViewInfo& cameraVie
 		return FramePreparationResult::Failed;
 	}
 
-	if (!PrepareDrawRequests())
+	if (!PrepareDrawRequests(cameraViewInfo, viewMatrix))
 	{
 		return FramePreparationResult::Failed;
 	}
@@ -177,12 +228,11 @@ bool RenderScene::PrepareStaticMeshes()
 	return true;
 }
 
-bool RenderScene::PrepareCamera(const CameraViewInfo& cameraViewInfo, float aspectRatio)
+bool RenderScene::PrepareCamera(const CameraViewInfo& cameraViewInfo, const Matrix4x4& viewMatrix, float aspectRatio)
 {
 	Matrix4x4 projectionMatrix;
 	if (!cameraViewInfo.CalculateProjectionMatrix(aspectRatio, projectionMatrix)) { return false; }
 
-	const Matrix4x4 viewMatrix = cameraViewInfo.CalculateViewMatrix();
 	const Matrix4x4 viewProjectionMatrix = viewMatrix * projectionMatrix;
 
 	Hakko::DataHub::RTB_SetCamera camera{};
@@ -330,10 +380,8 @@ bool RenderScene::PrepareSpotLight()
 	return true;
 }
 
-bool RenderScene::PrepareDrawRequests()
+bool RenderScene::PrepareDrawRequests(const CameraViewInfo& cameraViewInfo, const Matrix4x4& viewMatrix)
 {
-	Hakko::DataHub::ClearOpaqueDrawRequests();
-
 	for (const StaticMeshComponent* component : staticMeshComponents)
 	{
 		const std::shared_ptr<const StaticMesh>& mesh = component->GetStaticMesh();
@@ -347,7 +395,7 @@ bool RenderScene::PrepareDrawRequests()
 		if (meshId == 0)
 		{
 			Log::Write(LogLevel::Error, "RenderScene", "Static mesh is not registered: " + path);
-			Hakko::DataHub::ClearOpaqueDrawRequests();
+			ClearDrawRequests();
 			return false;
 		}
 
@@ -364,10 +412,11 @@ bool RenderScene::PrepareDrawRequests()
 		objectData.metalic = 0.0f;
 
 		const std::shared_ptr<const Material>& material = component->GetMaterial();
+		const bool isBlended = material != nullptr && material->alphaMode == MaterialAlphaMode::Blend;
 		Hakko::DataHub::TexPropID texturePropID = 0;
 		if (!HakkoResources::PrepareTextureProp(material.get(), texturePropID))
 		{
-			Hakko::DataHub::ClearOpaqueDrawRequests();
+			ClearDrawRequests();
 			return false;
 		}
 
@@ -375,7 +424,7 @@ bool RenderScene::PrepareDrawRequests()
 		{
 			const Vector3& color = material->baseColor;
 
-			objectData.blendColor = { color.x, color.y, color.z, 1.0f };
+			objectData.blendColor = { color.x, color.y, color.z, isBlended ? material->baseColorAlpha : 1.0f };
 			objectData.roughness = material->roughness;
 			objectData.metalic = material->metallic;
 		}
@@ -387,7 +436,7 @@ bool RenderScene::PrepareDrawRequests()
 			if (dataId == 0)
 			{
 				Log::Write(LogLevel::Error, "RenderScene", "Failed to register static mesh object data");
-				Hakko::DataHub::ClearOpaqueDrawRequests();
+				ClearDrawRequests();
 				return false;
 			}
 
@@ -396,19 +445,37 @@ bool RenderScene::PrepareDrawRequests()
 		else if (!Hakko::DataHub::UpdateDataBox(found->second, objectData))
 		{
 			Log::Write(LogLevel::Error, "RenderScene", "Failed to update static mesh object data");
-			Hakko::DataHub::ClearOpaqueDrawRequests();
+			ClearDrawRequests();
 			return false;
 		}
 
 		const Hakko::DataHub::DataBoxID objectDataId = objectDataIds.at(component);
 
-		Hakko::DataHub::RTB_DrawOPQ request{};
-		request.drawProp = RESERVED_DRAWPROP_OPAQUE_ID;
-		request.texProp = texturePropID;
-		request.meshId = meshId;
-		request.subMeshId = 0;
-		request.generalId = objectDataId;
-		Hakko::DataHub::SendRTB(request);
+		if (isBlended)
+		{
+			const auto [center, inserted] = translucentBoundsCenters.try_emplace(meshId);
+			if (inserted) { center->second = CalculateLocalBoundsCenter(*mesh); }
+
+			Hakko::DataHub::RTB_DrawTP request{};
+			request.drawProp = RESERVED_DRAWPROP_TRANSLUCENT_ID;
+			request.depth = CalculateTranslucentDepth(
+				center->second, worldMatrix, viewMatrix, cameraViewInfo.nearClipDistance, cameraViewInfo.farClipDistance);
+			request.texProp = texturePropID;
+			request.meshId = meshId;
+			request.subMeshId = 0;
+			request.generalId = objectDataId;
+			Hakko::DataHub::SendRTB(request);
+		}
+		else
+		{
+			Hakko::DataHub::RTB_DrawOPQ request{};
+			request.drawProp = RESERVED_DRAWPROP_OPAQUE_ID;
+			request.texProp = texturePropID;
+			request.meshId = meshId;
+			request.subMeshId = 0;
+			request.generalId = objectDataId;
+			Hakko::DataHub::SendRTB(request);
+		}
 	}
 
 	return true;
@@ -417,4 +484,5 @@ bool RenderScene::PrepareDrawRequests()
 void RenderScene::ClearObjectDataIds()
 {
 	objectDataIds.clear();
+	translucentBoundsCenters.clear();
 }

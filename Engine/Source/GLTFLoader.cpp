@@ -370,6 +370,7 @@ namespace
 			GLTFMaterial material;
 
 			if (item.HasMember("name")) { material.name = item["name"].GetString(); }
+			if (item.HasMember("alphaMode")) { material.alphaMode = item["alphaMode"].GetString(); }
 
 			if (item.HasMember("pbrMetallicRoughness"))
 			{
@@ -822,6 +823,15 @@ namespace
 		material.metallic = pbr.metallicFactor;
 		material.roughness = pbr.roughnessFactor;
 		material.name = source.name;
+
+		if (source.alphaMode == "BLEND")
+		{
+			const float alpha = pbr.baseColorFactor[3];
+			if (!isUnitRange(alpha)) { return false; }
+
+			material.alphaMode = MaterialAlphaMode::Blend;
+			material.baseColorAlpha = alpha;
+		}
 
 		if (pbr.baseColorTexture.has_value())
 		{

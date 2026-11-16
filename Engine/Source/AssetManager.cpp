@@ -155,6 +155,8 @@ std::shared_ptr<const Material> AssetManager::CreateMaterial(const GLTFModelMate
 	// 계수는 로더가 범위를 확인했고 의미가 같으므로 그대로 옮긴다.
 	Material material;
 	material.baseColor = source.baseColor;
+	material.alphaMode = source.alphaMode;
+	material.baseColorAlpha = source.baseColorAlpha;
 	material.roughness = source.roughness;
 	material.metallic = source.metallic;
 
