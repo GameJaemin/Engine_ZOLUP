@@ -32,6 +32,49 @@ struct GLTFAccessor
 	std::string name;
 };
 
+struct GLTFAnimationChannel;
+struct GLTFAnimationSampler;
+
+/** glTF animations의 항목 하나. 여러 노드의 속성을 함께 바꾸는 애니메이션 하나(예: 걷기)다. */
+struct GLTFAnimation
+{
+	// 필수. 어느 노드의 어느 속성을 어느 샘플러로 바꿀지 정한 목록. 하나 이상이다.
+	std::vector<GLTFAnimationChannel> channels;
+	// 필수. 키 시각과 키 값의 묶음 목록. channels의 sampler는 이 배열의 번호다. 하나 이상이다.
+	std::vector<GLTFAnimationSampler> samplers;
+	// 선택. 사람이 보기 위한 이름
+	std::string name;
+};
+
+/** glTF animation.channels[].target. 값을 바꿀 노드와 그 속성이다. */
+struct GLTFAnimationChannelTarget
+{
+	// 선택. 값을 바꿀 nodes 번호. 없으면 확장이 대상을 정할 수 있다.
+	std::optional<std::size_t> node;
+	// 필수. 바꿀 속성. "translation", "rotation", "scale", "weights"
+	std::string path;
+};
+
+/** glTF animation.channels의 항목 하나. 샘플러가 만든 값을 어느 노드의 어느 속성에 넣을지 정한다. */
+struct GLTFAnimationChannel
+{
+	// 필수. 같은 animation 안의 samplers 번호. 파일 전체 번호가 아니다.
+	std::size_t sampler = 0;
+	// 필수. 값을 바꿀 노드와 속성
+	GLTFAnimationChannelTarget target;
+};
+
+/** glTF animation.samplers의 항목 하나. 키 시각들과 키 값들을 짝짓고, 키 사이를 채우는 방식을 정한다. */
+struct GLTFAnimationSampler
+{
+	// 필수. 키 시각(초)이 든 accessors 번호. SCALAR float이며, 첫 값은 0 이상이고 뒤로 갈수록 반드시 커진다.
+	std::size_t input = 0;
+	// 선택. 키 사이를 채우는 방식. "LINEAR", "STEP", "CUBICSPLINE". 없으면 "LINEAR"
+	std::string interpolation = "LINEAR";
+	// 필수. 키 값이 든 accessors 번호. 형식은 대상 path에 따르고, 개수는 interpolation에 따른다.
+	std::size_t output = 0;
+};
+
 /** glTF buffers의 항목 하나. 정점, 인덱스 같은 바이너리 데이터 덩어리다. */
 struct GLTFBuffer
 {
@@ -180,6 +223,7 @@ struct GLTFTexture
 struct GLTFDocument
 {
 	std::vector<GLTFAccessor> accessors;
+	std::vector<GLTFAnimation> animations;
 	std::vector<GLTFBuffer> buffers;
 	std::vector<GLTFBufferView> bufferViews;
 	std::vector<GLTFImage> images;

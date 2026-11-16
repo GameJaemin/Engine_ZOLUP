@@ -56,6 +56,12 @@ struct Vector3
 		return Vector3{ y * other.z - z * other.y, z * other.x - x * other.z, x * other.y - y * other.x };
 	}
 
+	/** from에서 to까지 alpha 비율만큼 간 값을 반환한다. alpha가 0이면 from, 1이면 to이며 범위를 제한하지 않는다. */
+	static Vector3 Lerp(const Vector3& from, const Vector3& to, float alpha)
+	{
+		return from * (1.0f - alpha) + to * alpha;
+	}
+
 	float x = 0.0f;
 	float y = 0.0f;
 	float z = 0.0f;

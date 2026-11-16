@@ -40,6 +40,9 @@
     <Filter Include="Engine\Source\Mesh">
       <UniqueIdentifier>{c4a1d7e9-5b23-4f86-a0d1-7e3b9c25f614}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Engine\Source\Animation">
+      <UniqueIdentifier>{5a5fd3fb-1dd1-4d71-8c3b-6603f22af79a}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Engine\Source\Texture">
       <UniqueIdentifier>{f895b427-8ea9-4923-a931-5b461624c193}</UniqueIdentifier>
     </Filter>
@@ -65,6 +68,9 @@
     </ClCompile>
     <ClCompile Include="Engine\Source\Asset.cpp">
       <Filter>Engine\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Animation\AnimationClip.cpp">
+      <Filter>Engine\Source\Animation</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Source\Mesh\StaticMesh.cpp">
       <Filter>Engine\Source\Mesh</Filter>
@@ -259,6 +265,9 @@
     </ClInclude>
     <ClInclude Include="Engine\Source\Core\Math\Vector3.h">
       <Filter>Engine\Source\Core\Math</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Animation\AnimationClip.h">
+      <Filter>Engine\Source\Animation</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Mesh\MeshVertex.h">
       <Filter>Engine\Source\Mesh</Filter>

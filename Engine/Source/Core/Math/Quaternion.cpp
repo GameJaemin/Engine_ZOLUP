@@ -11,6 +11,9 @@ namespace
 {
 	// |sin(pitch)|가 이 값보다 크면 pitch를 90도나 -90도로 보고 짐벌락으로 처리한다. 각도 크기로 약 89.92도 이상이며 Unreal FQuat::Rotator와 같은 기준이다.
 	constexpr float GimbalLockThreshold = 0.999999f;
+
+	// 두 쿼터니언의 내적이 이 값 이상이면 사이 각도가 약 0.8도(회전 차이 약 1.6도) 이하라, sin으로 나누지 않고 선형 보간 비율을 쓴다. Unreal FQuat::Slerp와 같은 기준이다.
+	constexpr float SlerpLinearThreshold = 0.9999f;
 }
 
 Quaternion Quaternion::CreateFromEulerAngles(const EulerAngles& angles)
@@ -117,4 +120,46 @@ EulerAngles Quaternion::ToEulerAngles() const
 Quaternion Quaternion::GetInverse() const
 {
 	return Quaternion{ -x, -y, -z, w };
+}
+
+Quaternion Quaternion::Slerp(const Quaternion& from, const Quaternion& to, float alpha)
+{
+	// 내적은 두 쿼터니언 사이 각도의 cos이다.
+	float cosAngle = from.x * to.x + from.y * to.y + from.z * to.z + from.w * to.w;
+
+	// q와 -q는 같은 회전이다. 내적이 음수면 to의 부호를 뒤집어 짧은 쪽 경로를 고른다.
+	float toSign = 1.0f;
+	if (cosAngle < 0.0f)
+	{
+		cosAngle = -cosAngle;
+		toSign = -1.0f;
+	}
+
+	// 두 회전이 거의 같으면 sin(각도)가 0에 가까워 나눌 수 없으므로 선형 보간 비율을 그대로 쓴다.
+	float fromWeight = 1.0f - alpha;
+	float toWeight = alpha;
+	if (cosAngle < SlerpLinearThreshold)
+	{
+		const float angle = std::acos(cosAngle);
+		const float sinAngle = std::sin(angle);
+		fromWeight = std::sin(fromWeight * angle) / sinAngle;
+		toWeight = std::sin(toWeight * angle) / sinAngle;
+	}
+	toWeight *= toSign;
+
+	Quaternion result;
+	result.x = fromWeight * from.x + toWeight * to.x;
+	result.y = fromWeight * from.y + toWeight * to.y;
+	result.z = fromWeight * from.z + toWeight * to.z;
+	result.w = fromWeight * from.w + toWeight * to.w;
+
+	// 선형 보간 비율을 쓰면 길이가 1보다 조금 짧아지고 float 오차도 쌓이므로 항상 길이를 1로 맞춘다.
+	// 내적이 0 이상인 두 단위 쿼터니언을 섞었으므로 길이는 0.7 이상이라 나누어도 안전하다.
+	const float length = std::sqrt(result.x * result.x + result.y * result.y + result.z * result.z + result.w * result.w);
+	result.x /= length;
+	result.y /= length;
+	result.z /= length;
+	result.w /= length;
+
+	return result;
 }

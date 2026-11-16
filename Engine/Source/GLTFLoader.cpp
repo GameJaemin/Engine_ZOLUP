@@ -11,6 +11,7 @@
 
 #include "rapidjson/document.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -207,6 +208,50 @@ namespace
 		}
 
 		return accessors;
+	}
+
+	/** animations 배열을 읽는다. 배열이 없으면 빈 배열을 돌려준다. */
+	std::vector<GLTFAnimation> ReadAnimations(const rapidjson::Value& document)
+	{
+		std::vector<GLTFAnimation> animations;
+		if (!document.HasMember("animations")) { return animations; }
+
+		const rapidjson::Value::ConstArray animationArray = document["animations"].GetArray();
+		for (const rapidjson::Value& item : animationArray)
+		{
+			GLTFAnimation animation;
+
+			const rapidjson::Value::ConstArray channelArray = item["channels"].GetArray();
+			for (const rapidjson::Value& channelItem : channelArray)
+			{
+				GLTFAnimationChannel channel;
+
+				channel.sampler = channelItem["sampler"].GetUint64();
+				const rapidjson::Value& targetItem = channelItem["target"];
+				if (targetItem.HasMember("node")) { channel.target.node = targetItem["node"].GetUint64(); }
+				channel.target.path = targetItem["path"].GetString();
+
+				animation.channels.push_back(std::move(channel));
+			}
+
+			const rapidjson::Value::ConstArray samplerArray = item["samplers"].GetArray();
+			for (const rapidjson::Value& samplerItem : samplerArray)
+			{
+				GLTFAnimationSampler sampler;
+
+				sampler.input = samplerItem["input"].GetUint64();
+				if (samplerItem.HasMember("interpolation")) { sampler.interpolation = samplerItem["interpolation"].GetString(); }
+				sampler.output = samplerItem["output"].GetUint64();
+
+				animation.samplers.push_back(std::move(sampler));
+			}
+
+			if (item.HasMember("name")) { animation.name = item["name"].GetString(); }
+
+			animations.push_back(std::move(animation));
+		}
+
+		return animations;
 	}
 
 	/** buffers 배열을 읽는다. 배열이 없으면 빈 배열을 돌려준다. */
@@ -639,6 +684,28 @@ namespace
 		return true;
 	}
 
+	/** glTF 좌표계(오른손, m)의 이동, 회전, 크기를 엔진 좌표계(왼손, cm)로 바꾼다. 노드와 애니메이션 키가 함께 쓴다. */
+	Transform ConvertTransformToEngine(const Transform& source)
+	{
+		Transform transform;
+
+		// 정점 위치와 같이 x를 뒤집고 cm로 바꾼다.
+		transform.position.x = -source.position.x * MetersToCentimeters;
+		transform.position.y = source.position.y * MetersToCentimeters;
+		transform.position.z = source.position.z * MetersToCentimeters;
+
+		// x를 뒤집으면 Y축, Z축 기준 회전의 방향이 반대가 되므로 y와 z 성분의 부호를 바꾼다.
+		transform.rotation.x = source.rotation.x;
+		transform.rotation.y = -source.rotation.y;
+		transform.rotation.z = -source.rotation.z;
+		transform.rotation.w = source.rotation.w;
+
+		// 크기는 방향이 없는 축별 배율이라 그대로 쓴다.
+		transform.scale = source.scale;
+
+		return transform;
+	}
+
 	/** 노드의 이동, 회전, 크기를 엔진 좌표계(왼손, cm)의 Transform으로 바꾼다. matrix로 적힌 노드는 행렬을 나눠서 바꾼다. */
 	Transform ConvertNodeTransform(const GLTFNode& node)
 	{
@@ -679,26 +746,7 @@ namespace
 			source.scale.z = node.scale[2];
 		}
 
-		// ----------
-		// 바꾸기: 엔진 좌표계(왼손, cm)로
-		// ----------
-		Transform transform;
-
-		// 정점 위치와 같이 x를 뒤집고 cm로 바꾼다.
-		transform.position.x = -source.position.x * MetersToCentimeters;
-		transform.position.y = source.position.y * MetersToCentimeters;
-		transform.position.z = source.position.z * MetersToCentimeters;
-
-		// x를 뒤집으면 Y축, Z축 기준 회전의 방향이 반대가 되므로 y와 z 성분의 부호를 바꾼다.
-		transform.rotation.x = source.rotation.x;
-		transform.rotation.y = -source.rotation.y;
-		transform.rotation.z = -source.rotation.z;
-		transform.rotation.w = source.rotation.w;
-
-		// 크기는 방향이 없는 축별 배율이라 그대로 쓴다.
-		transform.scale = source.scale;
-
-		return transform;
+		return ConvertTransformToEngine(source);
 	}
 
 	/** .gltf 파일과 외부 버퍼를 읽어 glTF 원본 그대로의 문서를 채운다. 실패하면 출력값을 유지하고 false를 반환한다. */
@@ -713,6 +761,7 @@ namespace
 
 		GLTFDocument gltfDocument;
 		gltfDocument.accessors = ReadAccessors(document);
+		gltfDocument.animations = ReadAnimations(document);
 		gltfDocument.buffers = ReadBuffers(document);
 		gltfDocument.bufferViews = ReadBufferViews(document);
 		gltfDocument.images = ReadImages(document);
@@ -873,6 +922,242 @@ namespace
 		return true;
 	}
 
+	/** glTF 보간 문자열을 엔진 보간 방식으로 바꾼다. 지원하지 않는 값(CUBICSPLINE 등)이면 값 없음을 반환한다. */
+	std::optional<AnimationInterpolation> ConvertAnimationInterpolation(const std::string& interpolation)
+	{
+		if (interpolation == "LINEAR") { return AnimationInterpolation::Linear; }
+		if (interpolation == "STEP") { return AnimationInterpolation::Step; }
+		return std::nullopt;
+	}
+
+	/** 애니메이션 하나에서 노드 하나의 키를 채널들에서 모은 것이다. 엔진 좌표로 바꾸기 전이며 키 값은 glTF 좌표 그대로다. */
+	struct RawNodeTrack
+	{
+		// 키 시각(초). 채널이 하나도 없으면 비어 있다. 지금은 이 노드의 모든 채널이 같은 시각을 써야 한다.
+		std::vector<float> times;
+		// 이 노드의 모든 채널이 함께 쓰는 보간 방식. times가 비어 있으면 의미가 없다.
+		AnimationInterpolation interpolation = AnimationInterpolation::Linear;
+		// 키마다 숫자 3개(x, y, z)다. 이동 채널이 없으면 비어 있다.
+		std::vector<float> translations;
+		// 키마다 숫자 4개(x, y, z, w)다. 회전 채널이 없으면 비어 있다.
+		std::vector<float> rotations;
+		// 키마다 숫자 3개(x, y, z)다. 크기 채널이 없으면 비어 있다.
+		std::vector<float> scales;
+		// 시각이나 보간 방식이 다른 채널을 만나면 true가 된다. 이 노드는 트랙을 만들지 않는다.
+		bool mismatched = false;
+	};
+
+	/**
+	 * sampler의 키 시각과 키 값(키마다 숫자 componentCount개)을 읽는다. 키 값은 float accessor여야 한다.
+	 * 명세를 어기면 출력값을 유지하고 false를 반환한다.
+	 */
+	bool ReadAnimationSamplerKeys(const GLTFDocument& gltfDocument, const GLTFAnimationSampler& sampler, std::size_t componentCount, std::vector<float>& outTimes, std::vector<float>& outValues)
+	{
+		// ----------
+		// 키 시각: float 숫자 하나씩이며, 하나 이상이고 0 이상이며 뒤로 갈수록 커진다.
+		// ----------
+		std::vector<float> times;
+		if (!ReadFloatAccessor(gltfDocument, sampler.input, 1, times)) { return false; }
+		if (times.empty()) { return false; }
+
+		for (std::size_t key = 0; key < times.size(); ++key)
+		{
+			// NaN은 크기 비교가 항상 거짓이라 아래 비교로 걸러지지 않으므로 먼저 확인한다.
+			if (!std::isfinite(times[key])) { return false; }
+			if (times[key] < 0.0f) { return false; }
+			if (key > 0 && times[key] <= times[key - 1]) { return false; }
+		}
+
+		// ----------
+		// 키 값: LINEAR와 STEP에서는 키 시각 하나에 값 하나가 대응한다.
+		// ----------
+		std::vector<float> values;
+		if (!ReadFloatAccessor(gltfDocument, sampler.output, componentCount, values)) { return false; }
+		if (values.size() != times.size() * componentCount) { return false; }
+
+		for (const float value : values)
+		{
+			if (!std::isfinite(value)) { return false; }
+		}
+
+		outTimes = std::move(times);
+		outValues = std::move(values);
+
+		return true;
+	}
+
+	/** 숫자 4개씩 담긴 쿼터니언들이 모두 길이 1인지 확인한다. 파일의 소수 자릿수 오차(0.001)는 허용한다. */
+	bool AreUnitQuaternions(const std::vector<float>& values)
+	{
+		constexpr float UnitLengthTolerance = 0.001f;
+
+		for (std::size_t i = 0; i + 3 < values.size(); i += 4)
+		{
+			const float lengthSquared = values[i] * values[i] + values[i + 1] * values[i + 1] + values[i + 2] * values[i + 2] + values[i + 3] * values[i + 3];
+			if (std::abs(std::sqrt(lengthSquared) - 1.0f) > UnitLengthTolerance) { return false; }
+		}
+
+		return true;
+	}
+
+	/**
+	 * 노드 하나의 원본 트랙을 엔진 좌표계의 트랙으로 바꾼다. 채널이 없는 속성은 nodeLocalTransform(엔진 좌표의 노드 원래 값)을 쓴다.
+	 * rawTrack의 times는 비어 있지 않고, 비어 있지 않은 키 값 목록은 times와 키 개수가 같아야 한다.
+	 */
+	AnimationNodeTrack ConvertAnimationNodeTrack(std::size_t node, const RawNodeTrack& rawTrack, const Transform& nodeLocalTransform)
+	{
+		AnimationNodeTrack track;
+		track.node = node;
+		track.interpolation = rawTrack.interpolation;
+		track.times = rawTrack.times;
+		track.values.reserve(rawTrack.times.size());
+
+		const std::vector<float>& translations = rawTrack.translations;
+		const std::vector<float>& rotations = rawTrack.rotations;
+		const std::vector<float>& scales = rawTrack.scales;
+
+		for (std::size_t key = 0; key < rawTrack.times.size(); ++key)
+		{
+			// glTF 좌표 그대로 담은 뒤 노드와 같은 규칙으로 엔진 좌표로 바꾼다.
+			Transform source;
+			if (!translations.empty()) { source.position = { translations[key * 3], translations[key * 3 + 1], translations[key * 3 + 2] }; }
+			if (!rotations.empty()) { source.rotation = { rotations[key * 4], rotations[key * 4 + 1], rotations[key * 4 + 2], rotations[key * 4 + 3] }; }
+			if (!scales.empty()) { source.scale = { scales[key * 3], scales[key * 3 + 1], scales[key * 3 + 2] }; }
+
+			Transform value = ConvertTransformToEngine(source);
+
+			// 채널이 없는 속성은 노드의 원래 값으로 채운다. 원래 값은 이미 엔진 좌표라 변환한 뒤에 넣는다.
+			if (translations.empty()) { value.position = nodeLocalTransform.position; }
+			if (rotations.empty()) { value.rotation = nodeLocalTransform.rotation; }
+			if (scales.empty()) { value.scale = nodeLocalTransform.scale; }
+
+			track.values.push_back(value);
+		}
+
+		return track;
+	}
+
+	/**
+	 * 채널 하나의 키를 rawTracks의 대상 노드 칸에 넣는다. rawTracks는 배치표와 같은 번호다.
+	 * 지원하지 않는 채널은 logPrefix를 붙여 경고하고 건너뛴다. 명세를 어기면 false를 반환한다.
+	 */
+	bool AddAnimationChannel(const GLTFDocument& gltfDocument, const GLTFAnimation& animation, const GLTFAnimationChannel& channel, const std::string& logPrefix, std::vector<RawNodeTrack>& rawTracks)
+	{
+		// 번호들은 파일에 적힌 값이라 쓰기 전에 범위를 확인한다.
+		if (channel.sampler >= animation.samplers.size()) { return false; }
+		const GLTFAnimationSampler& sampler = animation.samplers[channel.sampler];
+
+		if (!channel.target.node.has_value())
+		{
+			Log::Write(LogLevel::Warning, "GLTFLoader", logPrefix + ": channel without node is not supported; ignored");
+			return true;
+		}
+
+		const std::size_t node = channel.target.node.value();
+		if (node >= rawTracks.size()) { return false; }
+
+		// path에 맞는 키 값 목록을 고른다. 이 노드의 이동, 회전, 크기 목록 중 하나를 가리킨다.
+		RawNodeTrack& rawTrack = rawTracks[node];
+		std::vector<float>* keyValues = nullptr;
+		std::size_t componentCount = 3;
+		if (channel.target.path == "translation") { keyValues = &rawTrack.translations; }
+		else if (channel.target.path == "rotation") { keyValues = &rawTrack.rotations; componentCount = 4; }
+		else if (channel.target.path == "scale") { keyValues = &rawTrack.scales; }
+		else
+		{
+			Log::Write(LogLevel::Warning, "GLTFLoader", logPrefix + std::format(": path '{}' is not supported; ignored", channel.target.path));
+			return true;
+		}
+
+		const std::optional<AnimationInterpolation> interpolation = ConvertAnimationInterpolation(sampler.interpolation);
+		if (!interpolation.has_value())
+		{
+			Log::Write(LogLevel::Warning, "GLTFLoader", logPrefix + std::format(": interpolation '{}' is not supported; ignored", sampler.interpolation));
+			return true;
+		}
+
+		// 명세는 회전 키에 정수 정규화 값도 허용하지만, 지금은 float(5126)만 읽는다.
+		if (sampler.output >= gltfDocument.accessors.size()) { return false; }
+		if (gltfDocument.accessors[sampler.output].componentType != 5126)
+		{
+			Log::Write(LogLevel::Warning, "GLTFLoader", logPrefix + std::format(": non-float {} keys are not supported; ignored", channel.target.path));
+			return true;
+		}
+
+		// 명세상 한 애니메이션에서 같은 노드의 같은 속성을 두 채널이 바꿀 수 없다.
+		if (!keyValues->empty()) { return false; }
+
+		// 키 값은 고른 목록에 바로 들어간다. 읽기나 검사에 실패하면 목록은 비어 있는 채로 남는다.
+		std::vector<float> times;
+		if (!ReadAnimationSamplerKeys(gltfDocument, sampler, componentCount, times, *keyValues)) { return false; }
+		if (channel.target.path == "rotation" && !AreUnitQuaternions(rawTrack.rotations)) { return false; }
+
+		// 노드의 첫 채널이 시각과 보간 방식을 정하고, 다음 채널부터는 같은지 비교한다.
+		if (rawTrack.times.empty())
+		{
+			rawTrack.times = std::move(times);
+			rawTrack.interpolation = interpolation.value();
+		}
+		else if (rawTrack.times != times || rawTrack.interpolation != interpolation.value())
+		{
+			rawTrack.mismatched = true;
+		}
+
+		return true;
+	}
+
+	/**
+	 * animationIndex번 애니메이션을 엔진 좌표계의 트랙과 길이로 바꿔 outClip에 채운다. sceneNodes는 같은 문서로 만든 배치표다.
+	 * 지원하지 않는 채널은 경고하고 건너뛴다. 명세를 어기면 출력값을 유지하고 false를 반환한다.
+	 */
+	bool ConvertAnimationClip(const GLTFDocument& gltfDocument, const std::vector<GLTFSceneNode>& sceneNodes, std::size_t animationIndex, AnimationClip& outClip)
+	{
+		const GLTFAnimation& animation = gltfDocument.animations[animationIndex];
+
+		// 경고 로그 앞에 붙여 어느 애니메이션인지 알린다.
+		const std::string logPrefix = std::format("Animation {} ('{}')", animationIndex, animation.name);
+
+		// ----------
+		// 채널을 노드별 원본 트랙에 모으기
+		// ----------
+		// 배치표와 같은 번호다. 채널이 없는 노드는 times가 비어 있다.
+		std::vector<RawNodeTrack> rawTracks(sceneNodes.size());
+		for (const GLTFAnimationChannel& channel : animation.channels)
+		{
+			if (!AddAnimationChannel(gltfDocument, animation, channel, logPrefix, rawTracks)) { return false; }
+		}
+
+		// ----------
+		// 노드마다 엔진 트랙 만들기
+		// ----------
+		std::vector<AnimationNodeTrack> tracks;
+		float duration = 0.0f;
+		for (std::size_t node = 0; node < rawTracks.size(); ++node)
+		{
+			const RawNodeTrack& rawTrack = rawTracks[node];
+			if (rawTrack.times.empty()) { continue; }
+
+			if (rawTrack.mismatched)
+			{
+				Log::Write(LogLevel::Warning, "GLTFLoader", logPrefix + std::format(": node {} channels have different key times or interpolation; ignored", node));
+				continue;
+			}
+
+			tracks.push_back(ConvertAnimationNodeTrack(node, rawTrack, sceneNodes[node].localTransform));
+			duration = (std::max)(duration, rawTrack.times.back());
+		}
+
+		if (tracks.empty())
+		{
+			Log::Write(LogLevel::Warning, "GLTFLoader", logPrefix + ": no supported channels; clip is empty");
+		}
+
+		outClip.tracks = std::move(tracks);
+		outClip.duration = duration;
+
+		return true;
+	}
+
 	/**
 	 * LoadDocument로 채운 원본 문서의 meshIndex번 메시의 첫 프리미티브를 엔진 좌표계(왼손, cm)의 정점과 인덱스로 바꿔 채운다.
 	 * 이름과 경로는 유지하며, 실패하면 출력값을 유지하고 false를 반환한다.
@@ -1024,6 +1309,24 @@ bool GLTFLoader::LoadModel(const std::filesystem::path& path, GLTFModel& outMode
 	// 배치표 만들기
 	// ----------
 	if (!ConvertSceneNodes(gltfDocument, model.sceneNodes)) { return false; }
+
+	// ----------
+	// 애니메이션마다 클립 만들기
+	// ----------
+	// 이름은 glTF 애니메이션 이름을 쓰고, 비어 있으면 "파일이름_animation_번호"로 정한다. 경로는 받는 쪽이 정하므로 비워 둔다.
+	// 트랙이 남지 않은 애니메이션도 빈 클립으로 남겨 glTF animations 번호 순서를 지킨다.
+	model.animations.reserve(gltfDocument.animations.size());
+	for (std::size_t i = 0; i < gltfDocument.animations.size(); ++i)
+	{
+		std::string name = gltfDocument.animations[i].name;
+		if (name.empty())
+		{
+			name = std::string(fileStem.begin(), fileStem.end()) + "_animation_" + std::to_string(i);
+		}
+
+		model.animations.emplace_back(std::move(name), std::string());
+		if (!ConvertAnimationClip(gltfDocument, model.sceneNodes, i, model.animations.back())) { return false; }
+	}
 
 	outModel = std::move(model);
 

@@ -32,4 +32,10 @@ struct Quaternion
 
 	/** 반대 회전을 반환한다. 단위 쿼터니언이라 켤레(x, y, z의 부호를 뒤집은 값)와 같다. */
 	Quaternion GetInverse() const;
+
+	/**
+	 * 단위 쿼터니언 from에서 to까지 짧은 쪽 경로를 같은 각속도로 alpha 비율만큼 돈 회전을 반환한다.
+	 * alpha가 0이면 from, 1이면 to와 같은 회전이며 결과는 길이 1이다.
+	 */
+	static Quaternion Slerp(const Quaternion& from, const Quaternion& to, float alpha);
 };

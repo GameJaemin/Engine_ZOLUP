@@ -128,6 +128,21 @@ std::shared_ptr<const Model> AssetManager::LoadModel(std::string_view relativePa
 		model.meshMaterials.push_back(defaultMaterial);
 	}
 
+	model.animations.reserve(gltfModel.animations.size());
+	for (std::size_t i = 0; i < gltfModel.animations.size(); ++i)
+	{
+		AnimationClip& source = gltfModel.animations[i];
+
+		// 경로는 만든 뒤 바꿀 수 없으므로, 이름과 "파일경로#번호" 경로로 클립을 새로 만든다.
+		AnimationClip clip(source.GetName(), modelPath + "#" + std::to_string(i));
+
+		// 트랙은 복사하지 않고 옮겨 담는다.
+		clip.tracks = std::move(source.tracks);
+		clip.duration = source.duration;
+
+		model.animations.push_back(std::make_shared<const AnimationClip>(std::move(clip)));
+	}
+
 	model.sceneNodes = std::move(gltfModel.sceneNodes);
 
 	std::shared_ptr<const Model> result = std::make_shared<const Model>(std::move(model));

@@ -20,6 +20,7 @@
     <ClCompile Include="Editor\Source\EditorSelection.cpp" />
     <ClCompile Include="Game\Source\PlayerObject.cpp" />
     <ClCompile Include="Engine\Source\Asset.cpp" />
+    <ClCompile Include="Engine\Source\Animation\AnimationClip.cpp" />
     <ClCompile Include="Engine\Source\Mesh\StaticMesh.cpp" />
     <ClCompile Include="Engine\Source\Texture\Texture.cpp" />
     <ClCompile Include="Engine\Source\AssetManager.cpp" />
@@ -96,6 +97,7 @@
     <ClInclude Include="Engine\Source\Renderer\Material.h" />
     <ClInclude Include="Engine\Source\Renderer\RenderScene.h" />
     <ClInclude Include="Engine\Source\Renderer\HakkoResources.h" />
+    <ClInclude Include="Engine\Source\Animation\AnimationClip.h" />
     <ClInclude Include="Engine\Source\Mesh\MeshVertex.h" />
     <ClInclude Include="Engine\Source\Mesh\StaticMesh.h" />
     <ClInclude Include="Engine\Source\Texture\Texture.h" />

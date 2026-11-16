@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Animation/AnimationClip.h"
 #include "GLTFLoader.h"
 
 #include <filesystem>
@@ -18,7 +19,7 @@ class Texture;
 enum class TextureFormat;
 
 /**
- * glTF 파일 하나에서 불러온 메시들과 배치표다. 모두 엔진 좌표계(왼손, cm)다.
+ * glTF 파일 하나에서 불러온 메시들과 배치표와 애니메이션 클립들이다. 모두 엔진 좌표계(왼손, cm)다.
  * 장면에 놓기 전의 원본이며, 배치는 배치표를 읽어 만든 GameObject가 맡는다.
  */
 struct Model
@@ -30,6 +31,8 @@ struct Model
 	std::vector<std::shared_ptr<const Material>> meshMaterials;
 	// glTF nodes 번호 순서다. 각 노드의 mesh 번호로 meshes를 찾는다.
 	std::vector<GLTFSceneNode> sceneNodes;
+	// glTF animations 번호 순서다. 각 경로는 "파일경로#번호"다. 클립의 node 번호로 sceneNodes를 찾는다.
+	std::vector<std::shared_ptr<const AnimationClip>> animations;
 };
 
 /**
@@ -63,7 +66,7 @@ private:
 	// 모델
 public:
 	/**
-	 * 메인 스레드에서 저장소 루트 기준 UTF-8 경로의 glTF 파일에서 모든 메시와 배치표를 불러온다.
+	 * 메인 스레드에서 저장소 루트 기준 UTF-8 경로의 glTF 파일에서 모든 메시, 재질, 배치표와 애니메이션 클립을 불러온다.
 	 * 파일명과 폴더명의 대소문자는 실제 자산 경로에 맞춘다.
 	 * 이 매니저의 수명 동안 보관하고, 같은 경로 요청에 재사용한다. 실패하면 nullptr를 반환한다.
 	 */
