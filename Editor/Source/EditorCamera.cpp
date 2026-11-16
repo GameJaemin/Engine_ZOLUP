@@ -2,6 +2,15 @@
 
 #include <cmath>
 
+EditorCamera::EditorCamera()
+{
+	cameraViewInfo.projectionMode = CameraProjectionMode::Perspective;
+	cameraViewInfo.verticalFovDegrees = 60.0f;
+	cameraViewInfo.orthographicHeight = 1000.0f;
+	cameraViewInfo.nearClipDistance = 10.0f;
+	cameraViewInfo.farClipDistance = 100000.0f;
+}
+
 CameraViewInfo EditorCamera::GetCameraViewInfo() const
 {
 	return cameraViewInfo;
