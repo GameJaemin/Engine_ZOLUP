@@ -207,7 +207,7 @@ std::shared_ptr<const Texture> AssetManager::LoadTexture(std::string_view relati
 	if (cachedTexture != textures.end()) { return cachedTexture->second; }
 
 	Image image;
-	if (!ImageLoader::LoadPNG(absolutePath, image)) { return nullptr; }
+	if (!ImageLoader::LoadImageFile(absolutePath, image)) { return nullptr; }
 
 	const std::u8string relativePathUtf8(relativePath.begin(), relativePath.end());
 	const std::filesystem::path requestedPath(relativePathUtf8);

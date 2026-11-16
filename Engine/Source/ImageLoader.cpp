@@ -42,7 +42,7 @@ namespace
 	};
 }
 
-bool ImageLoader::LoadPNG(const std::filesystem::path& path, Image& outImage)
+bool ImageLoader::LoadImageFile(const std::filesystem::path& path, Image& outImage)
 {
 	const HRESULT comResult = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 	// 다른 방식으로 초기화된 스레드에서는 기존 COM 환경을 사용한다.
@@ -82,9 +82,11 @@ bool ImageLoader::LoadPNG(const std::filesystem::path& path, Image& outImage)
 		return false;
 	}
 
-	if (!IsEqualGUID(containerFormat, GUID_ContainerFormatPng))
+	const bool isSupportedFormat = IsEqualGUID(containerFormat, GUID_ContainerFormatPng)
+		|| IsEqualGUID(containerFormat, GUID_ContainerFormatJpeg);
+	if (!isSupportedFormat)
 	{
-		Log::Write(LogLevel::Error, "ImageLoader", "Only PNG images are supported");
+		Log::Write(LogLevel::Error, "ImageLoader", "Only PNG and JPEG images are supported");
 		return false;
 	}
 
@@ -92,7 +94,7 @@ bool ImageLoader::LoadPNG(const std::filesystem::path& path, Image& outImage)
 	const HRESULT frameResult = decoder->GetFrame(0, frame.GetAddressOf());
 	if (FAILED(frameResult))
 	{
-		Log::Write(LogLevel::Error, "ImageLoader", "Failed to get PNG image frame");
+		Log::Write(LogLevel::Error, "ImageLoader", "Failed to get image frame");
 		return false;
 	}
 
@@ -101,13 +103,13 @@ bool ImageLoader::LoadPNG(const std::filesystem::path& path, Image& outImage)
 	const HRESULT sizeResult = frame->GetSize(&width, &height);
 	if (FAILED(sizeResult))
 	{
-		Log::Write(LogLevel::Error, "ImageLoader", "Failed to get PNG image size");
+		Log::Write(LogLevel::Error, "ImageLoader", "Failed to get image size");
 		return false;
 	}
 
 	if (width == 0 || height == 0)
 	{
-		Log::Write(LogLevel::Error, "ImageLoader", "PNG image dimensions must be positive");
+		Log::Write(LogLevel::Error, "ImageLoader", "Image dimensions must be positive");
 		return false;
 	}
 
@@ -130,7 +132,7 @@ bool ImageLoader::LoadPNG(const std::filesystem::path& path, Image& outImage)
 	const std::uint64_t rowPitch = static_cast<std::uint64_t>(width) * 4;
 	if (rowPitch > UINT_MAX)
 	{
-		Log::Write(LogLevel::Error, "ImageLoader", "PNG row size exceeds the WIC buffer limit");
+		Log::Write(LogLevel::Error, "ImageLoader", "Image row size exceeds the WIC buffer limit");
 		return false;
 	}
 
@@ -139,7 +141,7 @@ bool ImageLoader::LoadPNG(const std::filesystem::path& path, Image& outImage)
 	Image image;
 	if (byteCount > UINT_MAX || byteCount > image.pixels.max_size())
 	{
-		Log::Write(LogLevel::Error, "ImageLoader", "PNG pixel data exceeds the supported buffer size");
+		Log::Write(LogLevel::Error, "ImageLoader", "Image pixel data exceeds the supported buffer size");
 		return false;
 	}
 
@@ -150,7 +152,7 @@ bool ImageLoader::LoadPNG(const std::filesystem::path& path, Image& outImage)
 	const HRESULT copyResult = converter->CopyPixels(nullptr, static_cast<UINT>(rowPitch), static_cast<UINT>(byteCount), reinterpret_cast<BYTE*>(image.pixels.data()));
 	if (FAILED(copyResult))
 	{
-		Log::Write(LogLevel::Error, "ImageLoader", "Failed to copy PNG pixels");
+		Log::Write(LogLevel::Error, "ImageLoader", "Failed to copy image pixels");
 		return false;
 	}
 
