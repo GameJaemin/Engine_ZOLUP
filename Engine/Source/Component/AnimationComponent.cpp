@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <utility>
 
 void AnimationComponent::SetNodeTransforms(std::vector<TransformComponent*> newNodeTransforms)
@@ -12,11 +13,28 @@ void AnimationComponent::SetNodeTransforms(std::vector<TransformComponent*> newN
 	nodeTransforms = std::move(newNodeTransforms);
 }
 
+void AnimationComponent::SetRestPose(std::vector<Transform> newRestPose)
+{
+	restPose = std::move(newRestPose);
+	pose = restPose;
+}
+
 void AnimationComponent::Play(std::shared_ptr<const AnimationClip> newClip, bool newLooping)
 {
 	clip = std::move(newClip);
 	looping = newLooping;
 	currentTime = 0.0f;
+
+	// 새 클립은 원래 자세에서 시작한다. 멈춤(nullptr)은 지금 자세를 유지한다.
+	if (clip == nullptr)
+	{
+		return;
+	}
+	pose = restPose;
+	for (std::size_t node = 0; node < pose.size() && node < nodeTransforms.size(); ++node)
+	{
+		nodeTransforms[node]->SetTransform(pose[node]);
+	}
 }
 
 void AnimationComponent::Tick(float deltaTime)
@@ -37,13 +55,23 @@ void AnimationComponent::Tick(float deltaTime)
 		currentTime = std::min(currentTime, clip->duration);
 	}
 
+	// 1) 클립 값을 포즈에 채운다. 원래 값을 받지 않았거나 다른 Model의 클립이면 포즈 밖이므로 그 트랙을 건너뛴다.
 	for (const AnimationNodeTrack& track : clip->tracks)
 	{
-		// 노드 목록을 받지 않았거나 다른 Model의 클립이면 목록 밖이므로 그 트랙을 건너뛴다.
-		if (track.node >= nodeTransforms.size())
+		if (track.node >= pose.size())
 		{
 			continue;
 		}
-		nodeTransforms[track.node]->SetTransform(track.Sample(currentTime));
+		pose[track.node] = track.Sample(currentTime);
+	}
+
+	// 2) 트랙이 있는 노드만 노드 객체에 반영한다. 게임 코드가 다른 노드에 넣은 값은 덮어쓰지 않는다.
+	for (const AnimationNodeTrack& track : clip->tracks)
+	{
+		if (track.node >= pose.size() || track.node >= nodeTransforms.size())
+		{
+			continue;
+		}
+		nodeTransforms[track.node]->SetTransform(pose[track.node]);
 	}
 }

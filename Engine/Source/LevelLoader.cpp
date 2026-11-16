@@ -148,8 +148,16 @@ namespace
 				nodeTransforms.push_back(nodeObject->GetComponent<TransformComponent>());
 			}
 
+			std::vector<Transform> restPose;
+			restPose.reserve(model.sceneNodes.size());
+			for (const GLTFSceneNode& sceneNode : model.sceneNodes)
+			{
+				restPose.push_back(sceneNode.localTransform);
+			}
+
 			std::unique_ptr<AnimationComponent> animation = std::make_unique<AnimationComponent>();
 			animation->SetNodeTransforms(std::move(nodeTransforms));
+			animation->SetRestPose(std::move(restPose));
 			root.AddComponent(std::move(animation));
 		}
 	}

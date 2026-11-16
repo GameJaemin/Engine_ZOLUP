@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Component.h"
+#include "Core/Math/Transform.h"
 
 #include <memory>
 #include <vector>
@@ -26,9 +27,23 @@ private:
 	// 클립 node 번호 순서. 비소유이며 자손 객체의 컴포넌트를 가리킨다.
 	std::vector<TransformComponent*> nodeTransforms;
 
+	// 포즈
+public:
+	/** 노드 번호 순서의 원래 부모 기준 값을 받고, 현재 포즈도 이 값으로 채운다. */
+	void SetRestPose(std::vector<Transform> newRestPose);
+
+private:
+	// 노드 번호 순서의 원래 값(배치표의 localTransform). 엔진 좌표계(왼손, cm)이며 바뀌지 않는다.
+	std::vector<Transform> restPose;
+	// 노드 번호 순서의 이번 프레임 부모 기준 값. 트랙이 없는 노드는 restPose 값을 유지한다.
+	std::vector<Transform> pose;
+
 	// 재생
 public:
-	/** newClip을 처음부터 재생한다. nullptr면 멈춘다. 클립은 노드 목록과 같은 Model에서 불러온 것이어야 한다. */
+	/**
+	 * newClip을 처음부터 재생하며, 모든 노드를 원래 값으로 되돌린 뒤 시작한다. nullptr면 지금 자세로 멈춘다.
+	 * 클립은 노드 목록과 같은 Model에서 불러온 것이어야 한다.
+	 */
 	void Play(std::shared_ptr<const AnimationClip> newClip, bool newLooping);
 
 private:
