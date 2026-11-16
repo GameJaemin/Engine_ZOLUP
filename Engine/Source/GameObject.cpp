@@ -35,9 +35,18 @@ const World& GameObject::GetWorld() const
 	return world;
 }
 
+bool GameObject::Destroy()
+{
+	return world.DestroyGameObject(this);
+}
+
 void GameObject::SetPendingDestroy(bool pendingDestroy)
 {
 	isPendingDestroy = pendingDestroy;
+}
+
+void GameObject::OnDestroying() noexcept
+{
 }
 
 bool GameObject::SetParent(GameObject* newParent)

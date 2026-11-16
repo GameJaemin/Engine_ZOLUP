@@ -46,11 +46,25 @@ private:
 
 	// 삭제 상태
 public:
+	/**
+	 * 자신과 자손의 파괴를 소속 World에 요청한다.
+	 * 요청을 접수했거나 이미 대기 중이면 true를 반환한다.
+	 * 미등록 객체이거나 World가 파괴를 처리 중이면 false를 반환한다.
+	 */
+	bool Destroy();
+
 	/** 이 객체의 삭제 요청이 접수되었으면 true를 반환한다. */
 	bool IsPendingDestroy() const { return isPendingDestroy; }
 
 	/** 소속 World가 삭제 요청을 등록할 때 호출한다. */
 	void SetPendingDestroy(bool pendingDestroy);
+
+	/**
+	 * World가 파괴 대기 객체의 계층과 등록을 해제하기 전에 한 번 호출한다.
+	 * 파생 타입은 이 시점에 부모, 자식 및 컴포넌트를 조회하고 게임 상태나 외부 연결을 정리할 수 있다.
+	 * 기반 구현은 비어 있다. 게임 코드에서 이 함수를 직접 호출하지 않는다.
+	 */
+	virtual void OnDestroying() noexcept;
 
 private:
 	bool isPendingDestroy = false;

@@ -70,6 +70,11 @@ void World::DestroyPendingGameObjects()
 
 	for (GameObject* target : pendingDestroyGameObjects)
 	{
+		target->OnDestroying();
+	}
+
+	for (GameObject* target : pendingDestroyGameObjects)
+	{
 		target->SetParent(nullptr);
 	}
 
