@@ -20,9 +20,9 @@ Visual Studio Installer에서 워크로드와 해당 구성 요소를 설치합�
 
 ## 소스와 헤더 경로
 
-프로세스 진입점은 `Game/Source/GameMain.cpp`에 둡니다. 진입점에서 `Engine`과 `GameApplication`을 생성하고 `Engine::Run`을 호출합니다. `Engine/Source`에는 공통 실행과 창 처리 코드를, `Game/Source`에는 게임의 월드 구성과 갱신 코드를 둡니다. 하나의 실행 프로젝트에서 두 경로의 소스를 함께 빌드합니다.
+프로세스 진입점은 `Game/Source/GameMain.cpp`에 둡니다. `SeonEngine.exe`는 기본적으로 `GameApplication`을 실행하고, `SeonEngine.exe --editor`는 `EditorApplication`을 실행합니다. 하나의 실행 프로젝트에서 `Engine/Source`, `Game/Source` 및 `Editor/Source`의 소스를 함께 빌드합니다.
 
-Debug, Release의 추가 포함 디렉터리에 `$(ProjectDir)Engine\Source`를 지정합니다. 엔진 공용 수학 코드는 `Engine/Source/Core/Math`에 두고, 다른 폴더에서 사용할 때는 `#include "Core/Math/Vector3.h"`처럼 소스 루트 기준 경로로 포함합니다.
+Debug, Release의 추가 포함 디렉터리에 `$(ProjectDir)Engine\Source`와 `$(ProjectDir)Editor\Source`를 지정합니다. 엔진 공용 수학 코드는 `Engine/Source/Core/Math`에 두고, 다른 폴더에서 사용할 때는 `#include "Core/Math/Vector3.h"`처럼 소스 루트 기준 경로로 포함합니다.
 
 ## 외부 라이브러리
 

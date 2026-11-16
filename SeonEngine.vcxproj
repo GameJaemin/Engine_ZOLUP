@@ -17,7 +17,9 @@
     <ClCompile Include="Engine\Source\Core\Math\Transform.cpp" />
     <ClCompile Include="Game\Source\GameMain.cpp" />
     <ClCompile Include="Game\Source\GameApplication.cpp" />
+    <ClCompile Include="Editor\Source\EditorApplication.cpp" />
     <ClCompile Include="Editor\Source\EditorSelection.cpp" />
+    <ClCompile Include="Editor\Source\EditorWorldSession.cpp" />
     <ClCompile Include="Game\Source\PlayerObject.cpp" />
     <ClCompile Include="Engine\Source\Asset.cpp" />
     <ClCompile Include="Engine\Source\Animation\AnimationClip.cpp" />
@@ -67,7 +69,9 @@
     <ClInclude Include="Engine\Source\Paths.h" />
     <ClInclude Include="Game\Source\PlayerObject.h" />
     <ClInclude Include="Game\Source\GameApplication.h" />
+    <ClInclude Include="Editor\Source\EditorApplication.h" />
     <ClInclude Include="Editor\Source\EditorSelection.h" />
+    <ClInclude Include="Editor\Source\EditorWorldSession.h" />
     <ClInclude Include="Engine\Source\Input\InputState.h" />
     <ClInclude Include="Engine\Source\Input\Key.h" />
     <ClInclude Include="Engine\Source\Input\InputDispatcher.h" />
@@ -186,7 +190,7 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)Engine\Source;$(ProjectDir)Engine\ThirdParty\RapidJSON\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)Engine\Source;$(ProjectDir)Editor\Source;$(ProjectDir)Engine\ThirdParty\RapidJSON\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -205,7 +209,7 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)Engine\Source;$(ProjectDir)Engine\ThirdParty\RapidJSON\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)Engine\Source;$(ProjectDir)Editor\Source;$(ProjectDir)Engine\ThirdParty\RapidJSON\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
