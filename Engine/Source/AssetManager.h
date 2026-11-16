@@ -98,7 +98,9 @@ private:
 public:
 	/**
 	 * 저장소 루트 기준 UTF-8 상대 경로에서 프리팹을 불러오고 같은 경로 요청에 재사용한다.
-	 * 실패하면 nullptr를 반환한다. 모델이 생략된 프리팹도 유효하다.
+	 * 지정된 메시의 기본 재질을 복사해 색상 텍스처를 교체한다.
+	 * 잘못된 설정이나 참조된 에셋의 로드 실패는 nullptr를 반환한다.
+	 * 재질 오버라이드가 없으면 모델을 생략할 수 있다.
 	 */
 	[[nodiscard]] std::shared_ptr<const Prefab> LoadPrefab(std::string_view relativePath);
 

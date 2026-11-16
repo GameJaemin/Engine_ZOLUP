@@ -116,7 +116,14 @@ namespace
 				const std::size_t meshIndex = *sceneNode.mesh;
 				std::unique_ptr<StaticMeshComponent> mesh = std::make_unique<StaticMeshComponent>();
 				mesh->SetStaticMesh(model.meshes[meshIndex]);
-				mesh->SetMaterial(model.meshMaterials[meshIndex]);
+
+				std::shared_ptr<const Material> material = model.meshMaterials[meshIndex];
+				const std::vector<std::shared_ptr<const Material>>& overrides = prefab.meshMaterialOverrides;
+				if (!overrides.empty() && overrides[meshIndex] != nullptr)
+				{
+					material = overrides[meshIndex];
+				}
+				mesh->SetMaterial(std::move(material));
 				nodeObject->AddComponent(std::move(mesh));
 			}
 

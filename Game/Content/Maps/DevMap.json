@@ -17,6 +17,15 @@
 				"rotation": [0.0, 0.0, 0.0, 1.0],
 				"scale": [2.0, 2.0, 2.0]
 			}
+		},
+		{
+			"name": "MapCheckerTeapot",
+			"prefab": "Game/Content/Prefabs/CheckerTeapot.prefab.json",
+			"transform": {
+				"position": [-1000.0, 500.0, 3000.0],
+				"rotation": [0.0, 1.0, 0.0, 0.0],
+				"scale": [1.0, 1.0, 1.0]
+			}
 		}
 	]
 }

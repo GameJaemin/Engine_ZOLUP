@@ -1,0 +1,9 @@
+{
+	"model": "Game/Content/Meshes/UtahTeapot/UtahTeapot.gltf",
+	"materialOverrides": [
+		{
+			"meshIndex": 0,
+			"baseColorTexture": "Engine/Content/Textures/Checker.png"
+		}
+	]
+}

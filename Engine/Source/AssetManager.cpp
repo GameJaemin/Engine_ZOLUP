@@ -263,21 +263,51 @@ std::shared_ptr<const Prefab> AssetManager::LoadPrefab(std::string_view relative
 	const auto cachedPrefab = prefabs.find(cacheKey);
 	if (cachedPrefab != prefabs.end()) { return cachedPrefab->second; }
 
-	std::optional<std::string> modelPath;
-	if (!ReadPrefabModelPath(absolutePath, modelPath)) { return nullptr; }
+	PrefabDefinition definition;
+	if (!ReadPrefabDefinition(absolutePath, definition)) { return nullptr; }
 
 	Prefab prefab{};
-	if (modelPath.has_value())
+	if (definition.modelPath.has_value())
 	{
-		prefab.model = LoadModel(*modelPath);
+		prefab.model = LoadModel(*definition.modelPath);
 		if (prefab.model == nullptr)
 		{
-			Log::Write(LogLevel::Error, "AssetManager", std::format("{}: could not load model {}", relativePath, *modelPath));
+			Log::Write(LogLevel::Error, "AssetManager", std::format("{}: could not load model {}", relativePath, *definition.modelPath));
+
 			return nullptr;
+		}
+	}
+
+	// 파서는 재질 오버라이드가 있을 때 모델 경로가 있는지 확인한다.
+	if (!definition.materialOverrides.empty())
+	{
+		const auto& defaultMaterials = prefab.model->meshMaterials;
+		prefab.meshMaterialOverrides.resize(defaultMaterials.size());
+
+		for (const PrefabMaterialOverride& entry : definition.materialOverrides)
+		{
+			const std::size_t meshIndex = entry.meshIndex;
+			if (meshIndex >= defaultMaterials.size() || prefab.meshMaterialOverrides[meshIndex] != nullptr)
+			{
+				Log::Write(LogLevel::Error, "AssetManager", std::format("{}: invalid or duplicate material override for mesh {}", relativePath, meshIndex));
+				return nullptr;
+			}
+
+			std::shared_ptr<const Texture> texture = LoadTexture(entry.baseColorTexturePath, TextureFormat::RGBA8SRGB);
+			if (texture == nullptr)
+			{
+				Log::Write(LogLevel::Error, "AssetManager", std::format("{}: mesh {} could not load texture {}", relativePath, meshIndex, entry.baseColorTexturePath));
+				return nullptr;
+			}
+
+			Material material = *defaultMaterials[meshIndex];
+			material.baseColorTexture = std::move(texture);
+			prefab.meshMaterialOverrides[meshIndex] = std::make_shared<const Material>(std::move(material));
 		}
 	}
 
 	std::shared_ptr<const Prefab> result = std::make_shared<const Prefab>(std::move(prefab));
 	prefabs.emplace(cacheKey, result);
+
 	return result;
 }
