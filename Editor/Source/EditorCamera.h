@@ -6,6 +6,8 @@
 class EditorCamera
 {
 public:
+	EditorCamera();
+
 	CameraViewInfo GetCameraViewInfo() const;
 	void SetPosition(const Vector3& newPosition);
 	/** 월드 기준 단위 쿼터니언을 받는다. */
@@ -20,13 +22,5 @@ public:
 	bool SetClipDistances(float newNearClipDistance, float newFarClipDistance);
 
 private:
-	CameraViewInfo cameraViewInfo{
-		.position = {},
-		.rotation = {},
-		.projectionMode = CameraProjectionMode::Perspective,
-		.verticalFovDegrees = 60.0f,
-		.orthographicHeight = 1000.0f,
-		.nearClipDistance = 10.0f,
-		.farClipDistance = 100000.0f
-	};
+	CameraViewInfo cameraViewInfo;
 };
