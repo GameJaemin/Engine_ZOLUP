@@ -4,6 +4,7 @@
 #include "GameObject.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <utility>
 
 World::World() = default;
@@ -31,42 +32,89 @@ GameObject* World::AddGameObject(std::unique_ptr<GameObject> newGameObject)
 
 bool World::DestroyGameObject(GameObject* gameObject)
 {
-	if (!ContainsGameObject(gameObject)) { return false; }
+	if (isDestroyingPendingGameObjects || !ContainsGameObject(gameObject)) { return false; }
+	if (gameObject->IsPendingDestroy()) { return true; }
 
 	std::vector<GameObject*> targets{ gameObject };
 	for (std::size_t index = 0; index < targets.size(); ++index)
 	{
 		for (GameObject* child : targets[index]->GetChildren())
 		{
-			targets.push_back(child);
+			if (!child->IsPendingDestroy())
+			{
+				targets.push_back(child);
+			}
 		}
 	}
 
-	std::vector<std::unique_ptr<GameObject>> removedObjects;
-	removedObjects.reserve(targets.size());
-
-	const auto isTarget = [&targets](const GameObject* object)
-	{
-		return std::find(targets.begin(), targets.end(), object) != targets.end();
-	};
-
-	// 소멸 중 끊긴 부모나 자식 포인터가 남지 않도록 모든 대상의 연결을 끊는다.
+	// 모든 공간을 확보한 뒤 상태를 바꿔 요청 일부만 접수되는 일을 막는다.
+	pendingDestroyGameObjects.reserve(pendingDestroyGameObjects.size() + targets.size());
 	for (GameObject* target : targets)
+	{
+		target->SetPendingDestroy(true);
+		pendingDestroyGameObjects.push_back(target);
+	}
+
+	return true;
+}
+
+void World::DestroyPendingGameObjects()
+{
+	if (isDestroyingPendingGameObjects || pendingDestroyGameObjects.empty()) { return; }
+
+	std::vector<std::unique_ptr<GameObject>> removedObjects;
+	removedObjects.reserve(pendingDestroyGameObjects.size());
+
+	isDestroyingPendingGameObjects = true;
+	NotifyGameObjectsDestroying();
+
+	for (GameObject* target : pendingDestroyGameObjects)
 	{
 		target->SetParent(nullptr);
 	}
 
-	// World의 목록을 정리한 뒤 함수 끝에서 객체를 소멸시킨다.
+	// 소멸자가 실행되기 전에 계층과 등록 목록을 정리한다.
 	for (std::unique_ptr<GameObject>& entry : gameObjects)
 	{
-		if (isTarget(entry.get()))
+		if (std::ranges::find(pendingDestroyGameObjects, entry.get()) != pendingDestroyGameObjects.end())
 		{
 			removedObjects.push_back(std::move(entry));
 		}
 	}
 	std::erase(gameObjects, nullptr);
+	pendingDestroyGameObjects.clear();
+	removedObjects.clear();
 
-	return true;
+	const auto firstUnsubscribed = std::ranges::remove(destroyingSubscriptions, std::uint64_t{ 0 }, &GameObjectDestroyingSubscription::id).begin();
+	destroyingSubscriptions.erase(firstUnsubscribed, destroyingSubscriptions.end());
+	isDestroyingPendingGameObjects = false;
+}
+
+std::uint64_t World::SubscribeGameObjectDestroying(std::function<void(const GameObject&)> callback)
+{
+	if (isDestroyingPendingGameObjects || !callback || nextDestroyingSubscriptionId == 0) { return 0; }
+
+	const std::uint64_t subscriptionId = nextDestroyingSubscriptionId;
+	destroyingSubscriptions.push_back({ subscriptionId, std::move(callback) });
+	++nextDestroyingSubscriptionId;
+	return subscriptionId;
+}
+
+void World::UnsubscribeGameObjectDestroying(std::uint64_t subscriptionId)
+{
+	if (subscriptionId == 0) { return; }
+
+	const auto subscription = std::ranges::find(destroyingSubscriptions, subscriptionId, &GameObjectDestroyingSubscription::id);
+	if (subscription == destroyingSubscriptions.end()) { return; }
+
+	if (isDestroyingPendingGameObjects)
+	{
+		// 실행 중인 콜백과 반복자가 유효하도록 순회가 끝날 때까지 자리만 유지한다.
+		subscription->id = 0;
+		return;
+	}
+
+	destroyingSubscriptions.erase(subscription);
 }
 
 bool World::ContainsGameObject(const GameObject* gameObject) const
@@ -77,6 +125,19 @@ bool World::ContainsGameObject(const GameObject* gameObject) const
 	}
 
 	return false;
+}
+
+void World::NotifyGameObjectsDestroying() noexcept
+{
+	for (const GameObject* target : pendingDestroyGameObjects)
+	{
+		for (const GameObjectDestroyingSubscription& subscription : destroyingSubscriptions)
+		{
+			if (subscription.id == 0) { continue; }
+
+			subscription.callback(*target);
+		}
+	}
 }
 
 bool World::SetActiveCamera(CameraComponent* camera)
@@ -107,6 +168,8 @@ void World::Tick(float deltaTime)
 {
 	for (const std::unique_ptr<GameObject>& gameObject : gameObjects)
 	{
+		if (gameObject->IsPendingDestroy()) { continue; }
+
 		gameObject->Tick(deltaTime);
 	}
 }

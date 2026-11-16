@@ -35,16 +35,24 @@ const World& GameObject::GetWorld() const
 	return world;
 }
 
+void GameObject::SetPendingDestroy(bool pendingDestroy)
+{
+	isPendingDestroy = pendingDestroy;
+}
+
 bool GameObject::SetParent(GameObject* newParent)
 {
 	if (newParent == parent) { return true; }
 
 	if (newParent != nullptr)
 	{
+		if (IsPendingDestroy()) { return false; }
+
 		if (!world.ContainsGameObject(this) || !world.ContainsGameObject(newParent))
 		{
 			return false;
 		}
+		if (newParent->IsPendingDestroy()) { return false; }
 
 		const GameObject* ancestor = newParent;
 		while (ancestor != nullptr)

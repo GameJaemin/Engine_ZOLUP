@@ -165,6 +165,7 @@ void GameApplication::OnUpdate(const InputState& input, float deltaTime)
 	// 입력 바인딩을 먼저 실행한 뒤 월드를 갱신한다.
 	gameWorld->GetInputDispatcher().Dispatch(input, deltaTime);
 	gameWorld->Tick(deltaTime);
+	gameWorld->DestroyPendingGameObjects();
 }
 
 std::optional<SceneView> GameApplication::GetSceneView()

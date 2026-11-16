@@ -3,11 +3,19 @@
 #include "Input/InputDispatcher.h"
 #include "Renderer/RenderScene.h"
 
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <vector>
 
 class CameraComponent;
 class GameObject;
+
+struct GameObjectDestroyingSubscription
+{
+	std::uint64_t id;
+	std::function<void(const GameObject&)> callback;
+};
 
 /** 메인 스레드에서 사용하며 등록한 게임 객체를 단독 소유한다. */
 class World
@@ -66,17 +74,31 @@ public:
 	GameObject* AddGameObject(std::unique_ptr<GameObject> newGameObject);
 
 	/**
-	 * 등록된 객체와 그 자손을 즉시 삭제한다. 갱신과 콜백이 진행 중이지 않을 때 호출한다.
-	 * nullptr 또는 미등록 객체면 false를 반환한다. 삭제를 마치면 true를 반환한다.
+	 * 등록된 객체와 그 자손을 삭제 예정으로 표시하고 대기 목록에 넣는다.
+	 * 접수했거나 이미 대기 중이면 true를 반환한다.
+	 * nullptr, 미등록 또는 삭제 처리 중이면 false를 반환한다.
 	 */
 	bool DestroyGameObject(GameObject* gameObject);
+
+	/** 대기 객체에 알리고 등록 해제 후 파괴한다. 객체 목록이나 입력 바인딩 순회 중에는 호출하지 않는다. */
+	void DestroyPendingGameObjects();
+
+	/**
+	 * World 안에서 유효한 구독 번호를 반환한다. 빈 콜백, 삭제 처리 중 또는 번호 소진 시 0을 반환한다.
+	 * 계층을 정리하기 전에 대기 목록 순서대로 각 객체를 알린다. 등록된 구독자는 등록 순서대로 호출한다.
+	 * 콜백은 참조를 보관하거나 예외를 밖으로 내보내지 않는다. World 자체의 소멸은 알리지 않는다.
+	 */
+	std::uint64_t SubscribeGameObjectDestroying(std::function<void(const GameObject&)> callback);
+
+	/** 해제는 알림 중에도 즉시 적용한다. 0이나 이미 해제된 번호는 무시한다. */
+	void UnsubscribeGameObjectDestroying(std::uint64_t subscriptionId);
 
 	/** 이 World에 등록된 객체인지 확인한다. nullptr는 false다. */
 	bool ContainsGameObject(const GameObject* gameObject) const;
 
 	/**
 	 * 등록 순서대로 각 객체의 비소유 참조를 visitor에 한 번씩 전달한다.
-	 * 순회 중 이 월드의 객체를 생성, 등록, 삭제하거나 등록 목록을 변경하지 않는다.
+	 * 순회 중 삭제 요청을 등록할 수 있다. 객체를 등록하거나 DestroyPendingGameObjects를 호출하지 않는다.
 	 * visitor가 던진 예외는 전파한다.
 	 */
 	template <typename Visitor>
@@ -87,12 +109,20 @@ public:
 	void ForEachGameObject(Visitor&& visitor) const;
 
 private:
+	void NotifyGameObjectsDestroying() noexcept;
+
+private:
+	// World가 소유 중인 삭제 대상의 주소를 빌린다. 실제 파괴 전에 목록을 비운다.
+	std::vector<GameObject*> pendingDestroyGameObjects;
+	std::vector<GameObjectDestroyingSubscription> destroyingSubscriptions;
+	std::uint64_t nextDestroyingSubscriptionId = 1;
+	bool isDestroyingPendingGameObjects = false;
 	std::vector<std::unique_ptr<GameObject>> gameObjects;
 
 	// 갱신
 public:
 	/**
-	 * 등록 순서대로 갱신한다. deltaTime는 초 단위다.
+	 * 삭제 예정 객체는 건너뛰고 등록 순서대로 갱신한다. deltaTime는 초 단위다.
 	 * 콜백에서 객체 등록과 같은 월드의 Tick 재호출을 하지 않는다.
 	 */
 	void Tick(float deltaTime);

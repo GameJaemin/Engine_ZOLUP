@@ -44,11 +44,23 @@ public:
 private:
 	World& world;
 
+	// 삭제 상태
+public:
+	/** 이 객체의 삭제 요청이 접수되었으면 true를 반환한다. */
+	bool IsPendingDestroy() const { return isPendingDestroy; }
+
+	/** 소속 World가 삭제 요청을 등록할 때 호출한다. */
+	void SetPendingDestroy(bool pendingDestroy);
+
+private:
+	bool isPendingDestroy = false;
+
 	// 부모와 자식
 public:
 	/**
 	 * 같은 World에 등록된 객체끼리 연결한다. nullptr는 연결 해제다.
 	 * 성공하면 true를 반환한다. 등록 조건 위반이나 순환은 기존 관계를 유지하고 false를 반환한다.
+	 * 이 객체나 새 부모가 삭제 예정이면 새 연결은 거절한다. 연결을 해제해도 삭제 요청은 유지된다.
 	 * 할당 실패 시 기존 관계를 유지하고 예외를 전파한다.
 	 */
 	bool SetParent(GameObject* newParent);
