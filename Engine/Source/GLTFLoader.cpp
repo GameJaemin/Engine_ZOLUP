@@ -288,9 +288,9 @@ namespace
 	}
 
 	/** 재질의 노멀 텍스처 참조(normalTextureInfo) 객체 하나를 읽는다. */
-	GLTFNormalTextureInfo ReadNormalTextureInfo(const rapidjson::Value& item)
+	GLTFMaterialNormalTextureInfo ReadNormalTextureInfo(const rapidjson::Value& item)
 	{
-		GLTFNormalTextureInfo normalTextureInfo;
+		GLTFMaterialNormalTextureInfo normalTextureInfo;
 
 		// 부모 부분(index, texCoord)만 가리키는 참조로 대입해 scale은 그대로 둔다.
 		GLTFTextureInfo& textureInfo = normalTextureInfo;
@@ -301,9 +301,9 @@ namespace
 	}
 
 	/** 재질의 차폐 텍스처 참조(occlusionTextureInfo) 객체 하나를 읽는다. */
-	GLTFOcclusionTextureInfo ReadOcclusionTextureInfo(const rapidjson::Value& item)
+	GLTFMaterialOcclusionTextureInfo ReadOcclusionTextureInfo(const rapidjson::Value& item)
 	{
-		GLTFOcclusionTextureInfo occlusionTextureInfo;
+		GLTFMaterialOcclusionTextureInfo occlusionTextureInfo;
 
 		// 부모 부분(index, texCoord)만 가리키는 참조로 대입해 strength는 그대로 둔다.
 		GLTFTextureInfo& textureInfo = occlusionTextureInfo;
@@ -329,7 +329,7 @@ namespace
 			if (item.HasMember("pbrMetallicRoughness"))
 			{
 				const rapidjson::Value& pbrItem = item["pbrMetallicRoughness"];
-				GLTFPBRMetallicRoughness& pbr = material.pbrMetallicRoughness;
+				GLTFMaterialPBRMetallicRoughness& pbr = material.pbrMetallicRoughness;
 
 				if (pbrItem.HasMember("baseColorFactor"))
 				{
@@ -369,7 +369,7 @@ namespace
 			const rapidjson::Value::ConstArray primitiveArray = item["primitives"].GetArray();
 			for (const rapidjson::Value& primitiveItem : primitiveArray)
 			{
-				GLTFPrimitive primitive;
+				GLTFMeshPrimitive primitive;
 
 				const rapidjson::Value::ConstObject attributeObject = primitiveItem["attributes"].GetObject();
 				for (const rapidjson::Value::Member& attribute : attributeObject)
@@ -761,7 +761,7 @@ namespace
 		if (materialIndex >= gltfDocument.materials.size()) { return false; }
 
 		const GLTFMaterial& source = gltfDocument.materials[materialIndex];
-		const GLTFPBRMetallicRoughness& pbr = source.pbrMetallicRoughness;
+		const GLTFMaterialPBRMetallicRoughness& pbr = source.pbrMetallicRoughness;
 
 		// 명세상 계수는 모두 0~1이다. 엔진 재질도 같은 범위만 받으므로 벗어나면 잘못된 파일로 본다.
 		const auto isUnitRange = [](float value) { return std::isfinite(value) && value >= 0.0f && value <= 1.0f; };
@@ -781,7 +781,7 @@ namespace
 
 		if (source.normalTexture.has_value())
 		{
-			const GLTFNormalTextureInfo& normalTexture = source.normalTexture.value();
+			const GLTFMaterialNormalTextureInfo& normalTexture = source.normalTexture.value();
 
 			// 렌더러가 노멀 배율을 받지 않아 1로 그린다. 세기가 달라지므로 경고만 남기고 노멀 텍스처는 그대로 쓴다.
 			if (normalTexture.scale != 1.0f)
@@ -798,7 +798,7 @@ namespace
 
 		if (source.occlusionTexture.has_value())
 		{
-			const GLTFOcclusionTextureInfo& occlusionTexture = source.occlusionTexture.value();
+			const GLTFMaterialOcclusionTextureInfo& occlusionTexture = source.occlusionTexture.value();
 
 			// 렌더러가 차폐 세기를 받지 않아 1로 그린다. 노멀 scale과 같이 경고만 남긴다.
 			if (occlusionTexture.strength != 1.0f)
@@ -884,7 +884,7 @@ namespace
 		// ----------
 		// 메시 번호가 범위를 벗어나면 없는 메시를 읽게 되므로 확인한다. 메시의 첫 프리미티브만 읽으며, 메시가 있으면 프리미티브도 하나 이상이다.
 		if (meshIndex >= gltfDocument.meshes.size()) { return false; }
-		const GLTFPrimitive& primitive = gltfDocument.meshes[meshIndex].primitives[0];
+		const GLTFMeshPrimitive& primitive = gltfDocument.meshes[meshIndex].primitives[0];
 
 		// 삼각형 목록(4, 인덱스 3개마다 삼각형 하나)만 지원한다.
 		if (primitive.mode != 4) { return false; }

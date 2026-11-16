@@ -7,7 +7,8 @@
 #include <string>
 #include <vector>
 
-// glTF 2.0 JSON 항목을 담는 구조체들이다. 구조체와 필드 순서는 glTF 2.0 명세의 순서를 따른다.
+// glTF 2.0 JSON 항목을 담는 구조체들이다. 구조체 이름은 GLTF와 명세 객체 제목(띄어쓰기 제거)을 붙여 짓고,
+// 필드 이름은 JSON 키를 그대로 쓴다. 구조체와 필드 순서는 glTF 2.0 명세의 순서를 따른다.
 
 /** glTF accessors의 항목 하나. bufferView의 바이트를 어떤 타입의 값 몇 개로 읽을지 정한다. */
 struct GLTFAccessor
@@ -82,21 +83,21 @@ struct GLTFTextureInfo
 };
 
 /** glTF material.normalTexture. 텍스처 참조(textureInfo)에 노멀 배율을 더한 형태다. */
-struct GLTFNormalTextureInfo : GLTFTextureInfo
+struct GLTFMaterialNormalTextureInfo : GLTFTextureInfo
 {
 	// 선택. 노멀맵에서 읽은 노멀의 X, Y에 곱하는 배율. 없으면 1
 	float scale = 1.0f;
 };
 
 /** glTF material.occlusionTexture. 텍스처 참조(textureInfo)에 차폐 세기를 더한 형태다. */
-struct GLTFOcclusionTextureInfo : GLTFTextureInfo
+struct GLTFMaterialOcclusionTextureInfo : GLTFTextureInfo
 {
 	// 선택. 차폐를 적용하는 세기(0~1). 0이면 차폐 없음, 1이면 텍스처 값 그대로. 없으면 1
 	float strength = 1.0f;
 };
 
 /** glTF material.pbrMetallicRoughness. 금속성-거칠기 모델의 값이다. */
-struct GLTFPBRMetallicRoughness
+struct GLTFMaterialPBRMetallicRoughness
 {
 	// 선택. 선형 RGBA 계수. 색 텍스처가 있으면 텍스처 값에 곱한다. 없으면 (1, 1, 1, 1)
 	std::array<float, 4> baseColorFactor = { 1.0f, 1.0f, 1.0f, 1.0f };
@@ -116,26 +117,26 @@ struct GLTFMaterial
 	// 선택. 사람이 보기 위한 이름
 	std::string name;
 	// 선택. 없으면 모든 값이 기본값이다.
-	GLTFPBRMetallicRoughness pbrMetallicRoughness;
+	GLTFMaterialPBRMetallicRoughness pbrMetallicRoughness;
 	// 선택. 접선 공간(tangent space) 노멀 텍스처
-	std::optional<GLTFNormalTextureInfo> normalTexture;
+	std::optional<GLTFMaterialNormalTextureInfo> normalTexture;
 	// 선택. 차폐 텍스처. R 채널만 쓰며 선형 값이다.
-	std::optional<GLTFOcclusionTextureInfo> occlusionTexture;
+	std::optional<GLTFMaterialOcclusionTextureInfo> occlusionTexture;
 };
 
-struct GLTFPrimitive;
+struct GLTFMeshPrimitive;
 
 /** glTF meshes의 항목 하나. 한 번에 그리는 조각(primitive) 여러 개로 이루어진 모양이다. */
 struct GLTFMesh
 {
 	// 필수. 조각 목록. 하나 이상이다.
-	std::vector<GLTFPrimitive> primitives;
+	std::vector<GLTFMeshPrimitive> primitives;
 	// 선택. 사람이 보기 위한 이름
 	std::string name;
 };
 
 /** glTF mesh.primitives의 항목 하나. 같은 재질과 그리기 방식으로 한 번에 그리는 조각이다. */
-struct GLTFPrimitive
+struct GLTFMeshPrimitive
 {
 	// 필수. 속성 이름(POSITION, NORMAL, TEXCOORD_0 등)에서 accessors 번호로의 대응
 	std::map<std::string, std::size_t> attributes;
