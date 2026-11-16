@@ -5,6 +5,7 @@
 #include "Component/CameraComponent.h"
 #include "Component/DirectionalLightComponent.h"
 #include "Component/PointLightComponent.h"
+#include "Component/SpotLightComponent.h"
 #include "Component/StaticMeshComponent.h"
 #include "Component/TransformComponent.h"
 #include "Core/Log.h"
@@ -57,6 +58,23 @@ namespace
 		light->SetColor({ 1.0f, 0.35f, 0.1f });
 		light->SetIntensity(2.0f);
 		light->SetRange(300.0f);
+
+		lightObject->AddComponent(std::move(light));
+		world.AddGameObject(std::move(lightObject));
+	}
+
+	/** DevMap 주전자 앞에서 +Z 방향으로 청록색 스포트라이트를 비춘다. */
+	void AddSpotLight(World& world)
+	{
+		auto lightObject = std::make_unique<GameObject>(world);
+		auto* transform = lightObject->GetComponent<TransformComponent>();
+		transform->SetPosition({ 1000.0f, 640.0f, 2450.0f });
+
+		auto light = std::make_unique<SpotLightComponent>();
+		light->SetColor({ 0.1f, 0.8f, 1.0f });
+		light->SetIntensity(3.0f);
+		light->SetRange(850.0f);
+		light->SetOuterConeAngleDegrees(16.0f);
 
 		lightObject->AddComponent(std::move(light));
 		world.AddGameObject(std::move(lightObject));
@@ -155,6 +173,7 @@ bool GameApplication::OnInitialize()
 
 	AddDirectionalLight(world);
 	AddPointLight(world);
+	AddSpotLight(world);
 	AddAmbientLight(world);
 
 	return true;

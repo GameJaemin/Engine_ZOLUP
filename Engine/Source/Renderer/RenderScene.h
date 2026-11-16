@@ -106,6 +106,16 @@ private:
 	// 0은 Hakko의 빈 조명 ID다. 첫 등록 후에는 같은 ID를 갱신하며 DataHub 종료 시 정리된다.
 	Hakko::DataHub::DataBoxID pointLightDataId = 0;
 
+	// Hakko 스포트라이트 준비
+	/**
+	 * DataHub 초기화 후 Sketch 전에 기본 레이어의 슬롯 2에 첫 유효한 활성 스포트라이트를 연결한다.
+	 * 사용할 스포트라이트가 없으면 빈 조명을 연결한다. 조명 데이터 등록이나 갱신 실패 시 false를 반환한다.
+	 */
+	bool PrepareSpotLight();
+
+	// 0은 Hakko의 빈 조명 ID다. 첫 등록 후에는 같은 ID를 갱신하며 DataHub 종료 시 정리된다.
+	Hakko::DataHub::DataBoxID spotLightDataId = 0;
+
 	// Hakko 그리기 요청 준비
 	/**
 	 * DataHub 초기화와 메시 준비 성공 후 Sketch 전에 호출한다. 기존 기본 레이어의 불투명 요청 목록을 비우고 다시 만든다.

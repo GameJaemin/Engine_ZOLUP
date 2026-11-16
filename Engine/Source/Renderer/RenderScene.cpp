@@ -5,9 +5,11 @@
 #include "Component/DirectionalLightComponent.h"
 #include "Component/LightComponent.h"
 #include "Component/PointLightComponent.h"
+#include "Component/SpotLightComponent.h"
 #include "Component/StaticMeshComponent.h"
 #include "Component/TransformComponent.h"
 #include "Core/Log.h"
+#include "Core/Math/MathUtility.h"
 #include "GameObject.h"
 #include "HakkoResources.h"
 #include "Mesh/StaticMesh.h"
@@ -25,6 +27,7 @@ namespace
 {
 	// 드로우 데이터에서 사용하지 않는 조명 칸은 빈 슬롯 0을 참조한다.
 	constexpr uint16_t pointLightSlot = 1;
+	constexpr uint16_t spotLightSlot = 2;
 
 	/** HLSL의 열 단위 저장에 맞춰 전치하고 Hakko가 받는 행렬 타입으로 옮긴다. */
 	DirectX::XMMATRIX ToHakkoMatrix(const Matrix4x4& matrix)
@@ -92,6 +95,11 @@ FramePreparationResult RenderScene::PrepareFrame(const CameraViewInfo& cameraVie
 	PrepareGlobalLight();
 
 	if (!PreparePointLight())
+	{
+		return FramePreparationResult::Failed;
+	}
+
+	if (!PrepareSpotLight())
 	{
 		return FramePreparationResult::Failed;
 	}
@@ -231,6 +239,51 @@ bool RenderScene::PreparePointLight()
 	return true;
 }
 
+bool RenderScene::PrepareSpotLight()
+{
+	constexpr uint32_t spotLightType = 3;
+
+	Hakko::DataHub::RTB_SetLight request{};
+	request.slot = spotLightSlot;
+
+	for (const LightComponent* lightComponent : lightComponents)
+	{
+		const auto* component = dynamic_cast<const SpotLightComponent*>(lightComponent);
+		if (component == nullptr || !component->IsEnabled()) { continue; }
+
+		Vector3 position;
+		Vector3 direction;
+		if (!component->GetLightPose(position, direction)) { continue; }
+
+		const Vector3 color = component->GetColor();
+		const float intensity = component->GetIntensity();
+
+		Hakko::DataHub::DataBox_RenderLight light{};
+		light.type = spotLightType;
+		light.position = { position.x, position.y, position.z };
+		light.range = component->GetRange();
+		light.color = { color.x * intensity, color.y * intensity, color.z * intensity };
+		light.direction = { direction.x, direction.y, direction.z };
+		light.spotAngle = Math::DegreesToRadians(2.0f * component->GetOuterConeAngleDegrees());
+
+		if (spotLightDataId == 0)
+		{
+			spotLightDataId = Hakko::DataHub::AddDataBox(light);
+			if (spotLightDataId == 0) { return false; }
+		}
+		else if (!Hakko::DataHub::UpdateDataBox(spotLightDataId, light))
+		{
+			return false;
+		}
+
+		request.light = spotLightDataId;
+		break;
+	}
+
+	Hakko::DataHub::SendRTB(request);
+	return true;
+}
+
 bool RenderScene::PrepareDrawRequests()
 {
 	Hakko::DataHub::ClearOpaqueDrawRequests();
@@ -256,6 +309,7 @@ bool RenderScene::PrepareDrawRequests()
 
 		Hakko::DataHub::DataBox_Render3DGeneral objectData{};
 		objectData.affectLights[0] = pointLightSlot;
+		objectData.affectLights[1] = spotLightSlot;
 		objectData.worldMat = ToHakkoMatrix(worldMatrix);
 		// 재질 미지정 시에도 객체 데이터에는 유효한 수치를 채운다.
 		// 정상 표면과 오류용 표면의 구분은 텍스처 조합에서 처리한다.
