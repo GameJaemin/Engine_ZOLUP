@@ -306,6 +306,26 @@ std::shared_ptr<const Prefab> AssetManager::LoadPrefab(std::string_view relative
 		}
 	}
 
+	if (definition.skybox.has_value())
+	{
+		const PrefabSkyboxDefinition& source = *definition.skybox;
+		PrefabSkybox skybox;
+		skybox.enabled = source.enabled;
+
+		for (std::size_t index = 0; index < skybox.faces.size(); ++index)
+		{
+			const std::string& facePath = source.facePaths[index];
+			skybox.faces[index] = LoadTexture(facePath, TextureFormat::RGBA8SRGB);
+			if (skybox.faces[index] == nullptr)
+			{
+				Log::Write(LogLevel::Error, "AssetManager", std::format("{}: could not load skybox face {}", relativePath, facePath));
+				return nullptr;
+			}
+		}
+
+		prefab.skybox = std::move(skybox);
+	}
+
 	std::shared_ptr<const Prefab> result = std::make_shared<const Prefab>(std::move(prefab));
 	prefabs.emplace(cacheKey, result);
 

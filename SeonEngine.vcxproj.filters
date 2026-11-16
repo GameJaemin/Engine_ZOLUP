@@ -123,6 +123,9 @@
     <ClCompile Include="Engine\Source\Component\PointLightComponent.cpp">
       <Filter>Engine\Source\Component</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Source\Component\SkyboxComponent.cpp">
+      <Filter>Engine\Source\Component</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Source\Component\SpotLightComponent.cpp">
       <Filter>Engine\Source\Component</Filter>
     </ClCompile>
@@ -252,6 +255,9 @@
       <Filter>Engine\Source\Component</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Component\PointLightComponent.h">
+      <Filter>Engine\Source\Component</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Component\SkyboxComponent.h">
       <Filter>Engine\Source\Component</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Component\SpotLightComponent.h">

@@ -2,6 +2,7 @@
 
 #include "AssetManager.h"
 #include "Component/AnimationComponent.h"
+#include "Component/SkyboxComponent.h"
 #include "Component/StaticMeshComponent.h"
 #include "Component/TransformComponent.h"
 #include "Core/FileHelper.h"
@@ -99,6 +100,15 @@ namespace
 	// root는 같은 월드에 등록되어 있어야 한다. 모델의 인덱스와 계층은 로더가 검증한다.
 	void ApplyPrefab(GameObject& root, const Prefab& prefab)
 	{
+		if (prefab.skybox.has_value())
+		{
+			const PrefabSkybox& source = *prefab.skybox;
+			std::unique_ptr<SkyboxComponent> skybox = std::make_unique<SkyboxComponent>();
+			skybox->SetFaces(source.faces);
+			skybox->SetEnabled(source.enabled);
+			root.AddComponent(std::move(skybox));
+		}
+
 		if (prefab.model == nullptr) { return; }
 
 		World& world = root.GetWorld();

@@ -35,6 +35,15 @@
 				"rotation": [0.0, 0.0, 0.0, 1.0],
 				"scale": [1.0, 1.0, 1.0]
 			}
+		},
+		{
+			"name": "Sky",
+			"prefab": "Game/Content/Prefabs/DaySky.prefab.json",
+			"transform": {
+				"position": [0.0, 0.0, 0.0],
+				"rotation": [0.0, 0.0, 0.0, 1.0],
+				"scale": [1.0, 1.0, 1.0]
+			}
 		}
 	]
 }

@@ -6,6 +6,7 @@
 #include <vector>
 
 class LightComponent;
+class SkyboxComponent;
 class StaticMeshComponent;
 struct CameraViewInfo;
 
@@ -17,8 +18,8 @@ enum class FramePreparationResult
 };
 
 /**
- * 한 World의 정적 메시와 조명 컴포넌트 등록 목록을 관리한다. 메인 스레드에서 사용하며 World가 소유한다.
- * 정적 메시와 조명 컴포넌트는 부착 시 여기에 등록하고 소멸 시 스스로 해제한다.
+ * 한 World의 렌더링 대상 컴포넌트 목록을 관리한다. 메인 스레드에서 사용하며 World가 소유한다.
+ * 정적 메시, 조명 및 스카이박스 컴포넌트는 부착 시 등록하고 소멸 시 스스로 해제한다.
  */
 class RenderScene
 {
@@ -60,6 +61,21 @@ public:
 private:
 	// 비소유이며 등록 순서를 유지한다.
 	std::vector<LightComponent*> lightComponents;
+
+	// 배경
+public:
+	/** 배경 후보로 추가한다. nullptr와 중복 등록은 무시한다. 할당 실패 예외는 전파한다. */
+	void AddSkyboxComponent(SkyboxComponent* component);
+
+	/** 배경 후보에서 제거한다. 등록되지 않은 대상은 무시한다. */
+	void RemoveSkyboxComponent(SkyboxComponent* component);
+
+private:
+	/** Sketch 전에 등록 순서상 큐브맵 준비에 처음 성공한 활성 후보를 적용한다. 후보가 없으면 단색 배경을 사용한다. */
+	void PrepareBackground() const;
+
+	// 비소유이며 등록 순서를 유지한다. 각 컴포넌트는 소멸 시 목록에서 자신을 제거한다.
+	std::vector<SkyboxComponent*> skyboxComponents;
 
 	// Hakko 프레임 준비
 public:

@@ -5,6 +5,7 @@
 #include "Component/DirectionalLightComponent.h"
 #include "Component/LightComponent.h"
 #include "Component/PointLightComponent.h"
+#include "Component/SkyboxComponent.h"
 #include "Component/SpotLightComponent.h"
 #include "Component/StaticMeshComponent.h"
 #include "Component/TransformComponent.h"
@@ -19,6 +20,8 @@
 #include "DataHub_Interface.h"
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -85,6 +88,48 @@ void RenderScene::RemoveLightComponent(LightComponent* component)
 	lightComponents.erase(found);
 }
 
+void RenderScene::AddSkyboxComponent(SkyboxComponent* component)
+{
+	if (component == nullptr) { return; }
+	if (std::find(skyboxComponents.begin(), skyboxComponents.end(), component) != skyboxComponents.end()) { return; }
+
+	skyboxComponents.push_back(component);
+}
+
+void RenderScene::RemoveSkyboxComponent(SkyboxComponent* component)
+{
+	std::erase(skyboxComponents, component);
+}
+
+void RenderScene::PrepareBackground() const
+{
+	Hakko::DataHub::TexID skyboxTextureID = 0;
+	for (const SkyboxComponent* component : skyboxComponents)
+	{
+		if (!component->IsEnabled()) { continue; }
+
+		const std::array<std::shared_ptr<const Texture>, 6>& faces = component->GetFaces();
+		std::array<const Texture*, 6> textureFaces{};
+		for (std::size_t index = 0; index < faces.size(); ++index)
+		{
+			textureFaces[index] = faces[index].get();
+		}
+		if (std::find(textureFaces.begin(), textureFaces.end(), nullptr) != textureFaces.end()) { continue; }
+
+		if (HakkoResources::PrepareSkyboxTexture(textureFaces, skyboxTextureID)) { break; }
+	}
+
+	if (skyboxTextureID == 0)
+	{
+		Hakko::DataHub::SetLayerBackground(RESERVED_TEX_NONE_DIFFUSE_ID);
+		Hakko::DataHub::SetLayerBackgroundColor(0.3f, 0.05f, 0.1f, 1.0f);
+		return;
+	}
+
+	Hakko::DataHub::SetLayerBackground(skyboxTextureID);
+	Hakko::DataHub::SetLayerBackgroundColor(1.0f, 1.0f, 1.0f, 1.0f);
+}
+
 FramePreparationResult RenderScene::PrepareFrame(const CameraViewInfo& cameraViewInfo, float aspectRatio)
 {
 	if (!PrepareCamera(cameraViewInfo, aspectRatio))
@@ -92,6 +137,7 @@ FramePreparationResult RenderScene::PrepareFrame(const CameraViewInfo& cameraVie
 		return FramePreparationResult::SkipFrame;
 	}
 
+	PrepareBackground();
 	PrepareGlobalLight();
 
 	if (!PreparePointLight())

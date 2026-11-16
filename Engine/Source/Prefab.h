@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <filesystem>
 #include <memory>
@@ -9,6 +10,14 @@
 
 struct Material;
 struct Model;
+class Texture;
+
+struct PrefabSkybox
+{
+	// +X, -X, +Y, -Y, +Z, -Z 순서로 로드한 면이다.
+	std::array<std::shared_ptr<const Texture>, 6> faces;
+	bool enabled = true;
+};
 
 struct Prefab
 {
@@ -16,6 +25,7 @@ struct Prefab
 
 	// 비어 있으면 모든 메시가 기본 재질을 쓴다. 그 외에는 모델 메시와 같은 순서이며 nullptr는 기본 재질을 뜻한다.
 	std::vector<std::shared_ptr<const Material>> meshMaterialOverrides;
+	std::optional<PrefabSkybox> skybox;
 };
 
 struct PrefabMaterialOverride
@@ -25,14 +35,22 @@ struct PrefabMaterialOverride
 	std::string baseColorTexturePath;
 };
 
+struct PrefabSkyboxDefinition
+{
+	// +X, -X, +Y, -Y, +Z, -Z 순서다.
+	std::array<std::string, 6> facePaths;
+	bool enabled = true;
+};
+
 struct PrefabDefinition
 {
 	std::optional<std::string> modelPath;
 	std::vector<PrefabMaterialOverride> materialOverrides;
+	std::optional<PrefabSkyboxDefinition> skybox;
 };
 
 /**
- * 절대 경로에서 프리팹 JSON을 읽고 모델 경로와 재질 오버라이드 설정을 검증한다.
+ * 절대 경로에서 프리팹 JSON을 읽고 모델, 재질 오버라이드 및 컴포넌트 설정을 검증한다.
  * 모델과 텍스처 경로는 저장소 루트 기준 UTF-8 상대 경로다.
  * 읽기 또는 검증에 실패하면 outDefinition을 유지하고 false를 반환한다.
  */

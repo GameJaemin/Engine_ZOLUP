@@ -2,7 +2,10 @@
 
 #include "DataHub_Types.h"
 
+#include <array>
+
 class StaticMesh;
+class Texture;
 struct Material;
 
 namespace HakkoResources
@@ -27,4 +30,14 @@ namespace HakkoResources
 	 * 경로 변환과 할당 실패 예외는 전파한다. 실패 전에 등록한 텍스처는 유지한다.
 	 */
 	bool PrepareTextureProp(const Material* material, Hakko::DataHub::TexPropID& outTexturePropID);
+
+	/**
+	 * DataHub 초기화 후 메인 스레드에서 호출한다.
+	 * faces 순서는 +X, -X, +Y, -Y, +Z, -Z다.
+	 * 각 Texture는 호출이 끝날 때까지 유효해야 한다.
+	 * 성공 시 현재 텍스처 ID를 출력한다. 텍스처 해제로 ID가 바뀔 수 있으므로 프레임 사이에 저장하지 않는다.
+	 * 실패 시 outTextureID는 0이다. 성공은 GPU 업로드 완료를 뜻하지 않는다.
+	 * 경로 변환과 할당 실패 예외는 전파한다.
+	 */
+	bool PrepareSkyboxTexture(const std::array<const Texture*, 6>& faces, Hakko::DataHub::TexID& outTextureID);
 }

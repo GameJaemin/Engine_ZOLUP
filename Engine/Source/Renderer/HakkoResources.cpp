@@ -9,11 +9,13 @@
 #include "DataHub.h"
 #include "DataHub_Interface.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <limits>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace
 {
@@ -288,6 +290,125 @@ bool HakkoResources::PrepareTextureProp(const Material* material, Hakko::DataHub
 	Hakko::DataHub::SendRTB(upload);
 
 	outTexturePropID = texturePropID;
+
+	return true;
+}
+
+bool HakkoResources::PrepareSkyboxTexture(const std::array<const Texture*, 6>& faces, Hakko::DataHub::TexID& outTextureID)
+{
+	outTextureID = 0;
+
+	const Texture* firstFace = faces.front();
+	if (firstFace == nullptr)
+	{
+		Log::Write(LogLevel::Error, "RenderScene", "Skybox is missing the +X face");
+		return false;
+	}
+
+	const std::uint32_t size = firstFace->GetWidth();
+	const TextureFormat format = firstFace->GetFormat();
+	if (size == 0 ||
+		(format != TextureFormat::RGBA8SRGB && format != TextureFormat::RGBA8UNorm))
+	{
+		Log::Write(LogLevel::Error, "RenderScene", "Invalid skybox size or format");
+		return false;
+	}
+
+	for (std::size_t index = 0; index < faces.size(); ++index)
+	{
+		const Texture* face = faces[index];
+		if (face == nullptr || face->GetPath().empty() ||
+			face->GetWidth() != size || face->GetHeight() != size ||
+			face->GetFormat() != format)
+		{
+			Log::Write(LogLevel::Error, "RenderScene", "Invalid skybox face at index " + std::to_string(index));
+			return false;
+		}
+	}
+
+	const wchar_t* formatName =
+		format == TextureFormat::RGBA8SRGB ? L"RGBA8SRGB" : L"RGBA8UNorm";
+
+	std::wstring name = L"Skybox|";
+	name += formatName;
+
+	// 면 순서를 등록 이름에 반영하고 각 경로의 길이로 경계를 구분한다.
+	for (const Texture* face : faces)
+	{
+		const std::wstring faceKey = MakeHakkoAssetName(face->GetPath());
+		name += L"|";
+		name += std::to_wstring(faceKey.size());
+		name += L":";
+		name += faceKey;
+	}
+
+	const Hakko::DataHub::TexID existingID = Hakko::DataHub::GetTexId(name);
+	if (existingID != 0)
+	{
+		outTextureID = existingID;
+		return true;
+	}
+
+	// RGBA8의 한 줄과 한 면의 크기를 바이트 단위로 계산한다.
+	constexpr std::uint32_t maxPitch = (std::numeric_limits<std::uint32_t>::max)();
+	const std::uint64_t rowPitch = static_cast<std::uint64_t>(size) * 4;
+	if (rowPitch > maxPitch)
+	{
+		Log::Write(LogLevel::Error, "RenderScene", "Skybox row pitch exceeds the Hakko limit");
+		return false;
+	}
+
+	const std::uint64_t slicePitch = rowPitch * size;
+	if (slicePitch > maxPitch)
+	{
+		Log::Write(LogLevel::Error, "RenderScene", "Skybox slice pitch exceeds the Hakko limit");
+		return false;
+	}
+
+	const Hakko::DataHub::TextureReadFormat readFormat = format == TextureFormat::RGBA8SRGB ? Hakko::DataHub::TextureReadFormat::RGBA8_SRGB : Hakko::DataHub::TextureReadFormat::RGBA8_UNorm;
+
+	Hakko::DataHub::Texture cube{};
+	cube.data.format = readFormat;
+	cube.data.textureType = Hakko::DataHub::TextureType_Cube;
+	cube.data.width = size;
+	cube.data.height = size;
+	cube.data.arraySize = static_cast<std::uint32_t>(faces.size());
+	cube.usage = Hakko::DataHub::TextureUsage_ReadOnly;
+
+	if (slicePitch > cube.rawData.max_size() / faces.size())
+	{
+		Log::Write(LogLevel::Error, "RenderScene", "Skybox pixel data is too large");
+		return false;
+	}
+
+	const std::uint32_t faceRowPitch = static_cast<std::uint32_t>(rowPitch);
+	const std::uint32_t faceSlicePitch = static_cast<std::uint32_t>(slicePitch);
+	cube.rawData.reserve(static_cast<std::size_t>(slicePitch) * faces.size());
+	cube.subresources.reserve(faces.size());
+
+	for (const Texture* face : faces)
+	{
+		// 현재 면의 픽셀을 붙이기 전의 바이트 수가 그 면의 시작 위치다.
+		const std::size_t faceOffset = cube.rawData.size();
+		const Hakko::DataHub::SubresourceData subresource{ .offset = faceOffset, .rowPitch = faceRowPitch, .slicePitch = faceSlicePitch };
+		cube.subresources.push_back(subresource);
+
+		const std::vector<std::byte>& pixels = face->GetPixels();
+		cube.rawData.insert(cube.rawData.end(), pixels.begin(), pixels.end());
+	}
+
+	const Hakko::DataHub::TexID textureID = Hakko::DataHub::CreateTexture(name.c_str(), std::move(cube));
+	if (textureID == 0)
+	{
+		Log::Write(LogLevel::Error, "RenderScene", "Failed to register skybox texture");
+		return false;
+	}
+
+	Hakko::DataHub::RTB_UpdateResources upload{};
+	upload.command = Hakko::DataHub::RTBCMD_Upload_Resource;
+	Hakko::DataHub::SendRTB(upload);
+
+	outTextureID = textureID;
 
 	return true;
 }

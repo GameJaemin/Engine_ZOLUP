@@ -7,6 +7,7 @@
 #include "rapidjson/error/en.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <filesystem>
 #include <format>
@@ -34,6 +35,109 @@ namespace
 		if (path.has_root_path() || goesOutsideRoot) { return "must be a repository-relative path"; }
 
 		return {};
+	}
+
+	bool ReadSkyboxProperties(const rapidjson::Value& properties, std::string_view context, PrefabSkyboxDefinition& skybox)
+	{
+		const auto enabled = properties.FindMember("enabled");
+		if (enabled != properties.MemberEnd())
+		{
+			if (!enabled->value.IsBool())
+			{
+				Log::Write(LogLevel::Error, "Prefab", std::format("{}: enabled must be a boolean", context));
+				return false;
+			}
+			skybox.enabled = enabled->value.GetBool();
+		}
+
+		const auto faces = properties.FindMember("faces");
+		if (faces == properties.MemberEnd() || !faces->value.IsObject())
+		{
+			Log::Write(LogLevel::Error, "Prefab", std::format("{}: faces must be an object", context));
+			return false;
+		}
+
+		constexpr std::array<const char*, 6> faceKeys{
+			"positiveX", "negativeX", "positiveY", "negativeY", "positiveZ", "negativeZ"
+		};
+
+		for (std::size_t index = 0; index < faceKeys.size(); ++index)
+		{
+			const char* key = faceKeys[index];
+			const auto face = faces->value.FindMember(key);
+			if (face == faces->value.MemberEnd())
+			{
+				Log::Write(LogLevel::Error, "Prefab", std::format("{}: faces.{} is required", context, key));
+				return false;
+			}
+
+			const std::string_view error = ValidateAssetPath(face->value);
+			if (!error.empty())
+			{
+				Log::Write(LogLevel::Error, "Prefab", std::format("{}: faces.{} {}", context, key, error));
+				return false;
+			}
+
+			skybox.facePaths[index].assign(face->value.GetString(), face->value.GetStringLength());
+		}
+
+		return true;
+	}
+
+	bool ReadPrefabComponents(const rapidjson::Value& document, std::string_view pathText, PrefabDefinition& definition)
+	{
+		const auto components = document.FindMember("components");
+		if (components == document.MemberEnd()) { return true; }
+		if (!components->value.IsArray())
+		{
+			Log::Write(LogLevel::Error, "Prefab", std::format("{}: components must be an array", pathText));
+			return false;
+		}
+
+		const rapidjson::Value::ConstArray entries = components->value.GetArray();
+		for (rapidjson::SizeType index = 0; index < entries.Size(); ++index)
+		{
+			const rapidjson::Value& entry = entries[index];
+			const std::string context = std::format("{}: components[{}]", pathText, index);
+			if (!entry.IsObject())
+			{
+				Log::Write(LogLevel::Error, "Prefab", context + " must be an object");
+				return false;
+			}
+
+			const auto type = entry.FindMember("type");
+			if (type == entry.MemberEnd() || !type->value.IsString())
+			{
+				Log::Write(LogLevel::Error, "Prefab", context + ".type must be a string");
+				return false;
+			}
+
+			const std::string_view typeName(type->value.GetString(), type->value.GetStringLength());
+			if (typeName != "skybox")
+			{
+				Log::Write(LogLevel::Error, "Prefab", std::format("{}.type: unsupported component type {}", context, typeName));
+				return false;
+			}
+
+			if (definition.skybox.has_value())
+			{
+				Log::Write(LogLevel::Error, "Prefab", context + ": duplicate skybox component");
+				return false;
+			}
+
+			const auto properties = entry.FindMember("properties");
+			if (properties == entry.MemberEnd() || !properties->value.IsObject())
+			{
+				Log::Write(LogLevel::Error, "Prefab", context + ".properties must be an object");
+				return false;
+			}
+
+			PrefabSkyboxDefinition skybox;
+			if (!ReadSkyboxProperties(properties->value, context + ".properties", skybox)) { return false; }
+			definition.skybox = std::move(skybox);
+		}
+
+		return true;
 	}
 }
 
@@ -134,6 +238,8 @@ bool ReadPrefabDefinition(const std::filesystem::path& absolutePath, PrefabDefin
 			});
 		}
 	}
+
+	if (!ReadPrefabComponents(document, pathText, definition)) { return false; }
 
 	outDefinition = std::move(definition);
 	return true;
