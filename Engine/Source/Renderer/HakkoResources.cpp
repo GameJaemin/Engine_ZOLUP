@@ -223,21 +223,18 @@ bool HakkoResources::PrepareTextureProp(const Material* material, Hakko::DataHub
 {
 	outTexturePropID = 0;
 
-	// 미지정 재질이나 색상 텍스처는 오류용 조합 0을 사용한다.
+	// 재질 미지정은 오류용 조합 0을 사용한다.
 	if (material == nullptr) { return true; }
-	if (material->baseColorTexture == nullptr) { return true; }
 
-	const Texture& texture = *material->baseColorTexture;
-
-	Hakko::DataHub::TexID baseColorTextureID = 0;
-	if (!PrepareTexture(texture, baseColorTextureID))
+	// 색상 텍스처가 없으면 흰색을 곱해 재질의 기본 색상 계수를 그대로 적용한다.
+	Hakko::DataHub::TexID baseColorTextureID = RESERVED_TEX_NONE_DIFFUSE_ID;
+	std::string name = "__DEFAULT_BASE_COLOR";
+	if (material->baseColorTexture != nullptr)
 	{
-		return false;
+		const Texture& texture = *material->baseColorTexture;
+		if (!PrepareTexture(texture, baseColorTextureID)) { return false; }
+		if (!MakeTexturePropNamePart(texture, name)) { return false; }
 	}
-
-	const std::string& path = texture.GetPath();
-	std::string name;
-	if (!MakeTexturePropNamePart(texture, name)) { return false; }
 
 	// 노멀 텍스처가 없으면 평평한 기본 노멀을 쓰고 조합 이름도 색 텍스처 조각만 쓴다.
 	// 있으면 이름에 노멀 조각을 더해, 색이 같고 노멀만 다른 재질이 같은 조합을 쓰지 않게 한다.
@@ -282,7 +279,7 @@ bool HakkoResources::PrepareTextureProp(const Material* material, Hakko::DataHub
 	const Hakko::DataHub::TexPropID texturePropID = Hakko::DataHub::CreateTexProp(name.c_str(), prop);
 	if (texturePropID == 0)
 	{
-		Log::Write(LogLevel::Error, "RenderScene", "Failed to register texture combination: " + path);
+		Log::Write(LogLevel::Error, "RenderScene", "Failed to register texture combination: " + name);
 		return false;
 	}
 
