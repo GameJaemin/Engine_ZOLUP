@@ -198,6 +198,8 @@ struct GLTFNode
 {
 	// 선택. 자식 nodes 번호 목록. 자식의 변환은 이 노드 기준이다.
 	std::vector<std::size_t> children;
+	// 선택. 이 노드의 메시를 휘게 할 skins 번호
+	std::optional<std::size_t> skin;
 	// 선택. 부모 기준 변환 행렬. 열 우선 순서의 숫자 16개다. 있으면 rotation, scale, translation 대신 쓴다.
 	std::optional<std::array<float, 16>> matrix;
 	// 선택. 이 노드가 그리는 meshes 번호
@@ -208,6 +210,19 @@ struct GLTFNode
 	std::array<float, 3> scale = { 1.0f, 1.0f, 1.0f };
 	// 선택. 부모 기준 이동(m). 없으면 0
 	std::array<float, 3> translation = { 0.0f, 0.0f, 0.0f };
+	// 선택. 사람이 보기 위한 이름
+	std::string name;
+};
+
+/** glTF skins의 항목 하나. 메시를 휘게 하는 뼈(노드) 목록과 뼈마다의 역바인드 행렬이다. */
+struct GLTFSkin
+{
+	// 선택. 뼈마다의 역바인드 행렬이 든 accessors 번호. MAT4 float이며 joints와 같은 순서이고 개수는 joints 수 이상이다.
+	std::optional<std::size_t> inverseBindMatrices;
+	// 선택. 뼈들의 공통 뿌리인 nodes 번호
+	std::optional<std::size_t> skeleton;
+	// 필수. 뼈로 쓰는 nodes 번호 목록. 메시 JOINTS_0의 값은 이 배열의 번호다.
+	std::vector<std::size_t> joints;
 	// 선택. 사람이 보기 위한 이름
 	std::string name;
 };
@@ -232,6 +247,7 @@ struct GLTFDocument
 	std::vector<GLTFMaterial> materials;
 	std::vector<GLTFMesh> meshes;
 	std::vector<GLTFNode> nodes;
+	std::vector<GLTFSkin> skins;
 	std::vector<GLTFTexture> textures;
 
 	// 명세 항목이 아니다. buffers[i]의 uri에서 불러온 바이트이며 buffers와 같은 번호를 쓴다.

@@ -457,6 +457,8 @@ namespace
 				}
 			}
 
+			if (item.HasMember("skin")) { node.skin = item["skin"].GetUint64(); }
+
 			if (item.HasMember("matrix"))
 			{
 				const rapidjson::Value::ConstArray matrixArray = item["matrix"].GetArray();
@@ -503,6 +505,34 @@ namespace
 		}
 
 		return nodes;
+	}
+
+	/** skins 배열을 읽는다. 배열이 없으면 빈 배열을 돌려준다. */
+	std::vector<GLTFSkin> ReadSkins(const rapidjson::Value& document)
+	{
+		std::vector<GLTFSkin> skins;
+		if (!document.HasMember("skins")) { return skins; }
+
+		const rapidjson::Value::ConstArray skinArray = document["skins"].GetArray();
+		for (const rapidjson::Value& item : skinArray)
+		{
+			GLTFSkin skin;
+
+			if (item.HasMember("inverseBindMatrices")) { skin.inverseBindMatrices = item["inverseBindMatrices"].GetUint64(); }
+			if (item.HasMember("skeleton")) { skin.skeleton = item["skeleton"].GetUint64(); }
+
+			const rapidjson::Value::ConstArray jointArray = item["joints"].GetArray();
+			for (const rapidjson::Value& joint : jointArray)
+			{
+				skin.joints.push_back(joint.GetUint64());
+			}
+
+			if (item.HasMember("name")) { skin.name = item["name"].GetString(); }
+
+			skins.push_back(std::move(skin));
+		}
+
+		return skins;
 	}
 
 	/** textures 배열을 읽는다. 배열이 없으면 빈 배열을 돌려준다. sampler는 읽지 않는다. */
@@ -685,6 +715,111 @@ namespace
 		return true;
 	}
 
+	/** JOINTS accessor(VEC4, 정규화하지 않은 uint8 또는 uint16)의 값을 uint16으로 넓혀 읽는다. 값 하나는 숫자 4개이며 배열에 차례로 담긴다. */
+	bool ReadJointAccessor(const GLTFDocument& gltfDocument, std::size_t accessorIndex, std::vector<std::uint16_t>& outJoints)
+	{
+		// 번호들은 파일에 적힌 값이라, 배열 범위를 벗어나면 잘못된 메모리를 읽게 되므로 쓰기 전에 확인한다.
+		if (accessorIndex >= gltfDocument.accessors.size()) { return false; }
+
+		const GLTFAccessor& accessor = gltfDocument.accessors[accessorIndex];
+
+		// 뼈 번호는 정점마다 4개(VEC4)이고, 비율이 아니라 번호이므로 정규화하지 않는다.
+		if (accessor.type != "VEC4" || accessor.normalized) { return false; }
+
+		// 숫자 하나의 바이트 수. 5121 uint8, 5123 uint16
+		std::size_t componentSize = 0;
+		if (accessor.componentType == 5121) { componentSize = 1; }
+		else if (accessor.componentType == 5123) { componentSize = 2; }
+		else { return false; }
+
+		const std::size_t elementSize = componentSize * 4;
+		const std::byte* firstElement = nullptr;
+		std::size_t stride = 0;
+		if (!FindAccessorElements(gltfDocument, accessor, elementSize, firstElement, stride)) { return false; }
+
+		// 정점마다 숫자 4개를 꺼내 uint16으로 넓힌다. 정점 안의 숫자는 빈틈없이 붙어 있다.
+		std::vector<std::uint16_t> joints(accessor.count * 4);
+		for (std::size_t i = 0; i < accessor.count; ++i)
+		{
+			const std::byte* sourceElementBytes = firstElement + stride * i;
+			for (std::size_t c = 0; c < 4; ++c)
+			{
+				const std::byte* sourceComponentBytes = sourceElementBytes + componentSize * c;
+				if (componentSize == 1)
+				{
+					std::uint8_t joint = 0;
+					std::memcpy(&joint, sourceComponentBytes, sizeof(joint));
+					joints[i * 4 + c] = joint;
+				}
+				else
+				{
+					std::memcpy(&joints[i * 4 + c], sourceComponentBytes, sizeof(std::uint16_t));
+				}
+			}
+		}
+
+		outJoints = std::move(joints);
+
+		return true;
+	}
+
+	/** WEIGHTS accessor(VEC4, float 또는 정규화한 uint8, uint16)의 값을 float로 읽는다. 값 하나는 숫자 4개이며 배열에 차례로 담긴다. */
+	bool ReadWeightAccessor(const GLTFDocument& gltfDocument, std::size_t accessorIndex, std::vector<float>& outWeights)
+	{
+		// 번호들은 파일에 적힌 값이라, 배열 범위를 벗어나면 잘못된 메모리를 읽게 되므로 쓰기 전에 확인한다.
+		if (accessorIndex >= gltfDocument.accessors.size()) { return false; }
+
+		const GLTFAccessor& accessor = gltfDocument.accessors[accessorIndex];
+
+		// 가중치는 정점마다 4개(VEC4)다.
+		if (accessor.type != "VEC4") { return false; }
+
+		// 숫자 하나의 바이트 수와, 정수를 0~1 비율로 바꿀 때 나눌 최댓값. float는 정규화하지 않고 정수는 반드시 정규화한다.
+		std::size_t componentSize = 0;
+		float integerMax = 0.0f;
+		if (accessor.componentType == 5126 && !accessor.normalized) { componentSize = 4; }
+		else if (accessor.componentType == 5121 && accessor.normalized) { componentSize = 1; integerMax = 255.0f; }
+		else if (accessor.componentType == 5123 && accessor.normalized) { componentSize = 2; integerMax = 65535.0f; }
+		else { return false; }
+
+		const std::size_t elementSize = componentSize * 4;
+		const std::byte* firstElement = nullptr;
+		std::size_t stride = 0;
+		if (!FindAccessorElements(gltfDocument, accessor, elementSize, firstElement, stride)) { return false; }
+
+		// 정점마다 숫자 4개를 꺼내 float 비율로 바꾼다. 정점 안의 숫자는 빈틈없이 붙어 있다.
+		std::vector<float> weights(accessor.count * 4);
+		for (std::size_t i = 0; i < accessor.count; ++i)
+		{
+			const std::byte* sourceElementBytes = firstElement + stride * i;
+			for (std::size_t c = 0; c < 4; ++c)
+			{
+				const std::byte* sourceComponentBytes = sourceElementBytes + componentSize * c;
+				float& weight = weights[i * 4 + c];
+				if (componentSize == 4)
+				{
+					std::memcpy(&weight, sourceComponentBytes, sizeof(float));
+				}
+				else if (componentSize == 1)
+				{
+					std::uint8_t value = 0;
+					std::memcpy(&value, sourceComponentBytes, sizeof(value));
+					weight = value / integerMax;
+				}
+				else
+				{
+					std::uint16_t value = 0;
+					std::memcpy(&value, sourceComponentBytes, sizeof(value));
+					weight = value / integerMax;
+				}
+			}
+		}
+
+		outWeights = std::move(weights);
+
+		return true;
+	}
+
 	/** glTF 좌표계(오른손, m)의 이동, 회전, 크기를 엔진 좌표계(왼손, cm)로 바꾼다. 노드와 애니메이션 키가 함께 쓴다. */
 	Transform ConvertTransformToEngine(const Transform& source)
 	{
@@ -769,6 +904,7 @@ namespace
 		gltfDocument.materials = ReadMaterials(document);
 		gltfDocument.meshes = ReadMeshes(document);
 		gltfDocument.nodes = ReadNodes(document);
+		gltfDocument.skins = ReadSkins(document);
 		gltfDocument.textures = ReadTextures(document);
 		if (!LoadBufferData(path, gltfDocument)) { return false; }
 
@@ -1169,8 +1305,74 @@ namespace
 	}
 
 	/**
+	 * primitive의 JOINTS_0과 WEIGHTS_0을 정점별 스킨 가중치로 읽는다. 둘 다 없으면 빈 배열로 성공한다.
+	 * 가중치는 정점마다 합이 1이 되도록 맞춘다. 명세를 어긴 값이면 출력값을 유지하고 false를 반환한다.
+	 */
+	bool ReadSkinWeights(const GLTFDocument& gltfDocument, std::size_t meshIndex, const GLTFMeshPrimitive& primitive, std::size_t vertexCount, std::vector<SkinWeights>& outSkinWeights)
+	{
+		const auto jointAttribute = primitive.attributes.find("JOINTS_0");
+		const auto weightAttribute = primitive.attributes.find("WEIGHTS_0");
+		const bool hasJoints = jointAttribute != primitive.attributes.end();
+		const bool hasWeights = weightAttribute != primitive.attributes.end();
+
+		// 둘 다 없으면 스킨이 없는 메시다.
+		if (!hasJoints && !hasWeights)
+		{
+			outSkinWeights.clear();
+			return true;
+		}
+
+		// 명세상 JOINTS와 WEIGHTS의 세트 수는 같아야 한다.
+		if (hasJoints != hasWeights) { return false; }
+
+		// 두 번째 세트부터는 지원하지 않는다. 명세가 한 세트만 지원해도 된다고 허용하며, 남은 4개의 합으로 다시 맞춘다.
+		if (primitive.attributes.contains("JOINTS_1") || primitive.attributes.contains("WEIGHTS_1"))
+		{
+			Log::Write(LogLevel::Warning, "GLTFLoader", std::format("Mesh {}: JOINTS_1 and later skin sets are not supported; ignored", meshIndex));
+		}
+
+		std::vector<std::uint16_t> joints;
+		if (!ReadJointAccessor(gltfDocument, jointAttribute->second, joints)) { return false; }
+
+		std::vector<float> weights;
+		if (!ReadWeightAccessor(gltfDocument, weightAttribute->second, weights)) { return false; }
+
+		// 정점마다 숫자 4개씩이므로 다른 속성과 정점 수가 같아야 한다.
+		if (joints.size() != vertexCount * 4 || weights.size() != vertexCount * 4) { return false; }
+
+		std::vector<SkinWeights> skinWeights(vertexCount);
+		for (std::size_t i = 0; i < vertexCount; ++i)
+		{
+			float sum = 0.0f;
+			for (std::size_t c = 0; c < 4; ++c)
+			{
+				const float weight = weights[i * 4 + c];
+
+				// 음수는 명세 위반이고, NaN과 무한대는 정규화와 셰이더 결과를 모두 망가뜨린다.
+				if (!std::isfinite(weight) || weight < 0.0f) { return false; }
+
+				sum += weight;
+			}
+
+			// 합이 0이면 따라갈 뼈가 없고 나눌 수도 없다. 명세상 정규화 정수의 합은 255 또는 65535여야 한다.
+			if (sum <= 0.0f) { return false; }
+
+			// 렌더러가 합으로 나누지 않으므로 여기서 합을 1로 맞춘다.
+			for (std::size_t c = 0; c < 4; ++c)
+			{
+				skinWeights[i].joints[c] = joints[i * 4 + c];
+				skinWeights[i].weights[c] = weights[i * 4 + c] / sum;
+			}
+		}
+
+		outSkinWeights = std::move(skinWeights);
+
+		return true;
+	}
+
+	/**
 	 * LoadDocument로 채운 원본 문서의 meshIndex번 메시의 첫 프리미티브를 엔진 좌표계(왼손, cm)의 정점과 인덱스로 바꿔 채운다.
-	 * 이름과 경로는 유지하며, 실패하면 출력값을 유지하고 false를 반환한다.
+	 * JOINTS_0과 WEIGHTS_0이 있으면 정점별 스킨 가중치도 채운다. 이름과 경로는 유지하며, 실패하면 출력값을 유지하고 false를 반환한다.
 	 */
 	bool ConvertStaticMesh(const GLTFDocument& gltfDocument, std::size_t meshIndex, StaticMesh& outMeshData)
 	{
@@ -1216,6 +1418,10 @@ namespace
 		const std::size_t vertexCount = positions.size() / 3;
 		if (normals.size() != vertexCount * 3) { return false; }
 		if (!texcoords.empty() && texcoords.size() != vertexCount * 2) { return false; }
+
+		// 스킨 메시면 정점별 뼈 가중치를 읽는다. 없으면 비어 있다.
+		std::vector<SkinWeights> skinWeights;
+		if (!ReadSkinWeights(gltfDocument, meshIndex, primitive, vertexCount, skinWeights)) { return false; }
 
 		// ----------
 		// 엔진 좌표계로 변환 및 메시 조립
@@ -1267,6 +1473,7 @@ namespace
 
 		outMeshData.vertices = std::move(vertices);
 		outMeshData.indices = std::move(indices);
+		outMeshData.skinWeights = std::move(skinWeights);
 
 		return true;
 	}

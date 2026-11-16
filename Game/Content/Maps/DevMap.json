@@ -37,6 +37,15 @@
 			}
 		},
 		{
+			"name": "RiggedSimple",
+			"prefab": "Game/Content/Prefabs/RiggedSimple.prefab.json",
+			"transform": {
+				"position": [-600.0, 230.0, 2500.0],
+				"rotation": [0.0, 0.0, 0.0, 1.0],
+				"scale": [0.5, 0.5, 0.5]
+			}
+		},
+		{
 			"name": "Sky",
 			"prefab": "Game/Content/Prefabs/DaySky.prefab.json",
 			"transform": {

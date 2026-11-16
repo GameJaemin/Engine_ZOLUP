@@ -3,6 +3,7 @@
 #include "Animation/AnimationClip.h"
 #include "Core/Math/Transform.h"
 #include "Core/Math/Vector3.h"
+#include "Mesh/Skin.h"
 #include "Mesh/StaticMesh.h"
 #include "Renderer/Material.h"
 
@@ -24,6 +25,8 @@ struct GLTFSceneNode
 	std::vector<std::size_t> children;
 	// 그릴 glTF meshes 번호. 없으면 메시 없이 위치만 갖는 노드다.
 	std::optional<std::size_t> mesh;
+	// 메시를 휘게 할 skins 번호. 있으면 mesh도 있다.
+	std::optional<std::size_t> skin;
 	// 부모 기준 위치, 회전, 크기. 최상위 노드는 파일 원점 기준이다.
 	Transform localTransform;
 	// 사람이 보기 위한 이름
@@ -78,6 +81,8 @@ struct GLTFModel
 	std::vector<GLTFSceneNode> sceneNodes;
 	// glTF animations 번호 순서다. 각 클립의 node 번호는 sceneNodes 번호와 같다.
 	std::vector<AnimationClip> animations;
+	// glTF skins 번호 순서다. 각 스킨의 joints는 sceneNodes 번호다.
+	std::vector<Skin> skins;
 };
 
 /** glTF 파일을 엔진 데이터로 불러온다. */

@@ -296,6 +296,9 @@
     <ClInclude Include="Engine\Source\Mesh\MeshVertex.h">
       <Filter>Engine\Source\Mesh</Filter>
     </ClInclude>
+    <ClInclude Include="Engine\Source\Mesh\Skin.h">
+      <Filter>Engine\Source\Mesh</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\Source\Mesh\StaticMesh.h">
       <Filter>Engine\Source\Mesh</Filter>
     </ClInclude>

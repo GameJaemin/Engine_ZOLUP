@@ -33,6 +33,8 @@ struct Model
 	std::vector<GLTFSceneNode> sceneNodes;
 	// glTF animations 번호 순서다. 각 경로는 "파일경로#번호"다. 클립의 node 번호로 sceneNodes를 찾는다.
 	std::vector<std::shared_ptr<const AnimationClip>> animations;
+	// glTF skins 번호 순서다. sceneNodes의 skin 번호로 찾고, 각 스킨의 joints는 sceneNodes 번호다.
+	std::vector<std::shared_ptr<const Skin>> skins;
 };
 
 /**
