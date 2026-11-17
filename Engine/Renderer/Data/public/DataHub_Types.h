@@ -198,9 +198,9 @@ namespace Hakko::DataHub
     enum TextureUsage
     {
         TextureUsage_ReadOnly,
-        TextureUsage_RT,        // 미구현: 아직 검증 전이라 생성 막아놓음
-        TextureUsage_DS,        // 미구현
-        TextureUsage_Compute,   // 미구현
+        TextureUsage_RT,
+        TextureUsage_DS,
+        TextureUsage_Compute,
     };
 
 
@@ -241,7 +241,6 @@ namespace Hakko::DataHub
     #pragma endregion
 
 
-    // 미구현 (컴퓨트 자원)
     #pragma region ComputeBuffer
 
     struct ComputeBuffer
@@ -273,7 +272,7 @@ namespace Hakko::DataHub
     // DS 없는 출력 시 무시
     enum DrawProp_DepthUsage
     {
-        DrawProp_DepthUsage_Opaque,         // 깊이 LESS / 쓰기 있음 (기본값)
+        DrawProp_DepthUsage_Opaque,         // 깊이 LESS_EQUAL / 쓰기 있음 (기본값)
         DrawProp_DepthUsage_Translucent,    // 깊이 LESS / 쓰기 없음
         DrawProp_DepthUsage_Screen,         // 깊이 테스트 / 쓰기 모두 끔
         DrawProp_DepthUsage_Background,     // 깊이 LESS_EQUAL / 쓰기 없음
@@ -292,6 +291,7 @@ namespace Hakko::DataHub
     enum DrawProp_BlendType
     {
         DrawProp_BlendType_None,
+        DrawProp_BlendType_AlphaClip,   // RenderID 정렬 키의 플래그도 같이 켜세요 (정렬 힌트)
         DrawProp_BlendType_Alpha,
         DrawProp_BlendType_Addtive,
         DrawProp_BlendType_Multiply,
@@ -428,21 +428,23 @@ namespace Hakko::DataHub
         DataBoxType_CSBuffer = 1,               // 드로우 데이터 칸에 컴퓨트 버퍼 (id = CSBufferID, 구조버퍼로 바인딩), 프로바이더 없음, 액션당 한 칸
         DataBoxType_DataBox_RenderCondition = 2,
         DataBoxType_DataBox_RenderLight = 3,
-        DataBoxType_DataBox_RenderLightMatrix = 4,
+        DataBoxType_DataBox_RenderShadowPreset = 4,
         DataBoxType_DataBox_RenderShadowView = 5,
-        DataBoxType_DataBox_Render3DGeneral = 6,
-        DataBoxType_DataBox_Render3DOptional = 7,
-        DataBoxType_DataBox_Render2DScreen = 8,
+        DataBoxType_DataBox_RenderEditCustom = 6,
+        DataBoxType_DataBox_Render3DGeneral = 7,
+        DataBoxType_DataBox_Render3DOptional = 8,
+        DataBoxType_DataBox_Render2DScreen = 9,
 
-        DataBoxType_CustomizableBegin = 9,
+        DataBoxType_CustomizableBegin = 10,
 
         DataBoxType_DtB_Condition = DataBoxType_DataBox_RenderCondition,
         DataBoxType_DtB_Light = DataBoxType_DataBox_RenderLight,
-        DataBoxType_DtB_LightMatrix = DataBoxType_DataBox_RenderLightMatrix,
+        DataBoxType_DtB_ShadowPreset = DataBoxType_DataBox_RenderShadowPreset,
+        DataBoxType_DtB_ShadowView = DataBoxType_DataBox_RenderShadowView,
+        DataBoxType_DtB_EditCustom = DataBoxType_DataBox_RenderEditCustom,
         DataBoxType_DtB_3DGeneral = DataBoxType_DataBox_Render3DGeneral,
         DataBoxType_DtB_3DOptional = DataBoxType_DataBox_Render3DOptional,
         DataBoxType_DtB_2DScreen = DataBoxType_DataBox_Render2DScreen,
-        DataBoxType_DtB_ShadowView = DataBoxType_DataBox_RenderShadowView,
     };
 
     typedef uint32_t DataBoxTID;
@@ -485,14 +487,14 @@ namespace Hakko::DataHub
 
     struct DataBox_RenderLight : DataBox
     {
-        uint32_t type;
-        DirectX::XMFLOAT3 position;
+        uint32_t type;                  // 0: None / 1: Directional / 2: Point / 3: Spot
+        DirectX::XMFLOAT3 position;     // 위치 (Point, Spot)
         
-        float range;
-        DirectX::XMFLOAT3 color;
+        float range;                    // 최대 거리 (Point, Spot)
+        DirectX::XMFLOAT3 color;        // 색상
         
-        DirectX::XMFLOAT3 direction;
-        float spotAngle;
+        DirectX::XMFLOAT3 direction;    // 빛이 향하는 방향 (Directional, Spot)
+        float spotAngle;                // 원뿔 각도 (Spot)
     };
     typedef DataBox_RenderLight DtB_Light;
 
@@ -500,14 +502,30 @@ namespace Hakko::DataHub
     extern std::vector<DataBoxID> blankedLightIdList;
 
 
-    struct DataBox_RenderLightMatrix : DataBox
+    // 그림자 프리셋! 물체가 받는 그림자 맵을 리스트업
+    // 레이어의 프리셋 칸에 꽂아서 쓰고 (RTB_SetShadowPreset), 
+    // 물체에서 그 칸 번호를 참조 (shadowPreset)
+    // 타일은 레이어 localShadowTexId 아틀라스 기준, 그림자는 뷰포트 두고 직접 잘라 그리셔야 해요
+    // 조명 계산이랑은 별개입니다, 순수 그림자용! ...자세한 규칙은 가이드로
+    #define RENDER_SHADOW_PRESET_LOCAL_MAX 8
+
+    struct ShadowPreset_Entry
     {
         DirectX::XMMATRIX lightViewProj;
+        DirectX::XMFLOAT4 shadowTile;   // 섀도우 아틀라스 타일 (xy = uv 스케일, zw = uv 오프셋), 스케일 0 = 그림자 없음
+        uint32_t lightSlot;
+        uint32_t _[3];
     };
-    typedef DataBox_RenderLightMatrix DtB_LightMatrix;
-    
-    extern std::vector<DataBox_RenderLightMatrix> RenderLightMatrixList;
-    extern std::vector<DataBoxID> blankedLightMatrixIdList;
+
+    struct DataBox_RenderShadowPreset : DataBox
+    {
+        ShadowPreset_Entry locals[RENDER_SHADOW_PRESET_LOCAL_MAX];
+        ShadowPreset_Entry global;
+    };
+    typedef DataBox_RenderShadowPreset DtB_ShadowPreset;
+
+    extern std::vector<DataBox_RenderShadowPreset> RenderShadowPresetList;
+    extern std::vector<DataBoxID> blankedShadowPresetIdList;
 
     #pragma endregion
 
@@ -521,8 +539,10 @@ namespace Hakko::DataHub
         DirectX::XMFLOAT4 blendColor;
         float roughness;
         float metalic;
-        float _[2];
+        float alphaCutoff = 0.5f;
+        float _;
         uint32_t affectLights[8];
+        uint32_t shadowPreset;      // 레이어의 그림자 프리셋 칸 번호, 0 = 레이어 기본 프리셋
     };
     typedef DataBox_Render3DGeneral DtB_3DGeneral;
 
@@ -547,13 +567,23 @@ namespace Hakko::DataHub
     typedef DataBox_Render2DScreen DtB_2DScreen;
 
 
-    // 미구현 (기본 섀도우 셰이더 / 드로우프롭 전)
-    // 섀도우 패스가 그리는 용도의 조명행렬, 읽는 쪽 (OPQ 등) 은 레이어 전역 컨디션 / 조명행렬 데이터로
+    // 섀도우 패스가 그리는 용도의 조명행렬, 읽는 쪽 (OPQ 등) 은 레이어 전역 컨디션 / 그림자 프리셋으로
     struct alignas(256) DataBox_RenderShadowView : DataBox_Custom
     {
         DirectX::XMMATRIX viewProj;
     };
     typedef DataBox_RenderShadowView DtB_ShadowView;
+
+
+    #define RENDER_EDIT_CUSTOM_VALUE_MAX 64
+
+    // Edit 액션 공용 데이터 및 타입 기본값
+    // 칸의 의미는 셰이더가 알아서 정함! 셰이더의 ACTION_DATA_CB 배치 순서대로 채워 넣기 (정수도 float 칸에 숫자로)
+    struct alignas(256) DataBox_RenderEditCustom : DataBox_Custom
+    {
+        float values[RENDER_EDIT_CUSTOM_VALUE_MAX];
+    };
+    typedef DataBox_RenderEditCustom DtB_EditCustom;
 
     #pragma endregion
 

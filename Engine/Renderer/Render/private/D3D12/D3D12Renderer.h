@@ -224,7 +224,7 @@ private:
 
 	vector<CBAreaRaw>								cbArea_DataBox[FRAME_COUNT];
 	vector<CBAreaRaw>								cbArea_Light;
-	vector<CBAreaRaw>								cbArea_LightMatrix;
+	vector<CBAreaRaw>								cbArea_ShadowPreset;
 
 
 	vector<ComPtr<ID3D12Resource>>					retiredCBAreaList;
@@ -233,6 +233,17 @@ private:
 	vector<vector<uint32_t>>						dataSlotStampList;
 
 	#pragma endregion
+
+
+#if RENDER_IMGUI_MODE == RENDER_IMGUI_ENABLE
+	#pragma region ImGui
+private:
+	class ImGuiModule;
+
+	unique_ptr<ImGuiModule>					imguiModule;
+
+	#pragma endregion
+#endif
 
 #pragma endregion
 
@@ -259,7 +270,8 @@ private:
 	void UploadRenderData();
 
 	// Render 하위 동작
-	void RecordActionBarriers(ID3D12GraphicsCommandList* cmdList, const DX12_RenderLayer& layer, const vector<DX12_ActionBarrier>& barriers, UINT frameIdx);
+	void RecordActionBarriers(ID3D12GraphicsCommandList* cmdList, const DX12_RenderLayer& layer, const vector<DX12_ActionBarrier>& barriers, UINT frameIdx,
+		vector<D3D12_RESOURCE_BARRIER>& barrierScratch);
 	void RecordComputeAction(ID3D12GraphicsCommandList* cmdList, const DX12_RenderLayer& layer, size_t actionIdx, UINT frameIdx, D3D12_GPU_DESCRIPTOR_HANDLE defaultSRHandle);
 
 	#pragma endregion
@@ -330,7 +342,7 @@ private:
 	void BeginUploadCommands();
 	void FlushUploadCommands();
 
-	void MarkOrBuildSingleTexture(TexID texId);
+	bool MarkOrBuildSingleTexture(TexID texId);
 	void BuildWritableTexture(const DX12_Texture& texture, const DataHub::Texture& src, DX12_WTexRef& ref);
 	void ReleaseWritableTexture(DX12_WTexRef& ref);
 
@@ -367,9 +379,13 @@ private:
 	DX12_OutputSignature MakeOutputSignature(const DX12_RenderAction& action, const DataHub::Action_Output& output);
 
 	static const DataHub::RTB_Action& GetActionSource(const DataHub::RTB_Layer& layerDesc, ActionID id);
-	
-	void BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB_Layer& layerDesc);
-	void BuildActionBarriers(DX12_RenderAction& action, vector<D3D12_RESOURCE_STATES>& rtInstantSimStateList, vector<D3D12_RESOURCE_STATES>& dsInstantSimStateList);
+	static void ResolveSkippedFront(const DX12_RenderLayer& layer, const DataHub::RTB_Layer& layerDesc,
+		const std::array<ActionID, RENDER_ACTION_NODE_MAX>* frontTable, const uint32_t* nodeOfId, ActionID id);
+
+	void BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB_Layer& layerDesc,
+		const std::array<ActionID, RENDER_ACTION_NODE_MAX>* frontTable, const uint32_t* nodeOfId, uint32_t idCount);
+	void BuildActionBarriers(DX12_RenderAction& action, vector<D3D12_RESOURCE_STATES>& rtInstantSimStateList, vector<D3D12_RESOURCE_STATES>& dsInstantSimStateList,
+		vector<DX12_ActionBarrier>& depthBarriers);
 
 	#pragma endregion
 
@@ -388,3 +404,7 @@ private:
 
 
 #include "D3D12Renderer_Allocator.h"
+
+#if RENDER_IMGUI_MODE == RENDER_IMGUI_ENABLE
+#include "D3D12Renderer_ImGui.h"
+#endif

@@ -251,13 +251,11 @@ bool D3D12Renderer::Init(HWND hwnd, int width, int height)
 	swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
 	swapChainDesc.SampleDesc.Count = 1;
 
-	{
-		ComPtr<IDXGIFactory5> factory5;
-		BOOL allowTearing = FALSE;
-		if (SUCCEEDED(factory->QueryInterface(IID_PPV_ARGS(&factory5))) &&
-			SUCCEEDED(factory5->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &allowTearing, sizeof(allowTearing))))
-			tearingSupported = allowTearing == TRUE;
-	}
+	ComPtr<IDXGIFactory5> factory5;
+	BOOL allowTearing = FALSE;
+	if (SUCCEEDED(factory->QueryInterface(IID_PPV_ARGS(&factory5))) &&
+		SUCCEEDED(factory5->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &allowTearing, sizeof(allowTearing))))
+		tearingSupported = allowTearing == TRUE;
 	swapChainDesc.Flags = tearingSupported ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0;
 
 	ComPtr<IDXGISwapChain1> sc;
@@ -387,6 +385,15 @@ bool D3D12Renderer::Init(HWND hwnd, int width, int height)
 	if (!InitCanvasLayer())
 		return false;
 
+#if RENDER_IMGUI_MODE == RENDER_IMGUI_ENABLE
+	imguiModule = make_unique<ImGuiModule>(*this);
+	if (!imguiModule->Init())
+	{
+		DebugReport(DataHub::RenderReport_Init, L"[ImGui] 준비 실패, ImGui 안 그림");
+		imguiModule.reset();
+	}
+#endif
+
 
 	return true;
 }
@@ -404,6 +411,14 @@ void D3D12Renderer::Finalize()
 
 	if (fenceEvent != nullptr)
 		CloseHandle(fenceEvent);
+
+#if RENDER_IMGUI_MODE == RENDER_IMGUI_ENABLE
+	if (imguiModule)
+	{
+		imguiModule->Finalize();
+		imguiModule.reset();
+	}
+#endif
 
 
 	backBufferIndex = 0;
@@ -429,7 +444,7 @@ void D3D12Renderer::Finalize()
 	}
 
 	cbArea_Light.clear();
-	cbArea_LightMatrix.clear();
+	cbArea_ShadowPreset.clear();
 	
 	retiredCBAreaList.clear();
 	dataSlotLUTList.clear();
@@ -501,6 +516,11 @@ void D3D12Renderer::OnResize(int width, int height)
 		swapChain->GetBuffer(n, IID_PPV_ARGS(&backBuffers[n]));
 		rtvHeap->UpdateRTV(n + 1, backBuffers[n].Get(), &rtvDesc);
 	}
+
+#if RENDER_IMGUI_MODE == RENDER_IMGUI_ENABLE
+	if (imguiModule)
+		imguiModule->Resize();
+#endif
 }
 
 void D3D12Renderer::SetVSync(bool enable)
@@ -533,6 +553,13 @@ void D3D12Renderer::Sketch()
 	DataHub::RenderReportList.clear();
 #endif
 
+	if (!MarkOrBuildSingleTexture(0) || !MarkOrBuildSingleTexture(DEFAULT_TEX_TRANSPARENT) || !MarkOrBuildSingleTexture(DEFAULT_TEX_NONE_SHADOW))
+	{
+		DebugReport(DataHub::RenderReport_Limit, L"[STex] 기본 텍스처 뷰 자리 없음 (디스크립터 힙 한도), 이번 프레임 무효");
+		renderFrame.frameInvalidated = true;
+	}
+
+
 	UpdateCanvasLayer();
 
 	ReadTransferBox();
@@ -562,22 +589,37 @@ void D3D12Renderer::Sketch()
 	WaitGPUProcess();
 
 	UploadRenderData();
-	
+
+#if RENDER_IMGUI_MODE == RENDER_IMGUI_ENABLE
+	if (imguiModule)
+		imguiModule->Prepare();
+#endif
+
+}
+
+static void ClearPassData(DX12_RenderFrame& renderFrame, size_t layerCount)
+{
+	for (size_t p = 0; p < layerCount; p++)
+	{
+		auto& layer = renderFrame.layerList[p];
+
+		layer.conditionRenderData = {};
+		layer.lightRenderData = {};
+		layer.shadowPresetRenderData = {};
+		layer.layerRenderData = {};
+	}
 }
 
 void D3D12Renderer::Render()
 {
 	using namespace DataHub;
 
-	if (suspended)
-		return;
-
-
 	auto& renderFrame = renderFrames[cpuFrameIndex];
-	const UINT frameIdx = cpuFrameIndex;	
+	const UINT frameIdx = cpuFrameIndex;
 
-	if (renderFrame.frameInvalidated)
+	if (suspended || renderFrame.frameInvalidated)
 	{
+		ClearPassData(renderFrame, layerCount);
 		ReadReleaseRequest();
 		ScheduledReleaseResource();
 
@@ -600,21 +642,16 @@ void D3D12Renderer::Render()
 	cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 
-	MarkOrBuildSingleTexture(0);
 	const D3D12_GPU_DESCRIPTOR_HANDLE defaultSRHandle = rvHeap->GetGPUHandle(singleTextureList[0].RVHeapIndex);
-
-	MarkOrBuildSingleTexture(DEFAULT_TEX_TRANSPARENT);
 	const D3D12_GPU_DESCRIPTOR_HANDLE transparentSRHandle = rvHeap->GetGPUHandle(singleTextureList[DEFAULT_TEX_TRANSPARENT].RVHeapIndex);
+	const D3D12_GPU_DESCRIPTOR_HANDLE noneShadowSRHandle = rvHeap->GetGPUHandle(singleTextureList[DEFAULT_TEX_NONE_SHADOW].RVHeapIndex);
 
 	const auto& rtInstants = rtTextureInstantLists[frameIdx];
 	const auto& dsInstants = dsTextureInstantLists[frameIdx];
 
-	static vector<bool> instantClearedMask_RT;
-	static vector<bool> instantClearedMask_DS;
-	instantClearedMask_RT.assign(rtInstants.size(), false);
-	instantClearedMask_DS.assign(dsInstants.size(), false);
-
 	static const float instantClearColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+
+	static vector<D3D12_RESOURCE_BARRIER> barrierScratch;
 
 
 	D3D12_GPU_DESCRIPTOR_HANDLE layerResultHandles[RENDER_LAYER_MAX];
@@ -648,12 +685,21 @@ void D3D12Renderer::Render()
 
 		cmd->SetGraphicsRootConstantBufferView(RootParam_ConditionCB, cbArea_Condition[frameIdx]->GetGPUAddress(layer.conditionRenderData.CBAreaIndex));
 		cmd->SetGraphicsRootConstantBufferView(RootParam_LightCB, cbArea_Light[frameIdx].GetGPUAddress(layer.lightRenderData.CBAreaIndex));
-		cmd->SetGraphicsRootConstantBufferView(RootParam_LightMatrixCB, cbArea_LightMatrix[frameIdx].GetGPUAddress(layer.lightMatrixRenderData.CBAreaIndex));
+		cmd->SetGraphicsRootShaderResourceView(RootParam_ShadowPresetSB, cbArea_ShadowPreset[frameIdx].GetGPUAddress(layer.shadowPresetRenderData.CBAreaIndex));
 
 		if (layer.envTexId != 0)
 			cmd->SetGraphicsRootDescriptorTable(RootParam_LayerTexTable, rvHeap->GetGPUHandle(singleTextureList[layer.envTexId].RVHeapIndex));
 		else
 			cmd->SetGraphicsRootDescriptorTable(RootParam_LayerTexTable, defaultSRHandle);
+
+		D3D12_GPU_DESCRIPTOR_HANDLE layerShadowSRs[LAYER_SHADOW_SLOT_MAX];
+		D3D12_GPU_DESCRIPTOR_HANDLE boundShadowSRs[LAYER_SHADOW_SLOT_MAX];
+		for (size_t s = 0; s < LAYER_SHADOW_SLOT_MAX; s++)
+		{
+			layerShadowSRs[s] = rvHeap->GetGPUHandle(singleTextureList[layer.shadowTexIds[s]].RVHeapIndex);
+			boundShadowSRs[s] = layerShadowSRs[s];
+			cmd->SetGraphicsRootDescriptorTable((UINT)(RootParam_LayerShadowTex0 + s), layerShadowSRs[s]);
+		}
 
 		if (layer.layerDataTid != 0)
 			cmd->SetGraphicsRootConstantBufferView(RootParam_LayerDataCB, cbArea_DataBox[frameIdx][layer.layerDataTid].GetGPUAddress(layer.layerRenderData.CBAreaIndex));
@@ -661,12 +707,21 @@ void D3D12Renderer::Render()
 
 		#pragma region Actions
 
+		size_t depthGroup = 0;
+
 		for (size_t i = 1; i < layer.renderActionList.size(); i++)
 		{
 			DX12_RenderAction& action = layer.renderActionList[i];
 
 
-			RecordActionBarriers(cmd, layer, action.copyBarriers, frameIdx);
+			if (i == 1 || layer.renderActionNodeList[i].nodeDepth != layer.renderActionNodeList[i - 1].nodeDepth)
+			{
+				RecordActionBarriers(cmd, layer, layer.depthBarrierLists[depthGroup], frameIdx, barrierScratch);
+				depthGroup++;
+			}
+
+
+			RecordActionBarriers(cmd, layer, action.errorCopyBarriers, frameIdx, barrierScratch);
 
 			for (size_t s = 0; s < INSTANT_SLOT_MAX; s++)
 			{
@@ -679,77 +734,72 @@ void D3D12Renderer::Render()
 					cmd->CopyResource(dsInstants[action.srInstantIdx[s] + layer.dsInstantOffset].Tex.Get(), dsInstants[action.copySrcInstantIdx[s] + layer.dsInstantOffset].Tex.Get());
 			}
 
-			RecordActionBarriers(cmd, layer, action.beginBarriers, frameIdx);
+			RecordActionBarriers(cmd, layer, action.beginBarriers, frameIdx, barrierScratch);
 
 
 			D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[RENDER_TARGET_MAX];
 			UINT rtvCount = 0;
 			D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle = {};
+			const UINT clearRectCount = (action.clearMask >> CLEAR_MASK_AREA_SHIFT) & 1;
+			const D3D12_RECT* clearRects = clearRectCount != 0 ? &action.scissorRect : nullptr;
 
-			if (action.outputSigId != OUTPUT_SIGNATURE_INVALID)
+			for (uint8_t r = 0; r < RENDER_TARGET_MAX; r++)
 			{
-				for (uint8_t r = 0; r < RENDER_TARGET_MAX; r++)
+				const TexID texId = OutTexId(action, r);
+				const bool clear = ((action.clearMask >> r) & 1) != 0;
+
+				if (texId == 0 && !IsOutInstant(action, r))
 				{
-					const TexID texId = OutTexId(action, r);
-					const Action_Output_LoadOption loadOpt = action.rtLoadOpts[r];
-
-					if (texId == 0 && !IsOutInstant(action, r))
-					{
-						rtvHandles[r] = nullRTVHandle;
-						continue;
-					}
-
-					if (texId != 0)
-					{
-						const uint16_t wIdx = texRefList_WTex[texId].idx;
-						rtvHandles[r] = rtvHeap->GetCPUHandle(writableTextureList[wIdx].VHeapIndex);
-
-						if (loadOpt == Action_Output_LoadOption_Clear)
-							cmd->ClearRenderTargetView(rtvHandles[r], writableClearList[wIdx].Color, 0, nullptr);
-					}
-					else
-					{
-						const size_t idx = (size_t)action.slotIds[r] + layer.rtInstantOffset;
-						rtvHandles[r] = rtvHeap->GetCPUHandle(rtvInstantLists[frameIdx][idx].VHeapIndex);
-
-						if (loadOpt == Action_Output_LoadOption_Clear || (loadOpt == Action_Output_LoadOption_Default && !instantClearedMask_RT[idx]))
-							cmd->ClearRenderTargetView(rtvHandles[r], instantClearColor, 0, nullptr);
-						instantClearedMask_RT[idx] = true;
-					}
-
-					rtvCount = r + 1;
+					rtvHandles[r] = nullRTVHandle;
+					continue;
 				}
 
-				const TexID dsTexId = OutTexId(action, INSTANT_SLOT_DS);
-
-				if (dsTexId != 0)
+				if (texId != 0)
 				{
-					const uint16_t wIdx = texRefList_WTex[dsTexId].idx;
-					const UINT dsvIndex = writableTextureList[wIdx].VHeapIndex;
+					const uint16_t wIdx = texRefList_WTex[texId].idx;
+					rtvHandles[r] = rtvHeap->GetCPUHandle(writableTextureList[wIdx].VHeapIndex);
 
-					if (!action.dsReadOnly && action.dsLoadOpt == Action_Output_LoadOption_Clear)
-					{
-						const D3D12_CLEAR_VALUE& clear = writableClearList[wIdx];
-						cmd->ClearDepthStencilView(dsvHeap->GetCPUHandle(dsvIndex), GetDSClearFlags(clear.Format), clear.DepthStencil.Depth, clear.DepthStencil.Stencil, 0, nullptr);
-					}
-
-					dsvHandle = dsvHeap->GetCPUHandle(action.dsReadOnly ? dsvIndex + 1 : dsvIndex);
+					if (clear)
+						cmd->ClearRenderTargetView(rtvHandles[r], writableClearList[wIdx].Color, clearRectCount, clearRects);
 				}
-				else if (IsOutInstant(action, INSTANT_SLOT_DS))
+				else
 				{
-					const size_t idx = (size_t)action.slotIds[INSTANT_SLOT_DS] + layer.dsInstantOffset;
+					const size_t idx = (size_t)action.slotIds[r] + layer.rtInstantOffset;
+					rtvHandles[r] = rtvHeap->GetCPUHandle(rtvInstantLists[frameIdx][idx].VHeapIndex);
 
-					if (!action.dsReadOnly)
-					{
-						if (action.dsLoadOpt == Action_Output_LoadOption_Clear || (action.dsLoadOpt == Action_Output_LoadOption_Default && !instantClearedMask_DS[idx]))
-							cmd->ClearDepthStencilView(dsvHeap->GetCPUHandle(dsvInstantLists[frameIdx][idx].VHeapIndex), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-						instantClearedMask_DS[idx] = true;
-					}
-
-					dsvHandle = action.dsReadOnly
-						? dsvHeap->GetCPUHandle(dsvReadOnlyInstantLists[frameIdx][idx].VHeapIndex)
-						: dsvHeap->GetCPUHandle(dsvInstantLists[frameIdx][idx].VHeapIndex);
+					if (clear)
+						cmd->ClearRenderTargetView(rtvHandles[r], instantClearColor, clearRectCount, clearRects);
 				}
+
+				rtvCount = r + 1;
+			}
+
+			const TexID dsTexId = OutTexId(action, INSTANT_SLOT_DS);
+			const bool dsClear = ((action.clearMask >> INSTANT_SLOT_DS) & 1) != 0;
+
+			if (dsTexId != 0)
+			{
+				const uint16_t wIdx = texRefList_WTex[dsTexId].idx;
+				const UINT dsvIndex = writableTextureList[wIdx].VHeapIndex;
+
+				if (dsClear)
+				{
+					const D3D12_CLEAR_VALUE& clearValue = writableClearList[wIdx];
+					cmd->ClearDepthStencilView(dsvHeap->GetCPUHandle(dsvIndex), GetDSClearFlags(clearValue.Format), clearValue.DepthStencil.Depth, clearValue.DepthStencil.Stencil, clearRectCount, clearRects);
+				}
+
+				dsvHandle = dsvHeap->GetCPUHandle(action.dsReadOnly ? dsvIndex + 1 : dsvIndex);
+			}
+			else if (IsOutInstant(action, INSTANT_SLOT_DS))
+			{
+				const size_t idx = (size_t)action.slotIds[INSTANT_SLOT_DS] + layer.dsInstantOffset;
+
+				if (dsClear)
+					cmd->ClearDepthStencilView(dsvHeap->GetCPUHandle(dsvInstantLists[frameIdx][idx].VHeapIndex), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, clearRectCount, clearRects);
+
+				dsvHandle = action.dsReadOnly
+					? dsvHeap->GetCPUHandle(dsvReadOnlyInstantLists[frameIdx][idx].VHeapIndex)
+					: dsvHeap->GetCPUHandle(dsvInstantLists[frameIdx][idx].VHeapIndex);
 			}
 
 
@@ -829,6 +879,17 @@ void D3D12Renderer::Render()
 					}
 				}
 
+				for (size_t s = 0; s < LAYER_SHADOW_SLOT_MAX; s++)
+				{
+					const D3D12_GPU_DESCRIPTOR_HANDLE handle = ((action.layerShadowHideMask >> s) & 1) != 0 ? noneShadowSRHandle : layerShadowSRs[s];
+
+					if (handle.ptr != boundShadowSRs[s].ptr)
+					{
+						cmd->SetGraphicsRootDescriptorTable((UINT)(RootParam_LayerShadowTex0 + s), handle);
+						boundShadowSRs[s] = handle;
+					}
+				}
+
 				if (action.actionDataTid != 0)
 					cmd->SetGraphicsRootConstantBufferView(RootParam_ActionCB, cbArea_DataBox[frameIdx][action.actionDataTid].GetGPUAddress(action.actionRenderData.CBAreaIndex));
 
@@ -863,11 +924,7 @@ void D3D12Renderer::Render()
 					}
 					cmd->SetPipelineState(psoGeneratorList[psoId].psoVariants[sigId].Get());
 					cmd->SetGraphicsRootDescriptorTable(RootParam_CTexTable, rvHeap->GetGPUHandle(combinedTextureList[cTexId].RVHeapIndex));
-
-					const DX12_MeshView& quad = meshViewList[1];
-					cmd->IASetVertexBuffers(0, 1, &quad.VBV);
-					cmd->IASetIndexBuffer(&quad.IBV);
-					cmd->DrawIndexedInstanced(quad.subMeshes[0].indexCount, 1, 0, 0, 0);
+					cmd->DrawInstanced(3, 1, 0, 0);
 					break;
 				}
 
@@ -877,15 +934,21 @@ void D3D12Renderer::Render()
 
 					RenderIdProvider* provider = GetRenderIdProvider(action.renderIdType);
 
-					RenderId_ParseFlag psoFlag, cTexFlag, sTexFlag;
+					RenderId_ParseFlag psoFlag, cTexFlag, sTexFlag, instFlag;
 					const uint64_t PSOMASK = provider->GetDrawPropIdMask(psoFlag);
 					const uint64_t CTEXMASK = provider->GetTexPropIdMask(cTexFlag);
 					const uint64_t STEXMASK = provider->GetTexIdMask(sTexFlag);
+					const uint64_t INSTMASK = provider->GetInstanceCountMask(instFlag);
+					
 					const int PSOSHIFT = PSOMASK ? countr_zero(PSOMASK) : 0;
 					const int CTEXSHIFT = CTEXMASK ? countr_zero(CTEXMASK) : 0;
 					const int STEXSHIFT = STEXMASK ? countr_zero(STEXMASK) : 0;
+					const int INSTSHIFT = INSTMASK ? countr_zero(INSTMASK) : 0;
+					
 					const bool useCTex = (cTexFlag == RenderId_ParseFlag_OK) && CTEXMASK != 0;
 					const bool useSTex = (sTexFlag == RenderId_ParseFlag_OK) && STEXMASK != 0;
+					const bool useInstBit = (instFlag == RenderId_ParseFlag_OK) && INSTMASK != 0;
+					const bool useInstSlot = (instFlag == RenderId_ParseFlag_OnHanded);
 
 					UINT slotCount = 0;
 					UINT slotK[DRAWREQ_DATABOX_MAX];
@@ -990,8 +1053,19 @@ void D3D12Renderer::Render()
 							}
 						}
 
+						UINT instanceCount = 1;
+
+						if (useInstBit)
+							instanceCount = (UINT)((draw.renderId & INSTMASK) >> INSTSHIFT);
+						else if (useInstSlot)
+							instanceCount = draw.datas[INSTMASK].CBAreaIndex;
+
+						if (instanceCount == 0)
+							instanceCount = 1;
+
 						const DX12_SubMesh& sub = meshView.subMeshes[draw.subMeshId];
-						cmd->DrawIndexedInstanced(sub.indexCount, 1, sub.indexStart, sub.baseVertex, 0);
+						
+						cmd->DrawIndexedInstanced(sub.indexCount, instanceCount, sub.indexStart, sub.baseVertex, 0);
 					}
 					break;
 				}
@@ -1006,13 +1080,13 @@ void D3D12Renderer::Render()
 				RecordComputeAction(cmd, layer, i, frameIdx, defaultSRHandle);
 
 
-			RecordActionBarriers(cmd, layer, action.endBarriers, frameIdx);
+			RecordActionBarriers(cmd, layer, action.endBarriers, frameIdx, barrierScratch);
 		}
 
 		#pragma endregion
 
 
-		RecordActionBarriers(cmd, layer, layer.finalBarriers, frameIdx);
+		RecordActionBarriers(cmd, layer, layer.finalBarriers, frameIdx, barrierScratch);
 
 
 		for (size_t i = layer.renderActionList.size(); i > 1; i--)
@@ -1024,9 +1098,7 @@ void D3D12Renderer::Render()
 			if (!IsOutInstant(action, 0))
 				continue;
 
-			const size_t idx = (size_t)action.slotIds[0] + layer.rtInstantOffset;
-			if (idx < rtSTexInstantLists[frameIdx].size() && l < RENDER_LAYER_MAX)
-				layerResultHandles[l] = rvHeap->GetGPUHandle(rtSTexInstantLists[frameIdx][idx].RVHeapIndex);
+			layerResultHandles[l] = rvHeap->GetGPUHandle(rtSTexInstantLists[frameIdx][(size_t)action.slotIds[0] + layer.rtInstantOffset].RVHeapIndex);
 			break;
 		}
 	}
@@ -1074,6 +1146,11 @@ void D3D12Renderer::Render()
 		cmd->ClearRenderTargetView(bbvCPUHandles[backBufferIndex], bgColor, 0, nullptr);
 	}
 
+#if RENDER_IMGUI_MODE == RENDER_IMGUI_ENABLE
+	if (imguiModule)
+		imguiModule->Record(cmd, frameIdx);
+#endif
+
 	#pragma endregion
 
 
@@ -1103,15 +1180,7 @@ void D3D12Renderer::Render()
 
 	#pragma region ClearPassData
 
-	for (size_t p = 0; p < layerCount; p++)
-	{
-		auto& layer = renderFrame.layerList[p];
-
-		layer.conditionRenderData = {};
-		layer.lightRenderData = {};
-		layer.lightMatrixRenderData = {};
-		layer.layerRenderData = {};
-	}
+	ClearPassData(renderFrame, layerCount);
 
 	#pragma endregion
 
@@ -1153,7 +1222,14 @@ void D3D12Renderer::SortRenderId()
 
 			RadixSortRenderKeys(proxyList, sortScratch, isAscending);
 
-			if (action.outputSigId == OUTPUT_SIGNATURE_INVALID || action.actionType == DX12_RenderActionType_Compute)
+			if (action.actionType == DX12_RenderActionType_Compute)
+			{
+				if (GetComputePSO((ShaderID)(proxyList[0].renderId >> 48)) == nullptr)
+					proxyList[0].renderId &= ~((RenderID)0xFFFF << 48);
+				continue;
+			}
+
+			if (action.outputSigId == OUTPUT_SIGNATURE_INVALID)
 				continue;
 
 			if (action.actionType == DX12_RenderActionType_Builtin)
@@ -1164,36 +1240,63 @@ void D3D12Renderer::SortRenderId()
 			}
 
 
-			RenderId_ParseFlag psoFlag, cTexFlag, sTexFlag;
+			RenderId_ParseFlag psoFlag, cTexFlag, sTexFlag, instFlag;
+
 			const uint64_t PSOMASK = provider->GetDrawPropIdMask(psoFlag);
 			const uint64_t CTEXMASK = provider->GetTexPropIdMask(cTexFlag);
 			const uint64_t STEXMASK = provider->GetTexIdMask(sTexFlag);
+			const uint64_t INSTMASK = provider->GetInstanceCountMask(instFlag);
+			
 			const int PSOSHIFT = PSOMASK ? countr_zero(PSOMASK) : 0;
 			const int CTEXSHIFT = CTEXMASK ? countr_zero(CTEXMASK) : 0;
 			const int STEXSHIFT = STEXMASK ? countr_zero(STEXMASK) : 0;
+			
 			const bool usePSO = (psoFlag == RenderId_ParseFlag_OK) && PSOMASK != 0;
 			const bool useCTex = (cTexFlag == RenderId_ParseFlag_OK) && CTEXMASK != 0;
 			const bool useSTex = (sTexFlag == RenderId_ParseFlag_OK) && STEXMASK != 0;
+			const bool badInstSlot = (instFlag == RenderId_ParseFlag_OnHanded) && (INSTMASK >= DRAWREQ_DATABOX_MAX || action.dataTids[INSTMASK] != 0);
 
-			if (!usePSO)
+			const bool badTexFlags = useCTex && useSTex;
+
+			if (badInstSlot)
+				DebugReport(RenderReport_Contract, L"[Instance] 인스턴스 수 칸이 범위 밖이거나 데이터 타입이 있는 칸 (액션의 드로우 전부 무시)");
+			if (badTexFlags)
+				DebugReport(RenderReport_Contract, L"[RenderId] 프로바이더가 texProp 과 tex 를 둘 다 OK 로 줌 (액션의 드로우 전부 무시)");
+
+			if (!usePSO || badInstSlot || badTexFlags)
 			{
 				for (auto& proxy : proxyList)
 					proxy.renderId &= ~PSOMASK;
 				continue;
 			}
 
-			PSOID prevPsoId = 0;
-			bool prevPsoValid = false;
-			STexID prevSTexId = 0xFFFF;
+			if (action.actionType == DX12_RenderActionType_Edit && useCTex)
+			{
+				const CTexID cTexId = (CTexID)((proxyList[0].renderId & CTEXMASK) >> CTEXSHIFT);
 
-			#ifdef _DEBUG
+				if (cTexId >= combinedTextureList.size() || (cTexId < releaseCTexIdMask.size() && releaseCTexIdMask[cTexId]))
+				{
+					DebugReport(RenderReport_Contract, L"[CTex] 에딧 액션 texProp 범위 밖 / 해제 예정 (0 으로)");
+					proxyList[0].renderId &= ~CTEXMASK;
+				}
+			}
+
+			PSOID prevPsoId = 0;
+			STexID prevSTexId = 0xFFFF;
+			bool prevPsoValid = false;
+			bool prevSTexValid = false;
+
+			#if RENDER_DEBUG_CHECK
 			bool hazardReported = false;
+
 			auto isWriteTarget = [&action](TexID texId) -> bool
 			{
 				if (texId == 0)
 					return false;
 				for (uint8_t s = 0; s < INSTANT_SLOT_MAX; s++)
 				{
+					if (s == INSTANT_SLOT_DS && action.dsReadOnly)
+						continue;
 					if (OutTexId(action, s) == texId)
 						return true;
 				}
@@ -1215,6 +1318,16 @@ void D3D12Renderer::SortRenderId()
 						BuildPSOVariant(psoId, action.outputSigId);
 						prevPsoValid = psoGeneratorList[psoId].psoVariants[action.outputSigId] != nullptr;
 					}
+					else if (psoId != 0)
+						DebugReport(RenderReport_Contract, L"[PSO] 요청 drawProp 범위 밖 / 빈 칸 (드로우 무시)");
+
+					#if RENDER_DEBUG_CHECK
+					if (prevPsoValid && psoId < releasePSOIdMask.size() && releasePSOIdMask[psoId])
+					{
+						DebugReport(RenderReport_Contract, L"[PSO] 해제 예정 drawProp (드로우 무시)");
+						prevPsoValid = false;
+					}
+					#endif
 				}
 				if (!prevPsoValid)
 				{
@@ -1224,40 +1337,49 @@ void D3D12Renderer::SortRenderId()
 
 				if (useSTex)
 				{
-					STexID sTexId = (STexID)((proxy.renderId & STEXMASK) >> STEXSHIFT);
-
-					#ifdef _DEBUG
-					if (sTexId >= textureList.size())
-					{
-						DebugReport(DataHub::RenderReport_Contract, L"[Tex] 요청 texId 범위 밖 (0 으로)");
-						proxy.renderId &= ~STEXMASK;
-						sTexId = 0;
-					}
-					#endif
+					const STexID sTexId = (STexID)((proxy.renderId & STEXMASK) >> STEXSHIFT);
 
 					if (sTexId != prevSTexId)
 					{
-						MarkOrBuildSingleTexture(sTexId);
 						prevSTexId = sTexId;
+						prevSTexValid = sTexId < textureList.size();
 
-						#ifdef _DEBUG
-						if (!hazardReported && isWriteTarget(sTexId))
+						if (!prevSTexValid)
+							DebugReport(RenderReport_Contract, L"[Tex] 요청 texId 범위 밖 (0 으로)");
+
+						#if RENDER_DEBUG_CHECK
+						if (prevSTexValid && sTexId < releaseTexIdMask.size() && releaseTexIdMask[sTexId])
 						{
-							DebugReport(DataHub::RenderReport_Contract, L"[WTex] 액션이 쓰는 텍스처를 같은 액션의 드로우가 읽음 (STex)");
+							DebugReport(RenderReport_Contract, L"[Tex] 해제 예정 텍스처 (0 으로)");
+							prevSTexValid = false;
+						}
+						else if (prevSTexValid && !hazardReported && isWriteTarget(sTexId))
+						{
+							DebugReport(RenderReport_Contract, L"[WTex] 액션이 쓰는 텍스처를 같은 액션의 드로우가 읽음 (STex)");
 							hazardReported = true;
 						}
 						#endif
+
+						if (prevSTexValid)
+							prevSTexValid = MarkOrBuildSingleTexture(sTexId);
 					}
+					if (!prevSTexValid)
+						proxy.renderId &= ~STEXMASK;
 				}
 
-				#ifdef _DEBUG
+				#if RENDER_DEBUG_CHECK
 				if (useCTex)
 				{
 					const CTexID cTexId = (CTexID)((proxy.renderId & CTEXMASK) >> CTEXSHIFT);
 
 					if (cTexId >= combinedTextureList.size())
 					{
-						DebugReport(DataHub::RenderReport_Contract, L"[CTex] 요청 texPropId 범위 밖 (0 으로)");
+						DebugReport(RenderReport_Contract, L"[CTex] 요청 texPropId 범위 밖 (0 으로)");
+						proxy.renderId &= ~CTEXMASK;
+					}
+					else if (cTexId < releaseCTexIdMask.size() && releaseCTexIdMask[cTexId])
+					{
+						DebugReport(RenderReport_Contract, L"[CTex] 해제 예정 texProp (0 으로)");
 						proxy.renderId &= ~CTEXMASK;
 					}
 					else if (!hazardReported)
@@ -1266,7 +1388,7 @@ void D3D12Renderer::SortRenderId()
 						{
 							if (isWriteTarget(combinedTextureBodyList[cTexId].texId[s]))
 							{
-								DebugReport(DataHub::RenderReport_Contract, L"[WTex] 액션이 쓰는 텍스처를 같은 액션의 드로우가 읽음 (CTex)");
+								DebugReport(RenderReport_Contract, L"[WTex] 액션이 쓰는 텍스처를 같은 액션의 드로우가 읽음 (CTex)");
 								hazardReported = true;
 								break;
 							}
@@ -1274,11 +1396,11 @@ void D3D12Renderer::SortRenderId()
 					}
 				}
 				#endif
-}
+			}
 		}
 	}
 
-	
+
 }
 
 void D3D12Renderer::GetConditionData()
@@ -1288,16 +1410,16 @@ void D3D12Renderer::GetConditionData()
 	auto& renderFrame = renderFrames[cpuFrameIndex];
 
 	auto& cbLight = cbArea_Light[cpuFrameIndex];
-	auto& cbLightMatrix = cbArea_LightMatrix[cpuFrameIndex];
+	auto& cbShadowPreset = cbArea_ShadowPreset[cpuFrameIndex];
 
 	cbLight.ReserveArea(layerCount, retiredCBAreaList);
-	cbLightMatrix.ReserveArea(layerCount, retiredCBAreaList);
+	cbShadowPreset.ReserveArea(layerCount, retiredCBAreaList);
 
 	DataBox_RenderLight lightPack[RENDER_LIGHT_MAX];
-	DataBox_RenderLightMatrix lightMatrixPack[RENDER_LIGHT_MAX];
+	DataBox_RenderShadowPreset shadowPresetPack[RENDER_SHADOW_PRESET_MAX];
 
 	const size_t lightCount = RenderLightList.size();
-	const size_t lightMatrixCount = RenderLightMatrixList.size();
+	const size_t shadowPresetCount = RenderShadowPresetList.size();
 
 
 	for (size_t i = 0; i < layerCount; i++)
@@ -1322,17 +1444,17 @@ void D3D12Renderer::GetConditionData()
 
 		cbLight.SetCBData(layer.lightRenderData, lightPack);
 
-		for (size_t j = 0; j < RENDER_LIGHT_MAX; j++)
+		for (size_t j = 0; j < RENDER_SHADOW_PRESET_MAX; j++)
 		{
-			const DataBoxID matId = LayerList[i].lightMatrixes[j];
+			const DataBoxID presetId = LayerList[i].shadowPresets[j];
 
-			if (matId < lightMatrixCount)
-				lightMatrixPack[j] = RenderLightMatrixList[matId];
+			if (presetId < shadowPresetCount)
+				shadowPresetPack[j] = RenderShadowPresetList[presetId];
 			else
-				lightMatrixPack[j].lightViewProj = DirectX::XMMATRIX{};
+				memset(&shadowPresetPack[j], 0, sizeof(DataBox_RenderShadowPreset));
 		}
 
-		cbLightMatrix.SetCBData(layer.lightMatrixRenderData, lightMatrixPack);
+		cbShadowPreset.SetCBData(layer.shadowPresetRenderData, shadowPresetPack);
 	}
 }
 
@@ -1357,9 +1479,15 @@ void D3D12Renderer::GetDataFromSortedId()
 
 		if (layer.layerDataTid >= cbAreaCount)
 		{
-			DebugReport(DataHub::RenderReport_Contract, L"[GetData] 레이어 데이터 tid 에 cbArea 없음 (렌더러 Init 뒤 등록된 타입, 무시됨)");
+			DebugReport(RenderReport_Contract, L"[GetData] 레이어 데이터 tid 에 cbArea 없음 (렌더러 Init 뒤 등록된 타입, 무시됨)");
 			layer.layerDataTid = 0;
 		}
+		else if (layer.layerDataTid != 0 && DataBoxCustomizer::GetProvider(layer.layerDataTid)->size == 0)
+		{
+			DebugReport(RenderReport_Contract, L"[GetData] 레이어 데이터 타입에 데이터가 하나도 없음 (0번 빈 데이터조차, 무시됨)");
+			layer.layerDataTid = 0;
+		}
+
 		if (layer.layerDataTid != 0)
 			tidCountList[layer.layerDataTid]++;
 
@@ -1369,14 +1497,22 @@ void D3D12Renderer::GetDataFromSortedId()
 
 			if (action.actionDataTid >= cbAreaCount)
 			{
-				DebugReport(DataHub::RenderReport_Contract, L"[GetData] 액션 데이터 tid 에 cbArea 없음 (렌더러 Init 뒤 등록된 타입, 무시됨)");
+				DebugReport(RenderReport_Contract, L"[GetData] 액션 데이터 tid 에 cbArea 없음 (렌더러 Init 뒤 등록된 타입, 무시됨)");
 				action.actionDataTid = 0;
 			}
+			else if (action.actionDataTid != 0 && DataBoxCustomizer::GetProvider(action.actionDataTid)->size == 0)
+			{
+				DebugReport(RenderReport_Contract, L"[GetData] 액션 데이터 타입에 데이터가 하나도 없음 (0번 빈 데이터조차, 무시됨)");
+				action.actionDataTid = 0;
+			}
+
 			if (action.actionDataTid != 0)
 				tidCountList[action.actionDataTid]++;
 
+
 			if (action.actionType != DX12_RenderActionType_Draw)
 				continue;
+
 
 			const uint32_t drawCount = (uint32_t)layer.actionRenderRequestList[i].size();
 
@@ -1387,7 +1523,7 @@ void D3D12Renderer::GetDataFromSortedId()
 
 				if (action.dataTids[k] >= cbAreaCount)
 				{
-					DebugReport(DataHub::RenderReport_Contract, L"[GetData] 드로우 데이터 칸 tid 에 cbArea 없음 (렌더러 Init 뒤 등록된 타입, 칸 무시됨)");
+					DebugReport(RenderReport_Contract, L"[GetData] 드로우 데이터 칸 tid 에 cbArea 없음 (렌더러 Init 뒤 등록된 타입, 칸 무시됨)");
 					action.dataTids[k] = 0;
 				}
 				if (action.dataTids[k] != 0)
@@ -1430,18 +1566,18 @@ void D3D12Renderer::GetDataFromSortedId()
 
 			DataBoxID id = LayerList[l].layerDataBoxId;
 			if (id >= provider->size)
-				id = 0;
-
-			if (provider->size > 0)
 			{
-				if (dataSlotStampList[tid][id] == frameStamp)
-					layer.layerRenderData.CBAreaIndex = dataSlotLUTList[tid][id];
-				else
-				{
-					cbAreaList[tid].SetCBData(layer.layerRenderData, provider->GetData(id));
-					dataSlotLUTList[tid][id] = layer.layerRenderData.CBAreaIndex;
-					dataSlotStampList[tid][id] = frameStamp;
-				}
+				DebugReport(RenderReport_Contract, L"[GetData] 레이어 데이터 id 범위 밖 (0번 빈 데이터로)");
+				id = 0;
+			}
+
+			if (dataSlotStampList[tid][id] == frameStamp)
+				layer.layerRenderData.CBAreaIndex = dataSlotLUTList[tid][id];
+			else
+			{
+				cbAreaList[tid].SetCBData(layer.layerRenderData, provider->GetData(id));
+				dataSlotLUTList[tid][id] = layer.layerRenderData.CBAreaIndex;
+				dataSlotStampList[tid][id] = frameStamp;
 			}
 		}
 
@@ -1458,18 +1594,18 @@ void D3D12Renderer::GetDataFromSortedId()
 
 				DataBoxID id = GetActionSource(LayerList[l], layer.renderActionNodeList[i].actionId).actionDataBoxId;
 				if (id >= provider->size)
-					id = 0;
-
-				if (provider->size > 0)
 				{
-					if (dataSlotStampList[tid][id] == frameStamp)
-						action.actionRenderData.CBAreaIndex = dataSlotLUTList[tid][id];
-					else
-					{
-						cbAreaList[tid].SetCBData(action.actionRenderData, provider->GetData(id));
-						dataSlotLUTList[tid][id] = action.actionRenderData.CBAreaIndex;
-						dataSlotStampList[tid][id] = frameStamp;
-					}
+					DebugReport(RenderReport_Contract, L"[GetData] 액션 데이터 id 범위 밖 (0번 빈 데이터로)");
+					id = 0;
+				}
+
+				if (dataSlotStampList[tid][id] == frameStamp)
+					action.actionRenderData.CBAreaIndex = dataSlotLUTList[tid][id];
+				else
+				{
+					cbAreaList[tid].SetCBData(action.actionRenderData, provider->GetData(id));
+					dataSlotLUTList[tid][id] = action.actionRenderData.CBAreaIndex;
+					dataSlotStampList[tid][id] = frameStamp;
 				}
 			}
 
@@ -1487,10 +1623,20 @@ void D3D12Renderer::GetDataFromSortedId()
 			const RTB_ActionDraw& srcAction = static_cast<const RTB_ActionDraw&>(GetActionSource(LayerList[l], layer.renderActionNodeList[i].actionId));
 			const std::vector<RTB_DrawRequest>& reqList = srcAction.drawReqList;
 
-			#ifdef _DEBUG
+			RenderIdProvider* idProvider = GetRenderIdProvider(action.renderIdType);
+
 			RenderId_ParseFlag psoFlag;
-			const uint64_t PSOMASK = GetRenderIdProvider(action.renderIdType)->GetDrawPropIdMask(psoFlag);
+			const uint64_t PSOMASK = idProvider->GetDrawPropIdMask(psoFlag);
+
+			#if RENDER_DEBUG_CHECK
+			RenderId_ParseFlag instFlag;
+			const uint64_t INSTMASK = idProvider->GetInstanceCountMask(instFlag);
+			
 			const int PSOSHIFT = PSOMASK ? countr_zero(PSOMASK) : 0;
+			const int INSTSHIFT = INSTMASK ? countr_zero(INSTMASK) : 0;
+
+			const bool useInstBit = (instFlag == RenderId_ParseFlag_OK) && INSTMASK != 0;
+			const bool useInstSlot = (instFlag == RenderId_ParseFlag_OnHanded);
 			#endif
 
 			for (size_t j = 0; j < drawCount; j++)
@@ -1504,24 +1650,28 @@ void D3D12Renderer::GetDataFromSortedId()
 				for (size_t k = 0; k < DRAWREQ_DATABOX_MAX; k++)
 					sorted.datas[k].CBAreaIndex = req.dataBoxIds[k];
 
-				#ifdef _DEBUG
+				#if RENDER_DEBUG_CHECK
 				const PSOID psoId = (PSOID)((sorted.renderId & PSOMASK) >> PSOSHIFT);
 
-				if (sorted.meshId >= meshList.size())
+				if (psoId != 0 && sorted.meshId >= meshList.size())
 				{
-					DebugReport(DataHub::RenderReport_Contract, L"[Mesh] 요청 meshId 범위 밖 (0 으로)");
-					sorted.meshId = 0;
+					DebugReport(RenderReport_Contract, L"[Mesh] 요청 meshId 범위 밖 (드로우 무시)");
+					sorted.renderId &= ~PSOMASK;
+				}
+				else if (psoId != 0 && sorted.meshId < releaseMeshIdMask.size() && releaseMeshIdMask[sorted.meshId])
+				{
+					DebugReport(RenderReport_Contract, L"[Mesh] 해제 예정 메쉬 (드로우 무시)");
+					sorted.renderId &= ~PSOMASK;
 				}
 				else if (psoId != 0 && meshList[sorted.meshId].vertexType < psoGeneratorList[psoId].psoBody.vertexType)
 				{
-					DebugReport(DataHub::RenderReport_Contract, L"[Mesh] 메쉬 정점 타입이 PSO 정점 타입보다 작음 (stride 너머 읽기, 0 으로)");
-					sorted.meshId = 0;
+					DebugReport(RenderReport_Contract, L"[Mesh] 메쉬 정점 타입이 PSO 정점 타입보다 작음 (stride 너머 읽기, 드로우 무시)");
+					sorted.renderId &= ~PSOMASK;
 				}
-
-				if (sorted.subMeshId >= meshViewList[sorted.meshId].subMeshes.size())
+				else if (psoId != 0 && sorted.subMeshId >= meshViewList[sorted.meshId].subMeshes.size())
 				{
-					DebugReport(DataHub::RenderReport_Contract, L"[Mesh] subMeshId 범위 밖 (0 으로)");
-					sorted.subMeshId = 0;
+					DebugReport(RenderReport_Contract, L"[Mesh] subMeshId 범위 밖 (드로우 무시)");
+					sorted.renderId &= ~PSOMASK;
 				}
 				#endif
 			}
@@ -1536,13 +1686,38 @@ void D3D12Renderer::GetDataFromSortedId()
 				{
 					for (size_t j = 0; j < drawCount; j++)
 					{
-						uint32_t& id = sortedList[j].datas[k].CBAreaIndex;
+						DX12_RenderDrawData& sorted = sortedList[j];
+						if ((sorted.renderId & PSOMASK) == 0)
+							continue;
 
-						if (id >= csBufferList.size() || (id < releaseCSBufferIdMask.size() && releaseCSBufferIdMask[id]))
+						const uint32_t id = sorted.datas[k].CBAreaIndex;
+						bool valid = id < csBufferList.size();
+
+						if (!valid)
+							DebugReport(RenderReport_Contract, L"[GetData] 컴퓨트 버퍼 칸 id 범위 밖 (드로우 무시)");
+
+						#if RENDER_DEBUG_CHECK
+						uint32_t instanceCount = 0;
+
+						if (useInstBit)
+							instanceCount = (uint32_t)((sorted.renderId & INSTMASK) >> INSTSHIFT);
+						else if (useInstSlot)
+							instanceCount = sorted.datas[INSTMASK].CBAreaIndex;
+
+						if (valid && id < releaseCSBufferIdMask.size() && releaseCSBufferIdMask[id])
 						{
-							DebugReport(DataHub::RenderReport_Contract, L"[GetData] 컴퓨트 버퍼 칸 id 범위 밖 / 해제 예정 (더미 0 으로)");
-							id = 0;
+							DebugReport(RenderReport_Contract, L"[GetData] 컴퓨트 버퍼 칸 id 해제 예정 (드로우 무시)");
+							valid = false;
 						}
+						else if (valid && id != 0 && instanceCount > csBufferList[id].count)
+						{
+							DebugReport(RenderReport_Contract, L"[Instance] 인스턴스 수가 컴퓨트 버퍼 원소 수보다 큼 (드로우 무시)");
+							valid = false;
+						}
+						#endif
+
+						if (!valid)
+							sorted.renderId &= ~PSOMASK;
 					}
 					continue;
 				}
@@ -1552,7 +1727,7 @@ void D3D12Renderer::GetDataFromSortedId()
 				const uint32_t dataCount = provider->size;
 				if (dataCount == 0)
 				{
-					DebugReport(DataHub::RenderReport_Contract, L"[GetData] 데이터박스 타입에 데이터가 하나도 없음 (0번 빈 데이터조차, 칸 비활성)");
+					DebugReport(RenderReport_Contract, L"[GetData] 데이터박스 타입에 데이터가 하나도 없음 (0번 빈 데이터조차, 칸 비활성)");
 					action.dataTids[k] = 0;
 					continue;
 				}
@@ -1568,8 +1743,13 @@ void D3D12Renderer::GetDataFromSortedId()
 					DX12_RenderData& slot = sortedList[j].datas[k];
 
 					uint32_t id = slot.CBAreaIndex;
+					
 					if (id >= dataCount)
+					{
+						DebugReport(RenderReport_Contract, L"[GetData] 드로우 데이터 id 범위 밖 (드로우 무시)");
+						sortedList[j].renderId &= ~PSOMASK;
 						id = 0;
+					}
 
 					if (slotStamp[id] == frameStamp)
 						slot.CBAreaIndex = slotLUT[id];
@@ -1597,7 +1777,7 @@ void D3D12Renderer::UploadRenderData()
 
 	cbArea_Condition[cpuFrameIndex]->FlushCB();
 	cbArea_Light[cpuFrameIndex].FlushCB();
-	cbArea_LightMatrix[cpuFrameIndex].FlushCB();
+	cbArea_ShadowPreset[cpuFrameIndex].FlushCB();
 
 	auto& cbAreas = cbArea_DataBox[cpuFrameIndex];
 	for (size_t tid = 0; tid < cbAreas.size(); tid++)
@@ -1614,12 +1794,10 @@ void D3D12Renderer::UploadRenderData()
 #pragma region RenderCall
 
 void D3D12Renderer::RecordActionBarriers(ID3D12GraphicsCommandList* cmdList, const DX12_RenderLayer& layer,
-	const vector<DX12_ActionBarrier>& barriers, UINT frameIdx)
+	const vector<DX12_ActionBarrier>& barriers, UINT frameIdx, vector<D3D12_RESOURCE_BARRIER>& barrierScratch)
 {
 	if (barriers.empty())
 		return;
-
-	static vector<D3D12_RESOURCE_BARRIER> barrierScratch;
 
 	const auto& rtInstants = rtTextureInstantLists[frameIdx];
 	const auto& dsInstants = dsTextureInstantLists[frameIdx];
@@ -1659,14 +1837,12 @@ void D3D12Renderer::RecordComputeAction(ID3D12GraphicsCommandList* cmdList, cons
 	const UINT dispatchY = (UINT)((packed >> 16) & 0xFFFF);
 	const UINT dispatchZ = (UINT)(packed & 0xFFFF);
 
-	ID3D12PipelineState* pso = GetComputePSO(csId);
-
-	if (pso == nullptr || dispatchX == 0 || dispatchY == 0 || dispatchZ == 0)
+	if (csId == 0)
 		return;
 
 
 	cmdList->SetComputeRootSignature(computeRootSig.Get());
-	cmdList->SetPipelineState(pso);
+	cmdList->SetPipelineState(computePSOList[csId].pso.Get());
 
 
 	cmdList->SetComputeRootConstantBufferView(RootParamCS_ConditionCB, cbArea_Condition[frameIdx]->GetGPUAddress(layer.conditionRenderData.CBAreaIndex));

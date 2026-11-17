@@ -119,6 +119,12 @@ inline DataBoxTID DataBoxCustomizer::GetTypeId<DataBox_RenderShadowView>()
     return DataBoxType_DtB_ShadowView;
 }
 
+template <>
+inline DataBoxTID DataBoxCustomizer::GetTypeId<DataBox_RenderEditCustom>()
+{
+    return DataBoxType_DtB_EditCustom;
+}
+
 #pragma endregion
 
 
@@ -144,6 +150,10 @@ void DataBoxCustomizer::RegisterCustomDataBox(DataBoxUploadMode uploadMode)
     if (providerList.size() > tid && providerList[tid] != nullptr)
     {
         DataHub::Internal::PushHubReport(HubReport_Internal, L"[Hub] 데이터박스 이미 등록된 타입");
+
+        if (providerList[tid]->size == 0)
+            AddDataBox<CustomDataBox>(CustomDataBox());
+
         return;
     }
     
@@ -156,6 +166,9 @@ void DataBoxCustomizer::RegisterCustomDataBox(DataBoxUploadMode uploadMode)
     provider->data = provider->dataBoxList.data();
     provider->size = 0;
     provider->uploadMode = uploadMode;
+
+    // 0번은 항상 빈 데이터 (전부 0), 서비스가 넣는 데이터는 1번부터
+    AddDataBox<CustomDataBox>(CustomDataBox());
 }
 
 template <std::derived_from<DataBox_Custom> CustomDataBox>
@@ -279,7 +292,7 @@ inline DataBoxTID DataBoxCustomizer::GetProviderCount()
 
 #pragma region DataBoxControl
 
-// 데이터박스 추가 / 삭제: Light / LightMatrix 는 전용 리스트 (특수화), 그 외는 커스터마이저
+// 데이터박스 추가 / 삭제: Light / ShadowPreset 은 전용 리스트 (특수화), 그 외는 커스터마이저
 template <std::derived_from<DataBox> T>
 DataBoxID AddDataBox(const T& dataBox)
 {
@@ -291,7 +304,7 @@ template <>
 DataBoxID AddDataBox<DtB_Light>(const DtB_Light& dataBox);
 
 template <>
-DataBoxID AddDataBox<DtB_LightMatrix>(const DtB_LightMatrix& dataBox);
+DataBoxID AddDataBox<DtB_ShadowPreset>(const DtB_ShadowPreset& dataBox);
 
 void RemoveDataBox(DataBoxTID tid, DataBoxID id);
 
@@ -307,7 +320,7 @@ template <>
 bool UpdateDataBox<DtB_Light>(DataBoxID id, const DtB_Light& dataBox);
 
 template <>
-bool UpdateDataBox<DtB_LightMatrix>(DataBoxID id, const DtB_LightMatrix& dataBox);
+bool UpdateDataBox<DtB_ShadowPreset>(DataBoxID id, const DtB_ShadowPreset& dataBox);
 
 #pragma endregion
 

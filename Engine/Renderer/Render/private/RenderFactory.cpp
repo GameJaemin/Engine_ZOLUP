@@ -46,13 +46,11 @@ namespace Hakko
 			}
 		}
 
-		{
-			ComPtr<IDXGIFactory5> factory5;
-			BOOL allowTearing = FALSE;
-			if (SUCCEEDED(core.GetFactory()->QueryInterface(IID_PPV_ARGS(&factory5))) &&
-				SUCCEEDED(factory5->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &allowTearing, sizeof(allowTearing))))
-				out.tearingSupported = allowTearing == TRUE;
-		}
+		ComPtr<IDXGIFactory5> factory5;
+		BOOL allowTearing = FALSE;
+		if (SUCCEEDED(core.GetFactory()->QueryInterface(IID_PPV_ARGS(&factory5))) &&
+			SUCCEEDED(factory5->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &allowTearing, sizeof(allowTearing))))
+			out.tearingSupported = allowTearing == TRUE;
 
 		out.available = out.shaderModelMajor >= 6;
 

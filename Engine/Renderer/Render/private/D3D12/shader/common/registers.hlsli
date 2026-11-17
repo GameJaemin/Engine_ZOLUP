@@ -36,12 +36,6 @@ cbuffer LightCB : register(b1, space0)
     Light g_Lights[64];
 };
 
-// 조명 행렬: g_Lights[i] 의 뷰프로젝션 g_LightVP[i]
-cbuffer LightMatrixCB : register(b2, space0)
-{
-    matrix g_LightVP[64];
-};
-
 cbuffer RootConstantsCB : register(b4, space0)
 {
     float4 g_RootConstants;     // 4 DWORD (배경 틴트 등, 렌더러 내부 패스용)
@@ -67,11 +61,13 @@ cbuffer ObjectCB : OBJECT_CB(0)        // DataBox_Render3DGeneral
     float4 obj_Col;
     float  obj_Rough;
     float  obj_Metal;
-    float2 obj_Pad;
+    float  obj_AlphaCutoff; // ALPHA_CLIP 변형에서 알파가 이 값 미만이면 clip
+    float  obj_Pad;
     uint4  obj_Light[2];    // C++ uint32[8] 연속 32B -> ObjLightId(i) 로 읽기
+    uint   obj_ShadowPreset;    // 레이어의 그림자 프리셋 칸 번호, 0 = 레이어 기본 프리셋
 };
 
-// 물체가 받는 조명 칸 i (0~7) -> g_Lights / g_LightVP 인덱스. 언롤된 루프에선 시프트 / 마스크가 상수로 접힘
+// 물체가 받는 조명 칸 i (0~7) -> g_Lights 인덱스. 언롤된 루프에선 시프트 / 마스크가 상수로 접힘
 uint ObjLightId(uint i)
 {
     return obj_Light[i >> 2][i & 3];
@@ -79,6 +75,13 @@ uint ObjLightId(uint i)
 // 칸 1 (DataBox_Render3DOptional) 은 스킨 셰이더에서: cbuffer BoneCB : OBJECT_CB(1) { matrix obj_BoneTr[SKIN_BONE_MAX]; };
 #define SKIN_BONE_MAX 512
 #endif
+
+// =====================================================================
+// t0, space2 : 드로우 데이터의 컴퓨트 버퍼 칸 (액션 dataBoxTypeIds[k] = DataBoxType_CSBuffer, 요청 dataBoxIds[k] = CSBufferID, 액션당 한 칸)
+// 타입은 사용 측이 선언. 예) StructuredBuffer<MyData> g_Buffer : DRAW_BUFFER;
+// 범위 검사 없이 주소로 묶임: 버퍼 밖을 읽지 않는 건 셰이더와 인스턴스 수를 넣는 쪽 책임. 칸을 안 채운 요청은 더미 버퍼 (256B)
+// =====================================================================
+#define DRAW_BUFFER     register(t0, space2)
 
 // =====================================================================
 // t, space0 : 선행 출력 인스턴트 (RT 0~7 = g_SR0~7, DS = g_SR8), 액션 입력 칸 그대로
@@ -99,10 +102,31 @@ Texture2D g_SR8 : register(t8, space0);
 Texture2D g_Tex[] : register(t0, space1);
 
 // =====================================================================
-// t, space4 : 레이어 전역 텍스처 (환경맵 큐브, 레이어당 한번 바인딩)
+// t, space4 : 레이어 전역 텍스처 (환경맵 큐브 / 섀도우맵 2장, 레이어당 한번 바인딩) + 그림자 프리셋 버퍼
 // 레이어에 환경맵이 없으면 기본 2D 텍스처가 묶여 있으니 샘플링은 환경맵 있을 때만
+// 섀도우맵 칸은 비어 있으면 깊이 1 짜리 텍스처 (= 그림자 없음), 그 텍스처에 쓰는 액션 안에서도 같은 걸로 바뀌어 묶임
 // =====================================================================
-TextureCube g_EnvMap : register(t0, space4);
+TextureCube g_EnvMap       : register(t0, space4);
+Texture2D   g_ShadowGlobal : register(t1, space4);  // 레이어 globalShadowTexId (전역조명 캐스케이드 아틀라스)
+Texture2D   g_ShadowLocal  : register(t2, space4);  // 레이어 localShadowTexId (그림자 프리셋의 타일이 놓이는 아틀라스)
+
+// 레이어 그림자 프리셋 (DataBox_RenderShadowPreset x SHADOW_PRESET_MAX): 프리셋 p 의 칸 k = g_ShadowPresets[p * SHADOW_PRESET_ENTRY_MAX + k]
+// 칸 0 ~ 7: 조명칸 lightSlot 의 그림자 (lightSlot 0 = 안 쓰는 칸) / 칸 SHADOW_PRESET_GLOBAL: 전역조명용 (lightSlot 이 0 이 아니면 캐스케이드 대신)
+// 타일은 g_ShadowLocal 기준, 스케일 0 = 그림자 없음. 읽는 함수는 lighting.hlsli
+#define SHADOW_PRESET_MAX       16
+#define SHADOW_PRESET_LOCAL_MAX 8
+#define SHADOW_PRESET_GLOBAL    8
+#define SHADOW_PRESET_ENTRY_MAX 9
+
+struct ShadowPresetEntry
+{
+    matrix vp;
+    float4 tile;
+    uint   lightSlot;
+    uint3  pad;
+};
+
+StructuredBuffer<ShadowPresetEntry> g_ShadowPresets : register(t3, space4);
 
 // =====================================================================
 // s : 정적 샘플러

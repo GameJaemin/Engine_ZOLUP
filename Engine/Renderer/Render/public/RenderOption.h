@@ -30,6 +30,15 @@
 
 
 
+#define RENDER_IMGUI_ENABLE 1
+#define RENDER_IMGUI_DISABLE 0
+
+#ifndef RENDER_IMGUI_MODE
+#define RENDER_IMGUI_MODE RENDER_IMGUI_DISABLE
+#endif
+
+
+
 //
 // ------ 건드리지 마시오 ------
 //
@@ -80,4 +89,10 @@
 
 #if RENDER_PIPELINE_MODE == RENDER_USE_PIPELINE_CUSTOM
 #error "RENDER_PIPELINE_MODE: CUSTOM 파이프라인은 아직 미구현 (지원 예정) BUILTIN 으로 두세요"
+#endif
+
+
+
+#if RENDER_IMGUI_MODE != RENDER_IMGUI_ENABLE && RENDER_IMGUI_MODE != RENDER_IMGUI_DISABLE
+#error "RENDER_IMGUI_MODE 값 오류"
 #endif

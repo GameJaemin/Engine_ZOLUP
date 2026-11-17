@@ -25,6 +25,7 @@ namespace Hakko::DataHub
         textureIdLUT.emplace(HashString(std::wstring_view(RESERVED_TEX_NONE_NORMAL_NAME)), RESERVED_TEX_NONE_NORMAL_ID);
         textureIdLUT.emplace(HashString(std::wstring_view(RESERVED_TEX_NONE_ORM_NAME)), RESERVED_TEX_NONE_ORM_ID);
         textureIdLUT.emplace(HashString(std::wstring_view(RESERVED_TEX_NONE_EMISSION_NAME)), RESERVED_TEX_NONE_EMISSION_ID);
+        textureIdLUT.emplace(HashString(std::wstring_view(RESERVED_TEX_NONE_SHADOW_NAME)), RESERVED_TEX_NONE_SHADOW_ID);
 
         csBufferIdLUT.emplace(HashString(std::wstring_view(L"__CSBUFFERDEFAULT")), 0);
 
@@ -39,31 +40,58 @@ namespace Hakko::DataHub
         shaderIdLUT.emplace(HashString(std::wstring_view(RESERVED_SHADER_WORLD_VS_NAME)), RESERVED_SHADER_WORLD_VS_ID);
         shaderIdLUT.emplace(HashString(std::wstring_view(RESERVED_SHADER_WORLD_OPQ_PS_NAME)), RESERVED_SHADER_WORLD_OPQ_PS_ID);
         shaderIdLUT.emplace(HashString(std::wstring_view(RESERVED_SHADER_WORLD_TP_PS_NAME)), RESERVED_SHADER_WORLD_TP_PS_ID);
+        shaderIdLUT.emplace(HashString(std::wstring_view(RESERVED_SHADER_PARTICLE_VS_NAME)), RESERVED_SHADER_PARTICLE_VS_ID);
+        shaderIdLUT.emplace(HashString(std::wstring_view(RESERVED_SHADER_PARTICLE_PS_NAME)), RESERVED_SHADER_PARTICLE_PS_ID);
+        shaderIdLUT.emplace(HashString(std::wstring_view(RESERVED_SHADER_SHADOW_VS_NAME)), RESERVED_SHADER_SHADOW_VS_ID);
+        shaderIdLUT.emplace(HashString(std::wstring_view(RESERVED_SHADER_PP_VS_NAME)), RESERVED_SHADER_PP_VS_ID);
+        shaderIdLUT.emplace(HashString(std::wstring_view(RESERVED_SHADER_SSAO_PS_NAME)), RESERVED_SHADER_SSAO_PS_ID);
+        shaderIdLUT.emplace(HashString(std::wstring_view(RESERVED_SHADER_AOBLUR_PS_NAME)), RESERVED_SHADER_AOBLUR_PS_ID);
+        shaderIdLUT.emplace(HashString(std::wstring_view(RESERVED_SHADER_DEFERRED_LIGHTING_PS_NAME)), RESERVED_SHADER_DEFERRED_LIGHTING_PS_ID);
+        shaderIdLUT.emplace(HashString(std::wstring_view(RESERVED_SHADER_BLOOM_PREFILTER_PS_NAME)), RESERVED_SHADER_BLOOM_PREFILTER_PS_ID);
+        shaderIdLUT.emplace(HashString(std::wstring_view(RESERVED_SHADER_BLOOM_DOWN_PS_NAME)), RESERVED_SHADER_BLOOM_DOWN_PS_ID);
+        shaderIdLUT.emplace(HashString(std::wstring_view(RESERVED_SHADER_BLOOM_UP_PS_NAME)), RESERVED_SHADER_BLOOM_UP_PS_ID);
+        shaderIdLUT.emplace(HashString(std::wstring_view(RESERVED_SHADER_BLOOM_COMBINE_PS_NAME)), RESERVED_SHADER_BLOOM_COMBINE_PS_ID);
+        shaderIdLUT.emplace(HashString(std::wstring_view(RESERVED_SHADER_TONEMAP_PS_NAME)), RESERVED_SHADER_TONEMAP_PS_ID);
+        shaderIdLUT.emplace(HashString(std::wstring_view(RESERVED_SHADER_FXAA_PS_NAME)), RESERVED_SHADER_FXAA_PS_ID);
+        shaderIdLUT.emplace(HashString(std::wstring_view(RESERVED_SHADER_SKINNING_CS_NAME)), RESERVED_SHADER_SKINNING_CS_ID);
+        shaderIdLUT.emplace(HashString(std::wstring_view(RESERVED_SHADER_PARTICLE_CS_NAME)), RESERVED_SHADER_PARTICLE_CS_ID);
 
         drawPropIdLUT.emplace(HashString(std::string_view("__DRAWPROPDEFAULT")), 0U);
         drawPropIdLUT.emplace(HashString(std::string_view("__DRAWPROPSKYBOX")), RESERVED_DRAWPROP_SKYBOX_ID);
         drawPropIdLUT.emplace(HashString(std::string_view("__DRAWPROPBG")), RESERVED_DRAWPROP_BG_ID);
         drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_OPAQUE_NAME)), RESERVED_DRAWPROP_OPAQUE_ID);
-        drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_TRANSLUCENT_NAME)), RESERVED_DRAWPROP_TRANSLUCENT_ID);
         drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_OPAQUE_SKINNED_NAME)), RESERVED_DRAWPROP_OPAQUE_SKINNED_ID);
+        drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_OPAQUE_CLIP_NAME)), RESERVED_DRAWPROP_OPAQUE_CLIP_ID);
+        drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_OPAQUE_SKINNED_CLIP_NAME)), RESERVED_DRAWPROP_OPAQUE_SKINNED_CLIP_ID);
+        drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_TRANSLUCENT_NAME)), RESERVED_DRAWPROP_TRANSLUCENT_ID);
         drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_TRANSLUCENT_SKINNED_NAME)), RESERVED_DRAWPROP_TRANSLUCENT_SKINNED_ID);
+        drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_PARTICLE_NAME)), RESERVED_DRAWPROP_PARTICLE_ID);
+        drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_SHADOW_NAME)), RESERVED_DRAWPROP_SHADOW_ID);
+        drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_SHADOW_SKINNED_NAME)), RESERVED_DRAWPROP_SHADOW_SKINNED_ID);
+        drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_SHADOW_CLIP_NAME)), RESERVED_DRAWPROP_SHADOW_CLIP_ID);
+        drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_SHADOW_SKINNED_CLIP_NAME)), RESERVED_DRAWPROP_SHADOW_SKINNED_CLIP_ID);
+        drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_SSAO_NAME)), RESERVED_DRAWPROP_SSAO_ID);
+        drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_AOBLUR_NAME)), RESERVED_DRAWPROP_AOBLUR_ID);
+        drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_DEFERRED_LIGHTING_NAME)), RESERVED_DRAWPROP_DEFERRED_LIGHTING_ID);
+        drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_BLOOM_PREFILTER_NAME)), RESERVED_DRAWPROP_BLOOM_PREFILTER_ID);
+        drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_BLOOM_DOWN_NAME)), RESERVED_DRAWPROP_BLOOM_DOWN_ID);
+        drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_BLOOM_UP_NAME)), RESERVED_DRAWPROP_BLOOM_UP_ID);
+        drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_BLOOM_COMBINE_NAME)), RESERVED_DRAWPROP_BLOOM_COMBINE_ID);
+        drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_TONEMAP_NAME)), RESERVED_DRAWPROP_TONEMAP_ID);
+        drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_FXAA_NAME)), RESERVED_DRAWPROP_FXAA_ID);
 
         texPropIdLUT.emplace(HashString(std::string_view("__TEXPROPDEFAULT")), 0U);
 
 
         RenderLightList.emplace_back();
-        RenderLightMatrixList.emplace_back();
+        RenderShadowPresetList.emplace_back();
 
         
         DataBoxCustomizer::RegisterCustomDataBox<DataBox_Render3DGeneral>();
         DataBoxCustomizer::RegisterCustomDataBox<DataBox_Render3DOptional>();
         DataBoxCustomizer::RegisterCustomDataBox<DataBox_Render2DScreen>();
         DataBoxCustomizer::RegisterCustomDataBox<DataBox_RenderShadowView>();
-
-        DataBoxCustomizer::AddDataBox<DataBox_Render3DGeneral>(DataBox_Render3DGeneral());
-        DataBoxCustomizer::AddDataBox<DataBox_Render3DOptional>(DataBox_Render3DOptional());
-        DataBoxCustomizer::AddDataBox<DataBox_Render2DScreen>(DataBox_Render2DScreen());
-        DataBoxCustomizer::AddDataBox<DataBox_RenderShadowView>(DataBox_RenderShadowView());
+        DataBoxCustomizer::RegisterCustomDataBox<DataBox_RenderEditCustom>();
         
 
         LayerList.emplace_back();
@@ -77,10 +105,10 @@ namespace Hakko::DataHub
     {
         flag_updateResources = 0;
         
-        blankedLightMatrixIdList = {};
+        blankedShadowPresetIdList = {};
         blankedLightIdList = {};
 
-        RenderLightMatrixList = {};
+        RenderShadowPresetList = {};
         RenderLightList = {};
 
         DataBoxCustomizer::ClearAll();
@@ -147,20 +175,20 @@ namespace Hakko::DataHub
     }
 
     template <>
-    DataBoxID AddDataBox<DataBox_RenderLightMatrix>(const DataBox_RenderLightMatrix& dataBox)
+    DataBoxID AddDataBox<DataBox_RenderShadowPreset>(const DataBox_RenderShadowPreset& dataBox)
     {
         DataBoxID idx;
 
-        if (blankedLightMatrixIdList.size() > 0)
+        if (blankedShadowPresetIdList.size() > 0)
         {
-            idx = blankedLightMatrixIdList.back();
-            RenderLightMatrixList[idx] = dataBox;
-            blankedLightMatrixIdList.pop_back();
+            idx = blankedShadowPresetIdList.back();
+            RenderShadowPresetList[idx] = dataBox;
+            blankedShadowPresetIdList.pop_back();
         }
         else
         {
-            idx = RenderLightMatrixList.size();
-            RenderLightMatrixList.emplace_back(dataBox);
+            idx = RenderShadowPresetList.size();
+            RenderShadowPresetList.emplace_back(dataBox);
         }
 
         return idx;
@@ -171,7 +199,7 @@ namespace Hakko::DataHub
     {
         if (index == 0 || index >= listSize)
         {
-            Internal::PushHubReport(HubReport_Contract, L"[Hub] RemoveDataBox: 조명 / 조명 행렬 id 범위 밖 또는 예약 0번 (무시됨)");
+            Internal::PushHubReport(HubReport_Contract, L"[Hub] RemoveDataBox: 조명 / 그림자 프리셋 id 범위 밖 또는 예약 0번 (무시됨)");
             return;
         }
 
@@ -179,7 +207,7 @@ namespace Hakko::DataHub
         {
             if (blanked == index)
             {
-                Internal::PushHubReport(HubReport_Contract, L"[Hub] RemoveDataBox: 이미 지운 조명 / 조명 행렬 id (무시됨)");
+                Internal::PushHubReport(HubReport_Contract, L"[Hub] RemoveDataBox: 이미 지운 조명 / 그림자 프리셋 id (무시됨)");
                 return;
             }
         }
@@ -194,9 +222,9 @@ namespace Hakko::DataHub
             RemoveLightDataBox(blankedLightIdList, RenderLightList.size(), index);
             return;
         }
-        else if (tid == DataBoxType_DataBox_RenderLightMatrix)
+        else if (tid == DataBoxType_DataBox_RenderShadowPreset)
         {
-            RemoveLightDataBox(blankedLightMatrixIdList, RenderLightMatrixList.size(), index);
+            RemoveLightDataBox(blankedShadowPresetIdList, RenderShadowPresetList.size(), index);
             return;
         }
 
@@ -219,15 +247,15 @@ namespace Hakko::DataHub
     }
 
     template <>
-    bool UpdateDataBox<DataBox_RenderLightMatrix>(DataBoxID id, const DataBox_RenderLightMatrix& dataBox)
+    bool UpdateDataBox<DataBox_RenderShadowPreset>(DataBoxID id, const DataBox_RenderShadowPreset& dataBox)
     {
-        if (id == 0 || id >= RenderLightMatrixList.size())
+        if (id == 0 || id >= RenderShadowPresetList.size())
         {
-            Internal::PushHubReport(HubReport_Contract, L"[Hub] UpdateDataBox: 조명 행렬 id 범위 밖 또는 예약 0번 (무시됨)");
+            Internal::PushHubReport(HubReport_Contract, L"[Hub] UpdateDataBox: 그림자 프리셋 id 범위 밖 또는 예약 0번 (무시됨)");
             return false;
         }
 
-        RenderLightMatrixList[id] = dataBox;
+        RenderShadowPresetList[id] = dataBox;
 
         return true;
     }
@@ -252,8 +280,8 @@ namespace Hakko::DataHub
     std::vector<DataBox_RenderLight> RenderLightList;
     std::vector<DataBoxID> blankedLightIdList;
 
-    std::vector<DataBox_RenderLightMatrix> RenderLightMatrixList;
-    std::vector<DataBoxID> blankedLightMatrixIdList;
+    std::vector<DataBox_RenderShadowPreset> RenderShadowPresetList;
+    std::vector<DataBoxID> blankedShadowPresetIdList;
 
 
     uint32_t flag_updateResources;

@@ -25,12 +25,7 @@ float4 PSMain(PSInput input) : SV_TARGET
 
     const float4 albedo = texColor * obj_Col;
 
-    const float3 T = normalize(input.tangent);
-    const float3 N = normalize(input.normal);
-    const float3 B = cross(N, T);
-    const float3x3 TBN = float3x3(T, B, N);
-    const float3 tangentNormal = normalVal.xyz * 2.0f - 1.0f;
-    const float3 worldNormal = normalize(mul(tangentNormal, TBN));
+    const float3 worldNormal = NormalMapToWorld(normalVal.xyz, input.normal, input.tangent);
 
     const float3 V = normalize(g_EyePos - input.worldPos);
     const float3 color = ShadeSurface(input.worldPos, worldNormal, V, albedo.rgb, orm.g * obj_Rough, orm.b * obj_Metal, orm.r) + emission;

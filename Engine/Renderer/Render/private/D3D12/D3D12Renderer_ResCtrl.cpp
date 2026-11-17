@@ -148,9 +148,9 @@ static uint8_t ShaderVariantVS(DataHub::VertexType vertexType)
 	return (uint8_t)vertexType + 1;
 }
 
-static uint8_t ShaderVariantPS(DataHub::Action_OutputLayout layout)
+static uint8_t ShaderVariantPS(DataHub::Action_OutputLayout layout, bool alphaClip)
 {
-	return (uint8_t)layout;
+	return (uint8_t)((uint8_t)layout | (alphaClip ? SHADER_VARIANT_PS_ALPHACLIP : 0));
 }
 
 
@@ -316,8 +316,8 @@ bool D3D12Renderer::InitResource()
 
 	// --- 칸 다뚫어놓는 디폴트 시그니처 (그래픽스 공용, 인덱스는 DX12_RootParam) ---
 	// t space0 : 선행 출력 인스턴트 t0~t8 (RT 8 + DS), 1칸 테이블 x 9 -> 9개 하나씩 바인딩 (STex)
-	// t space1 : CTex / STex (언바운드)	t space2 : 구조버퍼 (루트 SRV, 드로우 칸 tid CSBuffer)	t space4 : 레이어 전역 텍스처 (환경맵, 1칸)
-	// b space0 : 레이어 고정칸 (b0 카메라, b1 조명, b2 조명행렬, b4 루트상수)
+	// t space1 : CTex / STex (언바운드)	t space2 : 구조버퍼 (루트 SRV, 드로우 칸 tid CSBuffer)	t space4 : 레이어 전역 텍스처 (t0 환경맵 / t1 전역 섀도우맵 / t2 로컬 섀도우맵, 1칸 테이블씩) + t3 그림자 프리셋 구조버퍼 (루트 SRV)
+	// b space0 : 레이어 고정칸 (b0 카메라, b1 조명, b4 루트상수)
 	// b space1 : 레이어 데이터		b space2 : 액션 데이터		b space3 : 물체 칸 b0~b4 (= DRAWREQ_DATABOX_MAX)
 	CD3DX12_ROOT_PARAMETER1 defaultRenderRootParams[RootParam_Count];
 
@@ -343,12 +343,21 @@ bool D3D12Renderer::InitResource()
 	defaultRenderRootParams[RootParam_LayerDataCB].InitAsConstantBufferView(0, 1U);
 	defaultRenderRootParams[RootParam_ConditionCB].InitAsConstantBufferView(0, 0U);
 	defaultRenderRootParams[RootParam_LightCB].InitAsConstantBufferView(1, 0U);
-	defaultRenderRootParams[RootParam_LightMatrixCB].InitAsConstantBufferView(2, 0U);
 
 	CD3DX12_DESCRIPTOR_RANGE1 layerTextureRange;
 	layerTextureRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 4U,
 		D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE | D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
 	defaultRenderRootParams[RootParam_LayerTexTable].InitAsDescriptorTable(1, &layerTextureRange, D3D12_SHADER_VISIBILITY_PIXEL);
+
+	CD3DX12_DESCRIPTOR_RANGE1 layerShadowRanges[LAYER_SHADOW_SLOT_MAX];
+	for (UINT s = 0; s < LAYER_SHADOW_SLOT_MAX; s++)
+	{
+		layerShadowRanges[s].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1 + s, 4U,
+			D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE | D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
+		defaultRenderRootParams[RootParam_LayerShadowTex0 + s].InitAsDescriptorTable(1, &layerShadowRanges[s], D3D12_SHADER_VISIBILITY_PIXEL);
+	}
+
+	defaultRenderRootParams[RootParam_ShadowPresetSB].InitAsShaderResourceView(3, 4U, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_PIXEL);
 
 	defaultRenderRootParams[RootParam_Constants].InitAsConstants(4, 4, 0U, D3D12_SHADER_VISIBILITY_PIXEL);
 
@@ -470,8 +479,8 @@ bool D3D12Renderer::InitResource()
 
 	cbArea_Light.clear();
 	cbArea_Light.resize(FRAME_COUNT);
-	cbArea_LightMatrix.clear();
-	cbArea_LightMatrix.resize(FRAME_COUNT);
+	cbArea_ShadowPreset.clear();
+	cbArea_ShadowPreset.resize(FRAME_COUNT);
 
 	for (size_t i = 0; i < FRAME_COUNT; i++)
 	{
@@ -479,8 +488,8 @@ bool D3D12Renderer::InitResource()
 
 		if (!cbArea_Light[i].Init((UINT)(RENDER_LIGHT_MAX * sizeof(DataHub::DataBox_RenderLight)), RENDER_LAYER_MAX, 0, 0))
 			DebugReport(DataHub::RenderReport_Init, L"[CBArea] 조명 cbArea 생성 실패");
-		if (!cbArea_LightMatrix[i].Init((UINT)(RENDER_LIGHT_MAX * sizeof(DataHub::DataBox_RenderLightMatrix)), RENDER_LAYER_MAX, 0, 0))
-			DebugReport(DataHub::RenderReport_Init, L"[CBArea] 조명 행렬 cbArea 생성 실패");
+		if (!cbArea_ShadowPreset[i].Init((UINT)(RENDER_SHADOW_PRESET_MAX * sizeof(DataHub::DataBox_RenderShadowPreset)), RENDER_LAYER_MAX, 0, 0))
+			DebugReport(DataHub::RenderReport_Init, L"[CBArea] 그림자 프리셋 cbArea 생성 실패");
 
 		const uint32_t providerCount = DataHub::DataBoxCustomizer::GetProviderCount();
 
@@ -556,6 +565,8 @@ bool D3D12Renderer::InitShaderCompiler()
 
 bool D3D12Renderer::InitGraphicResource()
 {
+	using namespace DataHub;
+
 	ID3D12Device* device = D3D12Core::getInstance().GetDevice();
 
 	const CD3DX12_RANGE readRange(0, 0);
@@ -576,17 +587,17 @@ bool D3D12Renderer::InitGraphicResource()
 	meshViewList.back().subMeshes.push_back(DX12_SubMesh{ 0, 0, 0 });
 
 
-	const DataHub::VertexSimple quadVertices[4] = {
+	const VertexSimple quadVertices[4] = {
 		{ DirectX::XMFLOAT3(-1.0f, -1.0f, 0.0f) },
 		{ DirectX::XMFLOAT3(-1.0f,  1.0f, 0.0f) },
 		{ DirectX::XMFLOAT3( 1.0f,  1.0f, 0.0f) },
 		{ DirectX::XMFLOAT3( 1.0f, -1.0f, 0.0f) },
 	};
 
-	const DataHub::VIndex quadIndices[6] = { 0, 1, 2, 0, 2, 3 };
+	const VIndex quadIndices[6] = { 0, 1, 2, 0, 2, 3 };
 
 	DX12_Mesh quad = {};
-	quad.vertexType = DataHub::VertexType_Simple;
+	quad.vertexType = VertexType_Simple;
 	quad.vertexCount = 4;
 	quad.indexCount = 6;
 
@@ -631,7 +642,7 @@ bool D3D12Renderer::InitGraphicResource()
 	
 
 	quadView.VBV.BufferLocation = quad.VB->GetGPUVirtualAddress();
-	quadView.VBV.StrideInBytes = sizeof(DataHub::VertexSimple);
+	quadView.VBV.StrideInBytes = sizeof(VertexSimple);
 	quadView.VBV.SizeInBytes = sizeof(quadVertices);
 
 	quadView.IBV.BufferLocation = quad.IB->GetGPUVirtualAddress();
@@ -1023,6 +1034,68 @@ bool D3D12Renderer::InitGraphicResource()
 	uploadBufferList.push_back(std::move(uploadTexture4));
 
 
+
+	const float None_ShadowRaw = 1.0f;
+
+	D3D12_SUBRESOURCE_DATA None_ShadowData = {};
+	None_ShadowData.pData = &None_ShadowRaw;
+	None_ShadowData.RowPitch = sizeof(float);
+	None_ShadowData.SlicePitch = None_ShadowData.RowPitch;
+
+	D3D12_RESOURCE_DESC shadowTextureDesc = textureDesc;
+	shadowTextureDesc.Format = DXGI_FORMAT_R32_FLOAT;
+
+	ComPtr<ID3D12Resource> None_ShadowTexture;
+
+	if (FAILED(device->CreateCommittedResource(
+		&DEFAULT_HEAP_PROPS,
+		D3D12_HEAP_FLAG_NONE,
+		&shadowTextureDesc,
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		nullptr,
+		IID_PPV_ARGS(&None_ShadowTexture))))
+		return false;
+
+
+	const UINT64 uploadTextureSize5 = GetRequiredIntermediateSize(None_ShadowTexture.Get(), 0, 1);
+	ComPtr<ID3D12Resource> uploadTexture5;
+
+	auto sdwUploadResDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadTextureSize5);
+
+	if (FAILED(device->CreateCommittedResource(
+		&UPLOAD_HEAP_PROPS,
+		D3D12_HEAP_FLAG_NONE,
+		&sdwUploadResDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&uploadTexture5))))
+		return false;
+
+
+	UpdateSubresources(renderCMDList_Master.Get(), None_ShadowTexture.Get(), uploadTexture5.Get(), 0, 0, 1, &None_ShadowData);
+
+	auto sdwResBar = CD3DX12_RESOURCE_BARRIER::Transition(
+		None_ShadowTexture.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
+	);
+
+	renderCMDList_Master->ResourceBarrier(1, &sdwResBar);
+
+	textureList.emplace_back(
+		DX12_Texture{
+			std::move(None_ShadowTexture),
+			1,
+			1,
+			shadowTextureDesc.Format,
+			D3D12_RESOURCE_DIMENSION_TEXTURE2D,
+			false
+		}
+	);
+
+	uploadBufferList.push_back(std::move(uploadTexture5));
+
+
 	texRefList_CTex.assign(DEFAULT_RES_TEX_COUNT, {});
 	texRefMask_STex.assign(DEFAULT_RES_TEX_COUNT, false);
 	singleTextureList.assign(DEFAULT_RES_TEX_COUNT, {});
@@ -1034,19 +1107,17 @@ bool D3D12Renderer::InitGraphicResource()
 
 	#pragma region DefaultCSBuffer
 
-	{
-		DataHub::ComputeBuffer dummyDesc;
-		dummyDesc.stride = CSBUFFER_DUMMY_STRIDE;
-		dummyDesc.count = CSBUFFER_DUMMY_COUNT;
+	ComputeBuffer dummyDesc;
+	dummyDesc.stride = CSBUFFER_DUMMY_STRIDE;
+	dummyDesc.count = CSBUFFER_DUMMY_COUNT;
 
-		DX12_Buffer dummy;
-		DX12_BufferView dummyView;
-		if (!CreateBufferResource(dummyDesc, dummy, dummyView, uploadBufferList))
-			return false;
+	DX12_Buffer dummy;
+	DX12_BufferView dummyView;
+	if (!CreateBufferResource(dummyDesc, dummy, dummyView, uploadBufferList))
+		return false;
 
-		csBufferList.emplace_back(std::move(dummy));
-		csBufferViewList.push_back(dummyView);
-	}
+	csBufferList.emplace_back(std::move(dummy));
+	csBufferViewList.push_back(dummyView);
 
 	#pragma endregion
 
@@ -1060,55 +1131,117 @@ bool D3D12Renderer::InitGraphicResource()
 
 	shaderList.clear();
 	shaderList.resize(DEFAULT_RES_SHADER_COUNT);
-	shaderList[DEFAULT_SHADER_COMPOSITE_PS] = std::make_pair(defaultShaderDir + L"/defaultComposite_PS.hlsl", DataHub::ShaderType_PS);
-	shaderList[DEFAULT_SHADER_SKYBOX_VS] = std::make_pair(defaultShaderDir + L"/defaultSkyBox_VS.hlsl", DataHub::ShaderType_VS);
-	shaderList[DEFAULT_SHADER_SKYBOX_PS] = std::make_pair(defaultShaderDir + L"/defaultSkyBox_PS.hlsl", DataHub::ShaderType_PS);
-	shaderList[DEFAULT_SHADER_BG_VS] = std::make_pair(defaultShaderDir + L"/defaultBG_VS.hlsl", DataHub::ShaderType_VS);
-	shaderList[DEFAULT_SHADER_BG_PS] = std::make_pair(defaultShaderDir + L"/defaultBG_PS.hlsl", DataHub::ShaderType_PS);
-	shaderList[DEFAULT_SHADER_WORLD_VS] = std::make_pair(defaultShaderDir + L"/defaultWorld_VS.hlsl", DataHub::ShaderType_VS);
-	shaderList[DEFAULT_SHADER_WORLD_OPQ_PS] = std::make_pair(defaultShaderDir + L"/defaultWorldOPQ_PS.hlsl", DataHub::ShaderType_PS);
-	shaderList[DEFAULT_SHADER_WORLD_TP_PS] = std::make_pair(defaultShaderDir + L"/defaultWorldTP_PS.hlsl", DataHub::ShaderType_PS);
+	shaderList[DEFAULT_SHADER_COMPOSITE_PS] = std::make_pair(defaultShaderDir + L"/defaultComposite_PS.hlsl", ShaderType_PS);
+	shaderList[DEFAULT_SHADER_SKYBOX_VS] = std::make_pair(defaultShaderDir + L"/defaultSkyBox_VS.hlsl", ShaderType_VS);
+	shaderList[DEFAULT_SHADER_SKYBOX_PS] = std::make_pair(defaultShaderDir + L"/defaultSkyBox_PS.hlsl", ShaderType_PS);
+	shaderList[DEFAULT_SHADER_BG_PS] = std::make_pair(defaultShaderDir + L"/defaultBG_PS.hlsl", ShaderType_PS);
+	shaderList[DEFAULT_SHADER_WORLD_VS] = std::make_pair(defaultShaderDir + L"/defaultWorld_VS.hlsl", ShaderType_VS);
+	shaderList[DEFAULT_SHADER_WORLD_OPQ_PS] = std::make_pair(defaultShaderDir + L"/defaultWorldOPQ_PS.hlsl", ShaderType_PS);
+	shaderList[DEFAULT_SHADER_WORLD_TP_PS] = std::make_pair(defaultShaderDir + L"/defaultWorldTP_PS.hlsl", ShaderType_PS);
+	shaderList[DEFAULT_SHADER_PARTICLE_VS] = std::make_pair(defaultShaderDir + L"/defaultParticle_VS.hlsl", ShaderType_VS);
+	shaderList[DEFAULT_SHADER_PARTICLE_PS] = std::make_pair(defaultShaderDir + L"/defaultParticle_PS.hlsl", ShaderType_PS);
+	shaderList[DEFAULT_SHADER_SHADOW_VS] = std::make_pair(defaultShaderDir + L"/defaultShadow_VS.hlsl", ShaderType_VS);
+	shaderList[DEFAULT_SHADER_PP_VS] = std::make_pair(defaultShaderDir + L"/defaultPP_VS.hlsl", ShaderType_VS);
+	shaderList[DEFAULT_SHADER_SSAO_PS] = std::make_pair(defaultShaderDir + L"/defaultSSAO_PS.hlsl", ShaderType_PS);
+	shaderList[DEFAULT_SHADER_AOBLUR_PS] = std::make_pair(defaultShaderDir + L"/defaultAOBlur_PS.hlsl", ShaderType_PS);
+	shaderList[DEFAULT_SHADER_DEFERRED_LIGHTING_PS] = std::make_pair(defaultShaderDir + L"/defaultDeferredLighting_PS.hlsl", ShaderType_PS);
+	shaderList[DEFAULT_SHADER_BLOOM_PREFILTER_PS] = std::make_pair(defaultShaderDir + L"/defaultBloomPrefilter_PS.hlsl", ShaderType_PS);
+	shaderList[DEFAULT_SHADER_BLOOM_DOWN_PS] = std::make_pair(defaultShaderDir + L"/defaultBloomDown_PS.hlsl", ShaderType_PS);
+	shaderList[DEFAULT_SHADER_BLOOM_UP_PS] = std::make_pair(defaultShaderDir + L"/defaultBloomUp_PS.hlsl", ShaderType_PS);
+	shaderList[DEFAULT_SHADER_BLOOM_COMBINE_PS] = std::make_pair(defaultShaderDir + L"/defaultBloomCombine_PS.hlsl", ShaderType_PS);
+	shaderList[DEFAULT_SHADER_TONEMAP_PS] = std::make_pair(defaultShaderDir + L"/defaultTonemap_PS.hlsl", ShaderType_PS);
+	shaderList[DEFAULT_SHADER_FXAA_PS] = std::make_pair(defaultShaderDir + L"/defaultFXAA_PS.hlsl", ShaderType_PS);
+	shaderList[DEFAULT_SHADER_SKINNING_CS] = std::make_pair(defaultShaderDir + L"/defaultSkinning_CS.hlsl", ShaderType_CS);
+	shaderList[DEFAULT_SHADER_PARTICLE_CS] = std::make_pair(defaultShaderDir + L"/defaultParticle_CS.hlsl", ShaderType_CS);
 
 
-	ComPtr<IDxcBlob> defaultBG_VSRaw;
+	ComPtr<IDxcBlob> defaultPP_VSRaw;
 	ComPtr<IDxcBlob> defaultComposite_PSRaw;
 
-	if (!CompileShader(DEFAULT_SHADER_BG_VS, SHADER_VARIANT_NONE, defaultBG_VSRaw))
+	if (!CompileShader(DEFAULT_SHADER_PP_VS, SHADER_VARIANT_NONE, defaultPP_VSRaw))
 		return false;
 	if (!CompileShader(DEFAULT_SHADER_COMPOSITE_PS, SHADER_VARIANT_NONE, defaultComposite_PSRaw))
 		return false;
 
 
-	if (DataHub::drawPropIdLUT.size() < DEFAULT_RES_PSOBODY_COUNT)
-		DebugReport(DataHub::RenderReport_Init, L"[Init] 허브 빌트인 drawProp 0~6 이 없음 (DataHub::Init 순서 확인)");
+	if (drawPropIdLUT.size() < DEFAULT_RES_PSOBODY_COUNT)
+		DebugReport(RenderReport_Init, L"[Init] 허브 빌트인 drawProp 이 없음 (DataHub::Init 순서 확인)");
 
-	{
-		using namespace DataHub;
+	psoGeneratorList.resize(DEFAULT_RES_PSOBODY_COUNT);
 
-		psoGeneratorList.resize(DEFAULT_RES_PSOBODY_COUNT);
+	DrawProp& sky = psoGeneratorList[RESERVED_DRAWPROP_SKYBOX_ID].psoBody;
+	sky.depthUsage = DrawProp_DepthUsage_Background;	sky.cullType = DrawProp_CullType_None;	sky.blendType = DrawProp_BlendType_None;
+	sky.vertexType = VertexType_Simple;					sky.VSId = DEFAULT_SHADER_SKYBOX_VS;	sky.PSId = DEFAULT_SHADER_SKYBOX_PS;
 
-		DrawProp& sky = psoGeneratorList[1].psoBody;
-		sky.depthUsage = DrawProp_DepthUsage_Background;	sky.cullType = DrawProp_CullType_None;	sky.blendType = DrawProp_BlendType_None;
-		sky.vertexType = VertexType_Simple;					sky.VSId = DEFAULT_SHADER_SKYBOX_VS;	sky.PSId = DEFAULT_SHADER_SKYBOX_PS;
+	DrawProp& bg = psoGeneratorList[RESERVED_DRAWPROP_BG_ID].psoBody;
+	bg.depthUsage = DrawProp_DepthUsage_Background;		bg.cullType = DrawProp_CullType_None;	bg.blendType = DrawProp_BlendType_None;
+	bg.vertexType = VertexType_Simple;					bg.VSId = DEFAULT_SHADER_PP_VS;	bg.PSId = DEFAULT_SHADER_BG_PS;
 
-		DrawProp& bg = psoGeneratorList[2].psoBody;
-		bg.depthUsage = DrawProp_DepthUsage_Background;		bg.cullType = DrawProp_CullType_None;	bg.blendType = DrawProp_BlendType_None;
-		bg.vertexType = VertexType_Simple;					bg.VSId = DEFAULT_SHADER_BG_VS;	bg.PSId = DEFAULT_SHADER_BG_PS;
+	DrawProp& opq = psoGeneratorList[RESERVED_DRAWPROP_OPAQUE_ID].psoBody;
+	opq.depthUsage = DrawProp_DepthUsage_Opaque;		opq.cullType = DrawProp_CullType_Back;	opq.blendType = DrawProp_BlendType_None;
+	opq.vertexType = VertexType_Static;					opq.VSId = DEFAULT_SHADER_WORLD_VS;	opq.PSId = DEFAULT_SHADER_WORLD_OPQ_PS;
 
-		DrawProp& opq = psoGeneratorList[3].psoBody;
-		opq.depthUsage = DrawProp_DepthUsage_Opaque;		opq.cullType = DrawProp_CullType_Back;	opq.blendType = DrawProp_BlendType_None;
-		opq.vertexType = VertexType_Static;					opq.VSId = DEFAULT_SHADER_WORLD_VS;	opq.PSId = DEFAULT_SHADER_WORLD_OPQ_PS;
+	DrawProp& opqSkin = psoGeneratorList[RESERVED_DRAWPROP_OPAQUE_SKINNED_ID].psoBody;
+	opqSkin = opq;	opqSkin.vertexType = VertexType_Skinned;
 
-		DrawProp& tp = psoGeneratorList[4].psoBody;
-		tp.depthUsage = DrawProp_DepthUsage_Translucent;	tp.cullType = DrawProp_CullType_Back;	tp.blendType = DrawProp_BlendType_Alpha;
-		tp.vertexType = VertexType_Static;					tp.VSId = DEFAULT_SHADER_WORLD_VS;	tp.PSId = DEFAULT_SHADER_WORLD_TP_PS;
+	DrawProp& opqClip = psoGeneratorList[RESERVED_DRAWPROP_OPAQUE_CLIP_ID].psoBody;
+	opqClip = opq;	opqClip.blendType = DrawProp_BlendType_AlphaClip;
 
-		DrawProp& opqSkin = psoGeneratorList[5].psoBody;
-		opqSkin = opq;	opqSkin.vertexType = VertexType_Skinned;
+	DrawProp& opqSkinClip = psoGeneratorList[RESERVED_DRAWPROP_OPAQUE_SKINNED_CLIP_ID].psoBody;
+	opqSkinClip = opqSkin;	opqSkinClip.blendType = DrawProp_BlendType_AlphaClip;
 
-		DrawProp& tpSkin = psoGeneratorList[6].psoBody;
-		tpSkin = tp;	tpSkin.vertexType = VertexType_Skinned;
-	}
+	DrawProp& tp = psoGeneratorList[RESERVED_DRAWPROP_TRANSLUCENT_ID].psoBody;
+	tp.depthUsage = DrawProp_DepthUsage_Translucent;	tp.cullType = DrawProp_CullType_Back;	tp.blendType = DrawProp_BlendType_Alpha;
+	tp.vertexType = VertexType_Static;					tp.VSId = DEFAULT_SHADER_WORLD_VS;	tp.PSId = DEFAULT_SHADER_WORLD_TP_PS;
+
+	DrawProp& tpSkin = psoGeneratorList[RESERVED_DRAWPROP_TRANSLUCENT_SKINNED_ID].psoBody;
+	tpSkin = tp;	tpSkin.vertexType = VertexType_Skinned;
+
+	DrawProp& particle = psoGeneratorList[RESERVED_DRAWPROP_PARTICLE_ID].psoBody;
+	particle.depthUsage = DrawProp_DepthUsage_Translucent;	particle.cullType = DrawProp_CullType_None;	particle.blendType = DrawProp_BlendType_Addtive;
+	particle.vertexType = VertexType_Simple;				particle.VSId = DEFAULT_SHADER_PARTICLE_VS;	particle.PSId = DEFAULT_SHADER_PARTICLE_PS;
+
+	DrawProp& sdw = psoGeneratorList[RESERVED_DRAWPROP_SHADOW_ID].psoBody;
+	sdw.depthUsage = DrawProp_DepthUsage_Opaque;		sdw.cullType = DrawProp_CullType_Back;	sdw.blendType = DrawProp_BlendType_None;
+	sdw.vertexType = VertexType_Static;					sdw.VSId = DEFAULT_SHADER_SHADOW_VS;	sdw.PSId = 0;
+	sdw.depthBias = DrawProp_DepthBias_ShadowCaster;
+
+	DrawProp& sdwSkin = psoGeneratorList[RESERVED_DRAWPROP_SHADOW_SKINNED_ID].psoBody;
+	sdwSkin = sdw;	sdwSkin.vertexType = VertexType_Skinned;
+
+	DrawProp& sdwClip = psoGeneratorList[RESERVED_DRAWPROP_SHADOW_CLIP_ID].psoBody;
+	sdwClip = sdw;	sdwClip.blendType = DrawProp_BlendType_AlphaClip;	sdwClip.PSId = DEFAULT_SHADER_WORLD_OPQ_PS;
+
+	DrawProp& sdwSkinClip = psoGeneratorList[RESERVED_DRAWPROP_SHADOW_SKINNED_CLIP_ID].psoBody;
+	sdwSkinClip = sdwSkin;	sdwSkinClip.blendType = DrawProp_BlendType_AlphaClip;	sdwSkinClip.PSId = DEFAULT_SHADER_WORLD_OPQ_PS;
+
+	DrawProp& ssao = psoGeneratorList[RESERVED_DRAWPROP_SSAO_ID].psoBody;
+	ssao.depthUsage = DrawProp_DepthUsage_Screen;		ssao.cullType = DrawProp_CullType_None;	ssao.blendType = DrawProp_BlendType_None;
+	ssao.vertexType = VertexType_Simple;				ssao.VSId = DEFAULT_SHADER_PP_VS;		ssao.PSId = DEFAULT_SHADER_SSAO_PS;
+
+	DrawProp& aoBlur = psoGeneratorList[RESERVED_DRAWPROP_AOBLUR_ID].psoBody;
+	aoBlur = ssao;	aoBlur.PSId = DEFAULT_SHADER_AOBLUR_PS;
+
+	DrawProp& deferredLighting = psoGeneratorList[RESERVED_DRAWPROP_DEFERRED_LIGHTING_ID].psoBody;
+	deferredLighting = ssao;	deferredLighting.PSId = DEFAULT_SHADER_DEFERRED_LIGHTING_PS;
+
+	DrawProp& bloomPrefilter = psoGeneratorList[RESERVED_DRAWPROP_BLOOM_PREFILTER_ID].psoBody;
+	bloomPrefilter = ssao;	bloomPrefilter.PSId = DEFAULT_SHADER_BLOOM_PREFILTER_PS;
+
+	DrawProp& bloomDown = psoGeneratorList[RESERVED_DRAWPROP_BLOOM_DOWN_ID].psoBody;
+	bloomDown = ssao;	bloomDown.PSId = DEFAULT_SHADER_BLOOM_DOWN_PS;
+
+	DrawProp& bloomUp = psoGeneratorList[RESERVED_DRAWPROP_BLOOM_UP_ID].psoBody;
+	bloomUp = ssao;	bloomUp.PSId = DEFAULT_SHADER_BLOOM_UP_PS;
+
+	DrawProp& bloomCombine = psoGeneratorList[RESERVED_DRAWPROP_BLOOM_COMBINE_ID].psoBody;
+	bloomCombine = ssao;	bloomCombine.PSId = DEFAULT_SHADER_BLOOM_COMBINE_PS;
+
+	DrawProp& tonemap = psoGeneratorList[RESERVED_DRAWPROP_TONEMAP_ID].psoBody;
+	tonemap = ssao;	tonemap.PSId = DEFAULT_SHADER_TONEMAP_PS;
+
+	DrawProp& fxaa = psoGeneratorList[RESERVED_DRAWPROP_FXAA_ID].psoBody;
+	fxaa = ssao;	fxaa.PSId = DEFAULT_SHADER_FXAA_PS;
 
 	#pragma endregion
 
@@ -1117,7 +1250,7 @@ bool D3D12Renderer::InitGraphicResource()
 
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC compDesc = {};
 	compDesc.pRootSignature = defaultRenderRootSig.Get();
-	compDesc.VS = CD3DX12_SHADER_BYTECODE(defaultBG_VSRaw->GetBufferPointer(), defaultBG_VSRaw->GetBufferSize());
+	compDesc.VS = CD3DX12_SHADER_BYTECODE(defaultPP_VSRaw->GetBufferPointer(), defaultPP_VSRaw->GetBufferSize());
 	compDesc.PS = CD3DX12_SHADER_BYTECODE(defaultComposite_PSRaw->GetBufferPointer(), defaultComposite_PSRaw->GetBufferSize());
 	compDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 	compDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
@@ -1134,7 +1267,7 @@ bool D3D12Renderer::InitGraphicResource()
 	HRESULT hr = device->CreateGraphicsPipelineState(&compDesc, IID_PPV_ARGS(&compositePSO));
 	if (FAILED(hr))
 	{
-		DebugReport(DataHub::RenderReport_Init, L"[Init] 레이어 합성 PSO 생성 실패");
+		DebugReport(RenderReport_Init, L"[Init] 레이어 합성 PSO 생성 실패");
 		return false;
 	}
 
@@ -1156,7 +1289,7 @@ bool D3D12Renderer::InitGraphicResource()
 	UINT rvStartIndex;
 	if (!rvHeap->SetCombinedSRV(subresList, srvDescList, CTEX_COMBINED_SIZE, rvStartIndex))
 	{
-		DebugReport(DataHub::RenderReport_Init, L"[Init] 기본 CTex SRV 생성 실패");
+		DebugReport(RenderReport_Init, L"[Init] 기본 CTex SRV 생성 실패");
 		return false;
 	}
 
@@ -1262,20 +1395,18 @@ void D3D12Renderer::CollectManagedResource()
 
 void D3D12Renderer::ScheduledReleaseResource()
 {
-	#ifdef _DEBUG
-	{
-		using namespace DataHub;
+	using namespace DataHub;
 
-		const bool releasing = meshReleaseCount == 0 || texReleaseCount == 0 || csBufferReleaseCount == 0
-			|| psoReleaseCount == 0 || cTexReleaseCount == 0;
-		const bool pending = !uploadMeshList.empty() || !uploadTextureList.empty() || !uploadCSBufferList.empty()
-			|| !linkCSBufferAsMeshList.empty() || !uploadDrawPropList.empty() || !uploadTexPropList.empty()
-			|| !updateMeshList.empty() || !updateTextureList.empty() || !updateCSBufferList.empty()
-			|| !updateDrawPropList.empty() || !updateTexPropList.empty();
+	#if RENDER_DEBUG_CHECK
+	const bool releasing = meshReleaseCount == 0 || texReleaseCount == 0 || csBufferReleaseCount == 0
+		|| psoReleaseCount == 0 || cTexReleaseCount == 0;
+	const bool pending = !uploadMeshList.empty() || !uploadTextureList.empty() || !uploadCSBufferList.empty()
+		|| !linkCSBufferAsMeshList.empty() || !uploadDrawPropList.empty() || !uploadTexPropList.empty()
+		|| !updateMeshList.empty() || !updateTextureList.empty() || !updateCSBufferList.empty()
+		|| !updateDrawPropList.empty() || !updateTexPropList.empty();
 
-		if (releasing && pending)
-			DebugReport(RenderReport_Contract, L"[Release] 해제 실행 시점에 허브 대기 리스트가 남아 있음 (Create / Update / Link 는 부른 프레임에 RTB 를 보내야 함)");
-	}
+	if (releasing && pending)
+		DebugReport(RenderReport_Contract, L"[Release] 해제 실행 시점에 허브 대기 리스트가 남아 있음 (Create / Update / Link 는 부른 프레임에 RTB 를 보내야 함)");
 	#endif
 
 	if (meshReleaseCount > -1)
@@ -1405,7 +1536,7 @@ void D3D12Renderer::UploadTexture(vector<ComPtr<ID3D12Resource>>& uploadBufferLi
 
 		textureList.emplace_back(std::move(texture));
 		BuildWritableTexture(textureList.back(), upload, texRefList_WTex[textureList.size() - 1]);
-}
+	}
 
 
 	texRefList_CTex.resize(textureList.size(), {});
@@ -1595,6 +1726,7 @@ void D3D12Renderer::BuildPSOVariant(PSOID psoId, OutputSignatureID sigId)
     const D3D12_RASTERIZER_DESC DefaultRasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 
     const D3D12_BLEND_DESC DefaultBlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+
 	const D3D12_RENDER_TARGET_BLEND_DESC AlphaBlendDesc =
 	{
 		1,
@@ -1603,7 +1735,7 @@ void D3D12Renderer::BuildPSOVariant(PSOID psoId, OutputSignatureID sigId)
 		D3D12_BLEND_INV_SRC_ALPHA,
 		D3D12_BLEND_OP_ADD,
 		D3D12_BLEND_ONE,
-		D3D12_BLEND_ZERO,
+		D3D12_BLEND_INV_SRC_ALPHA,
 		D3D12_BLEND_OP_ADD,
 		D3D12_LOGIC_OP_NOOP,
 		D3D12_COLOR_WRITE_ENABLE_ALL
@@ -1615,7 +1747,7 @@ void D3D12Renderer::BuildPSOVariant(PSOID psoId, OutputSignatureID sigId)
 		D3D12_BLEND_ONE,
 		D3D12_BLEND_ONE,
 		D3D12_BLEND_OP_ADD,
-		D3D12_BLEND_ONE,
+		D3D12_BLEND_ZERO,
 		D3D12_BLEND_ONE,
 		D3D12_BLEND_OP_ADD,
 		D3D12_LOGIC_OP_NOOP,
@@ -1628,8 +1760,8 @@ void D3D12Renderer::BuildPSOVariant(PSOID psoId, OutputSignatureID sigId)
 		D3D12_BLEND_DEST_COLOR,
 		D3D12_BLEND_ZERO,
 		D3D12_BLEND_OP_ADD,
-		D3D12_BLEND_DEST_ALPHA,
 		D3D12_BLEND_ZERO,
+		D3D12_BLEND_ONE,
 		D3D12_BLEND_OP_ADD,
 		D3D12_LOGIC_OP_NOOP,
 		D3D12_COLOR_WRITE_ENABLE_ALL
@@ -1647,7 +1779,8 @@ void D3D12Renderer::BuildPSOVariant(PSOID psoId, OutputSignatureID sigId)
 	#pragma region Shader
 
 	const ShaderID shaderCount = (ShaderID)shaderList.size();
-	const bool needPS = (layout != OutputLayout_DepthOnly);
+	const bool alphaClip = (body.blendType == DrawProp_BlendType_AlphaClip);
+	const bool needPS = (layout != OutputLayout_DepthOnly) || alphaClip;
 
 	if (body.VSId == 0 || body.VSId >= shaderCount
 		|| (needPS && (body.PSId == 0 || body.PSId >= shaderCount)))
@@ -1666,7 +1799,7 @@ void D3D12Renderer::BuildPSOVariant(PSOID psoId, OutputSignatureID sigId)
 	IDxcBlob* PSRaw = nullptr;
 	if (needPS)
 	{
-		PSRaw = GetCompiledShader(body.PSId, ShaderVariantPS(layout));
+		PSRaw = GetCompiledShader(body.PSId, ShaderVariantPS(layout, alphaClip));
 		if (PSRaw == nullptr)
 		{
 			DebugReport(DataHub::RenderReport_Contract, L"[PSO] PS 컴파일 / 레이아웃 검증 실패 (변형 생성 안함)");
@@ -1739,7 +1872,7 @@ void D3D12Renderer::BuildPSOVariant(PSOID psoId, OutputSignatureID sigId)
 		{
 		default:
 		case Action_Output_BlendOption_ByBlendType:
-			blend = body.blendType;
+			blend = alphaClip ? DrawProp_BlendType_None : body.blendType;
 			break;
 
 		case Action_Output_BlendOption_ForceNone:
@@ -1798,6 +1931,7 @@ void D3D12Renderer::BuildPSOVariant(PSOID psoId, OutputSignatureID sigId)
 		{
 		default:
 		case DrawProp_DepthUsage_Opaque:
+			psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
 			break;
 
 		case DrawProp_DepthUsage_Translucent:
@@ -2046,15 +2180,14 @@ void D3D12Renderer::UpdateTexture(vector<ComPtr<ID3D12Resource>>& uploadBufferLi
 		for (auto& ref : texRefList_CTex[id])
 		{
 			const CTexID cTexId = ref.first;
-			UINT rvStartIndex;
+
+			UINT rvStartIndex = combinedTextureList[0].RVHeapIndex;
 
 			if (!BuildCombinedView(combinedTextureBodyList[cTexId], rvStartIndex))
-			{
-				DebugReport(RenderReport_Limit, L"[CTex] 디스크립터 힙 꽉참 (업데이트된 텍스처의 조합 뷰 유지)");
-				continue;
-			}
+				DebugReport(RenderReport_Limit, L"[CTex] 디스크립터 힙 꽉참 (업데이트된 텍스처의 조합은 기본 texProp 뷰로)");
 
-			retiredCTexViewLists[retireSlot].push_back(combinedTextureList[cTexId]);
+			if (combinedTextureList[cTexId].RVHeapIndex != combinedTextureList[0].RVHeapIndex)
+				retiredCTexViewLists[retireSlot].push_back(combinedTextureList[cTexId]);
 			combinedTextureList[cTexId] = { rvStartIndex };
 		}
 	}
@@ -2593,7 +2726,7 @@ void D3D12Renderer::ResizeTextureInstant()
 	dsvReaddesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
 	dsvReaddesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
 	dsvReaddesc.Texture2D.MipSlice = 0;
-	dsvReaddesc.Flags = D3D12_DSV_FLAG_READ_ONLY_DEPTH;
+	dsvReaddesc.Flags = GetDSVReadOnlyFlags(dsvReaddesc.Format);
 
 	#pragma endregion
 
@@ -2708,7 +2841,7 @@ void D3D12Renderer::FlushUploadCommands()
 }
 
 
-void D3D12Renderer::MarkOrBuildSingleTexture(TexID texId)
+bool D3D12Renderer::MarkOrBuildSingleTexture(TexID texId)
 {
 	if (!texRefMask_STex[texId])
 	{
@@ -2718,17 +2851,16 @@ void D3D12Renderer::MarkOrBuildSingleTexture(TexID texId)
 
 		FillTextureSRVDesc(texInfo, desc);
 
-		rvHeap->SetSRV(
-			texInfo.Tex.Get(),
-			&desc,
-			rvIndex
-		);
+		if (!rvHeap->SetSRV(texInfo.Tex.Get(), &desc, rvIndex))
+			return false;
 
 		singleTextureList[texId] = {rvIndex};
 		texRefMask_STex[texId] = true;
 	}
 
 	frameMarkList_STex[texId] = static_cast<UINT16>(currentFrameCount % UINT16_MAX);
+
+	return true;
 }
 
 void D3D12Renderer::BuildWritableTexture(const DX12_Texture& texture, const DataHub::Texture& src, DX12_WTexRef& ref)
@@ -2822,7 +2954,7 @@ void D3D12Renderer::BuildWritableTexture(const DX12_Texture& texture, const Data
 			dsvDescs[0].ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
 
 		dsvDescs[1] = dsvDescs[0];
-		dsvDescs[1].Flags = D3D12_DSV_FLAG_READ_ONLY_DEPTH;
+		dsvDescs[1].Flags = GetDSVReadOnlyFlags(dsvDescs[0].Format);
 
 		if (inPlace)
 		{
@@ -3480,9 +3612,13 @@ bool D3D12Renderer::CompileShader(ShaderID shaderId, uint8_t variant, ComPtr<IDx
 
 	if (FAILED(hr))
 	{
-		OutputDebugStringW(L"[Shader] 파일 로드 실패: ");
+		DebugReport(RenderReport_Contract, L"[Shader] 파일 로드 실패");
+
+		#ifdef _DEBUG
 		OutputDebugStringW(filename.c_str());
 		OutputDebugStringW(L"\n");
+		#endif
+
 		return false;
 	}
 
@@ -3508,6 +3644,7 @@ bool D3D12Renderer::CompileShader(ShaderID shaderId, uint8_t variant, ComPtr<IDx
 
 
 	const wchar_t* macro = nullptr;
+	const wchar_t* clipMacro = nullptr;
 
 	if (variant != SHADER_VARIANT_NONE)
 	{
@@ -3523,7 +3660,7 @@ bool D3D12Renderer::CompileShader(ShaderID shaderId, uint8_t variant, ComPtr<IDx
 		}
 		else
 		{
-			switch ((Action_OutputLayout)variant)
+			switch ((Action_OutputLayout)(variant & ~SHADER_VARIANT_PS_ALPHACLIP))
 			{
 			case OutputLayout_DepthOnly:	macro = L"OUTPUT_DEPTHONLY=1";	break;
 			case OutputLayout_Color:		macro = L"OUTPUT_COLOR=1";		break;
@@ -3531,14 +3668,25 @@ bool D3D12Renderer::CompileShader(ShaderID shaderId, uint8_t variant, ComPtr<IDx
 			case OutputLayout_GBuffer:		macro = L"OUTPUT_GBUFFER=1";	break;
 			default: break;
 			}
+
+			if ((variant & SHADER_VARIANT_PS_ALPHACLIP) != 0)
+				clipMacro = L"ALPHA_CLIP=1";
 		}
 	}
+
+
+	std::wstring shaderDir = L".";
+	const size_t shaderDirEnd = filename.find_last_of(L"\\/");
+
+	if (shaderDirEnd != std::wstring::npos)
+		shaderDir = filename.substr(0, shaderDirEnd);
 
 
 	std::vector<LPCWSTR> args;
 	args.push_back(L"-E");	args.push_back(entry);
 	args.push_back(L"-T");	args.push_back(profile);
 	args.push_back(L"-I");	args.push_back(defaultShaderDir.c_str());
+	args.push_back(L"-I");	args.push_back(shaderDir.c_str());
 
 	#ifdef _DEBUG
 	args.push_back(L"-Zi");
@@ -3552,6 +3700,11 @@ bool D3D12Renderer::CompileShader(ShaderID shaderId, uint8_t variant, ComPtr<IDx
 	{
 		args.push_back(L"-D");
 		args.push_back(macro);
+	}
+	if (clipMacro != nullptr)
+	{
+		args.push_back(L"-D");
+		args.push_back(clipMacro);
 	}
 
 
@@ -3573,6 +3726,7 @@ bool D3D12Renderer::CompileShader(ShaderID shaderId, uint8_t variant, ComPtr<IDx
 		OutputDebugStringW(L"[Shader] ");
 		OutputDebugStringW(filename.c_str());
 		if (macro != nullptr) { OutputDebugStringW(L" -D "); OutputDebugStringW(macro); }
+		if (clipMacro != nullptr) { OutputDebugStringW(L" -D "); OutputDebugStringW(clipMacro); }
 		OutputDebugStringW(L"\n");
 		OutputDebugStringA(errors->GetStringPointer());
 		OutputDebugStringA("\n");
@@ -3583,7 +3737,10 @@ bool D3D12Renderer::CompileShader(ShaderID shaderId, uint8_t variant, ComPtr<IDx
 	result->GetStatus(&status);
 
 	if (FAILED(status))
+	{
+		DebugReport(RenderReport_Contract, L"[Shader] 컴파일 실패 (에러 내용은 디버그 빌드 출력창)");
 		return false;
+	}
 
 	hr = result->GetOutput(DXC_OUT_OBJECT, IID_PPV_ARGS(&outBlob), nullptr);
 
@@ -3612,7 +3769,9 @@ IDxcBlob* D3D12Renderer::GetCompiledShader(ShaderID shaderId, uint8_t variant)
 	entry.failed = !CompileShader(shaderId, variant, entry.blob);
 
 
-	if (!entry.failed && variant != SHADER_VARIANT_NONE && shaderList[shaderId].second == ShaderType_PS)
+	const uint8_t layoutVariant = (uint8_t)(variant & ~SHADER_VARIANT_PS_ALPHACLIP);
+
+	if (!entry.failed && layoutVariant != SHADER_VARIANT_NONE && shaderList[shaderId].second == ShaderType_PS)
 	{
 		DxcBuffer objectBuffer = { entry.blob->GetBufferPointer(), entry.blob->GetBufferSize(), 0 };
 		ComPtr<ID3D12ShaderReflection> reflection;
@@ -3635,7 +3794,7 @@ IDxcBlob* D3D12Renderer::GetCompiledShader(ShaderID shaderId, uint8_t variant)
 			}
 		}
 
-		const uint8_t expectMask = OutputLayoutTargetMask((Action_OutputLayout)variant);
+		const uint8_t expectMask = OutputLayoutTargetMask((Action_OutputLayout)layoutVariant);
 
 		if (FAILED(hr) || writtenMask != expectMask)
 		{
@@ -3654,8 +3813,14 @@ ID3D12PipelineState* D3D12Renderer::GetComputePSO(ShaderID csId)
 {
 	using namespace DataHub;
 
-	if (csId == 0 || csId >= shaderList.size() || shaderList[csId].second != ShaderType_CS)
+	if (csId == 0)
 		return nullptr;
+
+	if (csId >= shaderList.size() || shaderList[csId].second != ShaderType_CS)
+	{
+		DebugReport(RenderReport_Contract, L"[PSO] 컴퓨트 셰이더 id 범위 밖 / 컴퓨트 셰이더가 아님 (디스패치 안함)");
+		return nullptr;
+	}
 
 	if (computePSOList.size() <= csId)
 		computePSOList.resize((size_t)csId + 1);

@@ -9,15 +9,15 @@ namespace Hakko::DataHub
     {
         RenderId_ParseFlag_OK = 0,
         RenderId_ParseFlag_NotUse = 1,
-        RenderId_ParseFlag_OnHanded = 2,    // (미구현) DtB칸 활용, GetMask시 리턴으로 슬롯 인덱스
+        RenderId_ParseFlag_OnHanded = 2,    // (일부 구현) DtB칸 활용, GetMask시 리턴으로 슬롯 인덱스 (Tid로 한번 검증)
     };
     
 
     class RenderIdProvider
     {
     protected:
-        RenderIdProvider(uint64_t dpm, uint64_t tpm, uint64_t tm) : 
-            DRAWPROP_MASK(dpm), TEXPROP_MASK(tpm), TEX_MASK(tm) {}
+        RenderIdProvider(uint64_t dpm, uint64_t tpm, uint64_t tm, uint64_t icm = 0) : 
+            DRAWPROP_MASK(dpm), TEXPROP_MASK(tpm), TEX_MASK(tm), INSTANCE_MASK(icm) {}
     public:
         virtual ~RenderIdProvider() = default;
 
@@ -25,6 +25,7 @@ namespace Hakko::DataHub
         const uint64_t DRAWPROP_MASK;
         const uint64_t TEXPROP_MASK;
         const uint64_t TEX_MASK;
+        const uint64_t INSTANCE_MASK;
 
     public:
         virtual operator RenderID() const = 0;
@@ -33,6 +34,7 @@ namespace Hakko::DataHub
         virtual uint64_t GetDrawPropIdMask(RenderId_ParseFlag& flag) const { flag = RenderId_ParseFlag_OK; return DRAWPROP_MASK; }
         virtual uint64_t GetTexPropIdMask(RenderId_ParseFlag& flag) const { flag = RenderId_ParseFlag_OK; return TEXPROP_MASK; }
         virtual uint64_t GetTexIdMask(RenderId_ParseFlag& flag) const { flag = RenderId_ParseFlag_OK; return TEX_MASK; }
+        virtual uint64_t GetInstanceCountMask(RenderId_ParseFlag& flag) const { flag = RenderId_ParseFlag_NotUse; return 0; }
     };
 
 
@@ -95,15 +97,15 @@ namespace Hakko::DataHub
     class RenderIdTranslucent : public RenderIdProvider
     {
     public:
-        RenderIdTranslucent() : RenderIdProvider(0x0000FFFF00000000, 0x00000000FFFF0000, 0), 
-            depth(0), drawProp(0), texProp(0), iid(0) {}
+        RenderIdTranslucent() : RenderIdProvider(0x0000FFFF00000000, 0x00000000FFFF0000, 0, 0x000000000000FFFF), 
+            depth(0), drawProp(0), texProp(0), instanceCount(0) {}
 
-        // 뎁스(16) psoBody(16) 텍스처조합(16) 잉여(16)
+        // 뎁스(16) psoBody(16) 텍스처조합(16) 인스턴스 수(16)
     public:
         uint16_t depth;
         DrawPropID drawProp;
         TexPropID texProp;
-        uint16_t iid;
+        uint16_t instanceCount; // 0 = 그냥 한번 그리기
 
 
         operator RenderID() const override
@@ -112,20 +114,24 @@ namespace Hakko::DataHub
 				(RenderID)depth << 48 |
 				(RenderID)drawProp << 32 |
 				(RenderID)texProp << 16 |
-				(RenderID)iid;
+				(RenderID)instanceCount;
 
             return id;
         }
 
         bool IsAscendingSort() const { return false; }
 
+        uint64_t GetInstanceCountMask(RenderId_ParseFlag& flag) const override
+        {
+            flag = RenderId_ParseFlag_OK;
+            return INSTANCE_MASK;
+        }
+
         uint64_t GetTexIdMask(RenderId_ParseFlag& flag) const
         {
             flag = RenderId_ParseFlag_NotUse;
             return 0;
         }
-        
-
     };
 
     class RenderIdShadow : public RenderIdProvider

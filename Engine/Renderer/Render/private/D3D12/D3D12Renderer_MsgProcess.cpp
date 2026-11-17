@@ -130,7 +130,6 @@ inline static void FillRenderActionBase(DX12_RenderAction& action, DX12_RenderAc
 	action.actionType = type;
 	action.builtinType = (DataHub::BuiltinActionType)0;
 	action.renderIdType = DataHub::RenderIdType_None;
-	action.frontNodeIdx.fill(0);
 
 	ResolveActionViewport(src, layerVp, action.viewport, action.scissorRect);
 
@@ -140,15 +139,13 @@ inline static void FillRenderActionBase(DX12_RenderAction& action, DX12_RenderAc
 	action.slotFlags = 0;
 	action.srInstantIdx.fill(TEX_INSTANT_NONE);
 	action.copySrcInstantIdx.fill(TEX_INSTANT_NONE);
-	action.rtLoadOpts.fill(DataHub::Action_Output_LoadOption_Default);
-	action.dsLoadOpt = DataHub::Action_Output_LoadOption_Default;
+	action.clearMask = (!IsEmpty(src.viewport) || !IsEmpty(src.rect)) ? (uint16_t)(1u << CLEAR_MASK_AREA_SHIFT) : 0;
 
 	for (uint8_t i = 0; i < RENDER_TARGET_MAX; i++)
 	{
 		if (src.output.useRT[i])
 		{
 			SetOutTex(action, i, src.output.RTTex[i]);
-			action.rtLoadOpts[i] = src.output.loadOpt[i];
 			if (src.output.RTTex[i] == 0)
 				SetOutInstant(action, i, TEX_INSTANT_WANT);
 		}
@@ -156,7 +153,6 @@ inline static void FillRenderActionBase(DX12_RenderAction& action, DX12_RenderAc
 	if (src.output.useDS)
 	{
 		SetOutTex(action, INSTANT_SLOT_DS, src.output.DSTex);
-		action.dsLoadOpt = src.output.dsLoadOpt;
 		if (src.output.DSTex == 0)
 			SetOutInstant(action, INSTANT_SLOT_DS, TEX_INSTANT_WANT);
 	}
@@ -164,25 +160,23 @@ inline static void FillRenderActionBase(DX12_RenderAction& action, DX12_RenderAc
 	action.dsReadOnly = src.output.depthOpt == DataHub::Action_Output_DepthOption_ForceDepthRead;
 
 	action.outputLayout = src.output.outputLayout;
+	uint8_t liveMask = 0;
+	for (uint8_t r = 0; r < RENDER_TARGET_MAX; r++)
 	{
-		uint8_t liveMask = 0;
-		for (uint8_t r = 0; r < RENDER_TARGET_MAX; r++)
-		{
-			if (src.output.useRT[r])
-				liveMask |= (uint8_t)(1 << r);
-		}
+		if (src.output.useRT[r])
+			liveMask |= (uint8_t)(1 << r);
+	}
 
-		const uint8_t needMask = DataHub::OutputLayoutTargetMask(action.outputLayout);
-		bool ok = (needMask & liveMask) == needMask;
+	const uint8_t needMask = DataHub::OutputLayoutTargetMask(action.outputLayout);
+	bool ok = (needMask & liveMask) == needMask;
 
-		if (action.outputLayout == DataHub::OutputLayout_DepthOnly && !src.output.useDS)
-			ok = false;
+	if (action.outputLayout == DataHub::OutputLayout_DepthOnly && !src.output.useDS)
+		ok = false;
 
-		if (!ok)
-		{
-			DebugReport(DataHub::RenderReport_Contract, L"[Read] 출력 레이아웃이 요구하는 칸이 안 켜져 있음 (None 으로 강등)");
-			action.outputLayout = DataHub::OutputLayout_None;
-		}
+	if (!ok)
+	{
+		DebugReport(DataHub::RenderReport_Contract, L"[Read] 출력 레이아웃이 요구하는 칸이 안 켜져 있음 (None 으로 강등)");
+		action.outputLayout = DataHub::OutputLayout_None;
 	}
 
 	action.actionDataTid = src.actionDataBoxTypeId;
@@ -269,40 +263,96 @@ inline static void FillRenderAction(DX12_RenderAction& action, const DataHub::RT
 }
 
 
-inline static void LinkActionNode(DX12_RenderLayer& layer, uint32_t node, uint32_t slot, uint32_t frontNode)
+inline static void RegisterActionNode(DX12_RenderLayer& layer, uint32_t node, const uint32_t* depthTable, uint32_t* nodeOfId)
 {
-	const DX12_RenderActionNode& front = layer.renderActionNodeList[frontNode];
 	DX12_RenderActionNode& dst = layer.renderActionNodeList[node];
 
-	layer.renderActionList[node].frontNodeIdx[slot] = frontNode;
-	dst.frontIds[slot] = front.actionId;
-
-	if (dst.nodeDepth <= front.nodeDepth)
-		dst.nodeDepth = front.nodeDepth + 1;
+	dst.nodeDepth = depthTable[dst.actionId];
+	nodeOfId[dst.actionId] = node;
 }
 
-inline static void LinkActionNodeFronts(DX12_RenderLayer& layer, uint32_t node, const std::array<ActionID, RENDER_ACTION_NODE_MAX>* frontTable, uint32_t* nodeOfId)
+
+static std::vector<uint8_t> frontViewStateList;
+static std::vector<uint16_t> frontViewOutList;
+static std::vector<uint16_t> frontViewSRList;
+
+inline static uint16_t FrontOutInstant(const DX12_RenderLayer& layer, const uint32_t* nodeOfId, ActionID id, uint8_t slot)
 {
-	const ActionID id = layer.renderActionNodeList[node].actionId;
+	if (nodeOfId[id] == 0)
+		return frontViewOutList[(size_t)id * INSTANT_SLOT_MAX + slot];
+
+	const uint16_t instIdx = OutInstantIdx(layer.renderActionList[nodeOfId[id]], slot);
+
+	return instIdx == TEX_INSTANT_WANT ? (uint16_t)TEX_INSTANT_NONE : instIdx;
+}
+
+inline static uint16_t FrontSRInstant(const DX12_RenderLayer& layer, const uint32_t* nodeOfId, ActionID id, uint8_t slot)
+{
+	if (nodeOfId[id] == 0)
+		return frontViewSRList[(size_t)id * INSTANT_SLOT_MAX + slot];
+
+	return layer.renderActionList[nodeOfId[id]].srInstantIdx[slot];
+}
+
+void D3D12Renderer::ResolveSkippedFront(const DX12_RenderLayer& layer, const DataHub::RTB_Layer& layerDesc,
+	const std::array<ActionID, RENDER_ACTION_NODE_MAX>* frontTable, const uint32_t* nodeOfId, ActionID id)
+{
+	using namespace DataHub;
+
+	if (frontViewStateList[id] != 0)
+	{
+		if (frontViewStateList[id] == 1)
+			DebugReport(RenderReport_Invariant, L"[Graph] 빠진 노드끼리 선행이 순환함");
+		return;
+	}
+
+	frontViewStateList[id] = 1;
+
+	const size_t viewBase = (size_t)id * INSTANT_SLOT_MAX;
+
+	for (uint8_t s = 0; s < INSTANT_SLOT_MAX; s++)
+	{
+		frontViewOutList[viewBase + s] = TEX_INSTANT_NONE;
+		frontViewSRList[viewBase + s] = TEX_INSTANT_NONE;
+	}
+
+	const RTB_Action& src = GetActionSource(layerDesc, id);
 
 	for (uint32_t k = 0; k < RENDER_ACTION_NODE_MAX; k++)
 	{
-		ActionID frontId = frontTable[id][k];
+		const ActionID frontId = frontTable[id][k];
 
-		while (frontId != 0 && nodeOfId[frontId] == 0)
-			frontId = frontTable[frontId][0];
+		if (frontId == 0 || frontId >= frontViewStateList.size())
+			continue;
 
-		LinkActionNode(layer, node, k, nodeOfId[frontId]);
+		if (nodeOfId[frontId] == 0)
+			ResolveSkippedFront(layer, layerDesc, frontTable, nodeOfId, frontId);
+
+		const Action_Input& input = src.inputs[k];
+
+		for (uint8_t s = 0; s < INSTANT_SLOT_MAX; s++)
+		{
+			const Action_InputType type = s == INSTANT_SLOT_DS ? input.DSInputType : input.RTInputType[s];
+			const uint16_t frontOut = FrontOutInstant(layer, nodeOfId, frontId, s);
+			const uint16_t frontSR = FrontSRInstant(layer, nodeOfId, frontId, s);
+
+			if (frontViewOutList[viewBase + s] == TEX_INSTANT_NONE && frontOut != TEX_INSTANT_NONE && (type & Action_InputType_Detach) == 0)
+				frontViewOutList[viewBase + s] = frontOut;
+
+			if (frontViewSRList[viewBase + s] == TEX_INSTANT_NONE && frontSR != TEX_INSTANT_NONE && (type & Action_InputType_ClearSR) == 0)
+				frontViewSRList[viewBase + s] = frontSR;
+		}
 	}
 
-	nodeOfId[id] = node;
+	frontViewStateList[id] = 2;
 }
-
 
 #if RENDER_PIPELINE_MODE == RENDER_USE_PIPELINE_BUILTIN
 
 static std::array<ActionID, RENDER_ACTION_NODE_MAX> builtinFrontTables[2][DX12_BuiltinActionId_Count];
+static uint32_t builtinDepthTables[2][DX12_BuiltinActionId_Count];
 static bool builtinFrontTablesReady = false;
+static_assert(RENDER_BUILTIN_PRECOMPUTE_MAX <= RENDER_ACTION_NODE_MAX, "PreCompute 칸 수가 선행 칸 수 (RENDER_ACTION_NODE_MAX) 보다 많음");
 
 inline static void BuildBuiltinFrontTables()
 {
@@ -314,13 +364,31 @@ inline static void BuildBuiltinFrontTables()
 		for (uint32_t id = 0; id < DX12_BuiltinActionId_Count; id++)
 			table[id].fill(0);
 
+		for (uint32_t i = 0; i < RENDER_BUILTIN_PRECOMPUTE_MAX; i++)
+		{
+			table[DX12_BuiltinActionId_EarlyZ][i] = DX12_BuiltinActionId_PreCompute0 + i;
+			table[DX12_BuiltinActionId_GBuffer][i] = DX12_BuiltinActionId_PreCompute0 + i;
+		}
+
 		table[DX12_BuiltinActionId_AO][0] = deferred ? DX12_BuiltinActionId_GBuffer : DX12_BuiltinActionId_EarlyZ;
 		table[DX12_BuiltinActionId_AOBlur][0] = DX12_BuiltinActionId_AO;
 
+		const ActionID shadowChainEnd = DX12_BuiltinActionId_LocalSDW0 + RENDER_BUILTIN_LOCAL_SDW_MAX - 1;
+
+		table[DX12_BuiltinActionId_GlobalSDW0][0] = DX12_BuiltinActionId_AOBlur;
+		for (uint32_t i = 1; i < RENDER_BUILTIN_CSM_MAX; i++)
+			table[DX12_BuiltinActionId_GlobalSDW0 + i][0] = DX12_BuiltinActionId_GlobalSDW0 + i - 1;
+
+		table[DX12_BuiltinActionId_LocalSDW0][0] = DX12_BuiltinActionId_GlobalSDW0 + RENDER_BUILTIN_CSM_MAX - 1;
+		for (uint32_t i = 1; i < RENDER_BUILTIN_LOCAL_SDW_MAX; i++)
+			table[DX12_BuiltinActionId_LocalSDW0 + i][0] = DX12_BuiltinActionId_LocalSDW0 + i - 1;
+
 		table[DX12_BuiltinActionId_OPQ][0] = DX12_BuiltinActionId_EarlyZ;
 		table[DX12_BuiltinActionId_OPQ][1] = DX12_BuiltinActionId_AOBlur;
+		table[DX12_BuiltinActionId_OPQ][2] = shadowChainEnd;
 		table[DX12_BuiltinActionId_Lighting][0] = DX12_BuiltinActionId_GBuffer;
 		table[DX12_BuiltinActionId_Lighting][1] = DX12_BuiltinActionId_AOBlur;
+		table[DX12_BuiltinActionId_Lighting][2] = shadowChainEnd;
 
 		table[DX12_BuiltinActionId_Background][0] = deferred ? DX12_BuiltinActionId_Lighting : DX12_BuiltinActionId_OPQ;
 		table[DX12_BuiltinActionId_TP][0] = DX12_BuiltinActionId_Background;
@@ -330,7 +398,29 @@ inline static void BuildBuiltinFrontTables()
 			table[DX12_BuiltinActionId_PP0 + i][0] = DX12_BuiltinActionId_PP0 + i - 1;
 
 		table[DX12_BuiltinActionId_SC][0] = DX12_BuiltinActionId_PP0 + RENDER_BUILTIN_PP_MAX - 1;
+		table[DX12_BuiltinActionId_SC][1] = DX12_BuiltinActionId_TP;
 		table[DX12_BuiltinActionId_Debug][0] = DX12_BuiltinActionId_SC;
+
+
+		uint32_t* depthTable = builtinDepthTables[t];
+		depthTable[0] = 0;
+
+		for (uint32_t id = 1; id < DX12_BuiltinActionId_Count; id++)
+		{
+			uint32_t frontDepth = 0;
+
+			for (uint32_t k = 0; k < RENDER_ACTION_NODE_MAX; k++)
+			{
+				const ActionID frontId = table[id][k];
+
+				if (frontId >= id)
+					DebugReport(DataHub::RenderReport_Invariant, L"[Graph] 빌트인 선행 표에서 선행 칸이 자기보다 뒤에 있음");
+				else if (frontDepth < depthTable[frontId])
+					frontDepth = depthTable[frontId];
+			}
+
+			depthTable[id] = frontDepth + 1;
+		}
 	}
 
 	builtinFrontTablesReady = true;
@@ -392,14 +482,20 @@ inline static bool IsStateCovered(D3D12_RESOURCE_STATES before, D3D12_RESOURCE_S
 }
 
 
-inline static void TransitionInstant(std::vector<DX12_ActionBarrier>& barriers, DX12_BarrierTarget target, uint16_t instIdx,
-	D3D12_RESOURCE_STATES& state, D3D12_RESOURCE_STATES after)
+inline static void TransitionInstant(std::vector<DX12_ActionBarrier>& depthBarriers, std::vector<DX12_ActionBarrier>& actionBarriers,
+	DX12_BarrierTarget target, uint16_t instIdx, D3D12_RESOURCE_STATES& state, uint8_t& touched, D3D12_RESOURCE_STATES after)
 {
-	if (IsStateCovered(state, after))
-		return;
+	if (!IsStateCovered(state, after))
+	{
+		if (touched != 0)
+			actionBarriers.push_back(DX12_ActionBarrier{instIdx, target, state, after});
+		else
+			depthBarriers.push_back(DX12_ActionBarrier{instIdx, target, state, after});
 
-	barriers.push_back(DX12_ActionBarrier{instIdx, target, state, after});
-	state = after;
+		state = after;
+	}
+
+	touched = 1;
 }
 
 inline static void TransitionLoaded(DX12_RenderAction& action, TexID texId, DX12_TextureUsage usage, D3D12_RESOURCE_STATES use)
@@ -423,15 +519,41 @@ inline static void TransitionBuffer(DX12_RenderAction& action, CSBufferID csBuff
 }
 
 
-inline static bool IsFrontAction(const DX12_RenderAction& action, uint32_t idx)
+static std::vector<D3D12_RESOURCE_STATES> rtGroupReadStateList;
+static std::vector<D3D12_RESOURCE_STATES> dsGroupReadStateList;
+static std::vector<uint8_t> rtGroupTouchedList;
+static std::vector<uint8_t> dsGroupTouchedList;
+
+inline static void CollectGroupReadStates(const DX12_RenderAction& action)
 {
-	for (uint32_t f = 0; f < RENDER_ACTION_NODE_MAX; f++)
+	for (uint8_t s = 0; s < INSTANT_SLOT_MAX; s++)
 	{
-		if (action.frontNodeIdx[f] != 0 && action.frontNodeIdx[f] == idx)
-			return true;
+		const bool isDS = s == INSTANT_SLOT_DS;
+		auto& readStates = isDS ? dsGroupReadStateList : rtGroupReadStateList;
+
+		if (action.copySrcInstantIdx[s] != TEX_INSTANT_NONE)
+		{
+			if (action.copySrcInstantIdx[s] < readStates.size())
+				readStates[action.copySrcInstantIdx[s]] |= D3D12_RESOURCE_STATE_COPY_SOURCE;
+		}
+		else if (action.srInstantIdx[s] != TEX_INSTANT_NONE && action.srInstantIdx[s] < readStates.size())
+		{
+			readStates[action.srInstantIdx[s]] |= GetInstantReadState(action.actionType, isDS);
+		}
 	}
-	return false;
+
+	const uint16_t dsInstIdx = OutInstantIdx(action, INSTANT_SLOT_DS);
+
+	if (action.dsReadOnly && dsInstIdx != TEX_INSTANT_NONE && dsInstIdx < dsGroupReadStateList.size())
+		dsGroupReadStateList[dsInstIdx] |= D3D12_RESOURCE_STATE_DEPTH_READ;
 }
+
+
+static std::vector<bool> loadedWrittenMask;
+static std::vector<uint32_t> loadedWriteDepthList;
+static std::vector<uint32_t> loadedReadDepthList;
+static std::vector<uint32_t> bufferWriteDepthList;
+static std::vector<uint32_t> bufferReadDepthList;
 
 #pragma endregion
 
@@ -492,6 +614,9 @@ inline static void ReadActionComputeRequest(const DataHub::RTB_ActionCompute& sr
 		csId = 0;
 	}
 
+	if (dispatch[0] == 0 || dispatch[1] == 0 || dispatch[2] == 0)
+		csId = 0;
+
 	requestList[0].renderId = ((RenderID)csId << 48) | ((RenderID)dispatch[0] << 32) | ((RenderID)dispatch[1] << 16) | (RenderID)dispatch[2];
 	requestList[0].requestIdx = 0;
 
@@ -509,19 +634,19 @@ inline static void ReadActionComputeRequest(const DataHub::RTB_ActionCompute& sr
 void D3D12Renderer::ReadTransferBox()
 {
 	// --- 패스 / 리소스 관련 요청 (프레임 별) ---
-	{
-		vector<ComPtr<ID3D12Resource>> uploadBufferList;
-		const bool gpuWork = HasUploadWork();
+	vector<ComPtr<ID3D12Resource>> uploadBufferList;
+	const bool gpuWork = HasUploadWork();
 
-		if (gpuWork)
-			BeginUploadCommands();
+	if (gpuWork)
+		BeginUploadCommands();
 
-		ReadUploadRequest(uploadBufferList);
-		ReadUpdateRequest(uploadBufferList);
+	ReadUploadRequest(uploadBufferList);
+	ReadUpdateRequest(uploadBufferList);
 
-		if (gpuWork)
-			FlushUploadCommands();
-	}
+	if (gpuWork)
+		FlushUploadCommands();
+
+	uploadBufferList.clear();
 
 	// --- 그리기 관련 요청 (레이어/패스 별) ---
 	ReadLayerOption();
@@ -547,17 +672,21 @@ void D3D12Renderer::ReadLayerOption()
 
 		if (bgTexIdNew >= textureList.size())
 		{
-			DebugReport(DataHub::RenderReport_Contract, L"[Layer] 배경 texId 범위 밖 (무시됨)");
+			DebugReport(RenderReport_Contract, L"[Layer] 배경 texId 범위 밖 (무시됨)");
 			bgTexIdNew = 0;
 		}
 		else if (bgTexIdNew < releaseTexIdMask.size() && releaseTexIdMask[bgTexIdNew])
         {
-            DebugReport(DataHub::RenderReport_Contract, L"[Layer] 삭제된 텍스처를 배경으로 지정 (무시됨)");
+            DebugReport(RenderReport_Contract, L"[Layer] 삭제된 텍스처를 배경으로 지정 (무시됨)");
             bgTexIdNew = 0;
         }
-	    else if (bgTexIdNew != 0)
+		else if (bgTexIdNew != 0 && !MarkOrBuildSingleTexture(bgTexIdNew))
 		{
-			MarkOrBuildSingleTexture(bgTexIdNew);
+			DebugReport(RenderReport_Limit, L"[Layer] 배경 텍스처 뷰 자리 없음 (무시됨)");
+			bgTexIdNew = 0;
+		}
+		else if (bgTexIdNew != 0)
+		{
             renderFrame.layerList[i].bgIsCube = textureList[bgTexIdNew].IsCube;
 
 			renderFrame.layerList[i].bgColor[0] = color[0];
@@ -573,32 +702,70 @@ void D3D12Renderer::ReadLayerOption()
 
 		if (envTexIdNew >= textureList.size())
 		{
-			DebugReport(DataHub::RenderReport_Contract, L"[Layer] 환경맵 texId 범위 밖 (무시됨)");
+			DebugReport(RenderReport_Contract, L"[Layer] 환경맵 texId 범위 밖 (무시됨)");
 			envTexIdNew = 0;
 		}
 		else if (envTexIdNew < releaseTexIdMask.size() && releaseTexIdMask[envTexIdNew])
 		{
-			DebugReport(DataHub::RenderReport_Contract, L"[Layer] 삭제된 텍스처를 환경맵으로 지정 (무시됨)");
+			DebugReport(RenderReport_Contract, L"[Layer] 삭제된 텍스처를 환경맵으로 지정 (무시됨)");
 			envTexIdNew = 0;
 		}
 		else if (envTexIdNew != 0)
 		{
 			if (!textureList[envTexIdNew].IsCube)
 			{
-				DebugReport(DataHub::RenderReport_Contract, L"[Layer] 환경맵이 큐브맵이 아님 (무시됨)");
+				DebugReport(RenderReport_Contract, L"[Layer] 환경맵이 큐브맵이 아님 (무시됨)");
 				envTexIdNew = 0;
 			}
-			else
-				MarkOrBuildSingleTexture(envTexIdNew);
+			else if (!MarkOrBuildSingleTexture(envTexIdNew))
+			{
+				DebugReport(RenderReport_Limit, L"[Layer] 환경맵 뷰 자리 없음 (무시됨)");
+				envTexIdNew = 0;
+			}
 		}
 
 		renderFrame.layerList[i].envTexId = envTexIdNew;
 
 
+		const TexID shadowTexIdSrcs[LAYER_SHADOW_SLOT_MAX] = { LayerList[i].globalShadowTexId, LayerList[i].localShadowTexId };
+
+		for (size_t s = 0; s < LAYER_SHADOW_SLOT_MAX; s++)
+		{
+			TexID shadowTexIdNew = shadowTexIdSrcs[s];
+
+			if (shadowTexIdNew >= textureList.size())
+			{
+				DebugReport(RenderReport_Contract, L"[Layer] 섀도우맵 texId 범위 밖 (무시됨)");
+				shadowTexIdNew = 0;
+			}
+			else if (shadowTexIdNew < releaseTexIdMask.size() && releaseTexIdMask[shadowTexIdNew])
+			{
+				DebugReport(RenderReport_Contract, L"[Layer] 삭제된 텍스처를 섀도우맵으로 지정 (무시됨)");
+				shadowTexIdNew = 0;
+			}
+			else if (shadowTexIdNew != 0
+				&& (textureList[shadowTexIdNew].Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D || textureList[shadowTexIdNew].IsCube))
+			{
+				DebugReport(RenderReport_Contract, L"[Layer] 섀도우맵이 2D 텍스처가 아님 (무시됨)");
+				shadowTexIdNew = 0;
+			}
+			else if (shadowTexIdNew != 0 && !MarkOrBuildSingleTexture(shadowTexIdNew))
+			{
+				DebugReport(RenderReport_Limit, L"[Layer] 섀도우맵 뷰 자리 없음 (무시됨)");
+				shadowTexIdNew = 0;
+			}
+
+			if (shadowTexIdNew == 0)
+				shadowTexIdNew = DEFAULT_TEX_NONE_SHADOW;
+
+			renderFrame.layerList[i].shadowTexIds[s] = shadowTexIdNew;
+		}
+
+
 		renderFrame.layerList[i].layerDataTid = LayerList[i].layerDataBoxTid;
 		if (renderFrame.layerList[i].layerDataTid != 0 && DataBoxCustomizer::GetProvider(renderFrame.layerList[i].layerDataTid) == nullptr)
 		{
-			DebugReport(DataHub::RenderReport_Contract, L"[Read] 레이어 데이터 tid 에 프로바이더 없음 (무시됨)");
+			DebugReport(RenderReport_Contract, L"[Read] 레이어 데이터 tid 에 프로바이더 없음 (무시됨)");
 			renderFrame.layerList[i].layerDataTid = 0;
 		}
 	}
@@ -616,6 +783,8 @@ void D3D12Renderer::ReadActionNode()
 
 	renderFrame.rtInstantNeedCount = 0;
 	renderFrame.dsInstantNeedCount = 0;
+
+	loadedWrittenMask.assign(textureList.size(), false);
 
 	const size_t BUILTIN_ACTION_NODE_MAX = DX12_BuiltinActionId_Count;
 
@@ -645,33 +814,20 @@ void D3D12Renderer::ReadActionNode()
 
 
 		nodeList[n] = DX12_RenderActionNode{};
-		{
-			DX12_RenderAction& base = actionList[n];
-			base = {};
-			base.srInstantIdx.fill(TEX_INSTANT_NONE);
-			base.copySrcInstantIdx.fill(TEX_INSTANT_NONE);
-			base.outputSigId = OUTPUT_SIGNATURE_INVALID;
-		}
+		DX12_RenderAction& base = actionList[n];
+		base = {};
+		base.srInstantIdx.fill(TEX_INSTANT_NONE);
+		base.copySrcInstantIdx.fill(TEX_INSTANT_NONE);
+		base.outputSigId = OUTPUT_SIGNATURE_INVALID;
 		requestList[n].clear();
 		sortedList[n].clear();
 		n++;
 
 
-		bool deferred = layerDesc.pipelineType == Layer_PipelineType_Deferred;
-
-		if (deferred)
-		{
-			DebugReport(RenderReport_Contract, L"[미지원] 디퍼드 파이프라인은 이 버전에서 막혀 있음 (Forward 로 처리)");
-			deferred = false;
-		}
-
-		if (layerDesc.globalShadowTexId != 0 || layerDesc.localShadowTexId != 0)
-			DebugReport(RenderReport_Contract, L"[미지원] 레이어 섀도우맵 칸은 이 버전에서 막혀 있음 (무시됨)");
-
-		bool blockedPreCompute = false;
-		bool blockedShadow = false;
+		const bool deferred = layerDesc.pipelineType == Layer_PipelineType_Deferred;
 
 		const std::array<ActionID, RENDER_ACTION_NODE_MAX>* frontTable = builtinFrontTables[deferred ? 1 : 0];
+		const uint32_t* depthTable = builtinDepthTables[deferred ? 1 : 0];
 
 		uint32_t nodeOfId[DX12_BuiltinActionId_Count] = {};
 
@@ -682,44 +838,39 @@ void D3D12Renderer::ReadActionNode()
 			if (src.csId == 0)
 				continue;
 
-			blockedPreCompute = true;
-			continue;
-
-			nodeList[n] = DX12_RenderActionNode{1, {0}, DX12_BuiltinActionId_PreCompute0 + i};
+			nodeList[n] = DX12_RenderActionNode{1,DX12_BuiltinActionId_PreCompute0 + i};
 			FillRenderAction(actionList[n], src, layerVp);
 			ReadActionComputeRequest(src, layer, n);
-			LinkActionNodeFronts(layer, n, frontTable, nodeOfId);
+			RegisterActionNode(layer, n, depthTable, nodeOfId);
 			n++;
 		}
 
-		{
-			const RTB_ActionDraw& src = deferred ? layerDesc.actionGBuffer : layerDesc.actionEarlyZ;
+		const RTB_ActionDraw& srcEarly = deferred ? layerDesc.actionGBuffer : layerDesc.actionEarlyZ;
 
-			if (!IsEmpty(src.output))
-			{
-				nodeList[n] = DX12_RenderActionNode{1, {0}, deferred ? DX12_BuiltinActionId_GBuffer : DX12_BuiltinActionId_EarlyZ};
-				FillRenderAction(actionList[n], src, layerVp);
-				ReadActionDrawRequests(src, layer, n);
-				LinkActionNodeFronts(layer, n, frontTable, nodeOfId);
-				n++;
-			}
+		if (!IsEmpty(srcEarly.output))
+		{
+			nodeList[n] = DX12_RenderActionNode{1,deferred ? DX12_BuiltinActionId_GBuffer : DX12_BuiltinActionId_EarlyZ};
+			FillRenderAction(actionList[n], srcEarly, layerVp);
+			ReadActionDrawRequests(srcEarly, layer, n);
+			RegisterActionNode(layer, n, depthTable, nodeOfId);
+			n++;
 		}
 
 		if (layerDesc.actionAO.drawProp != 0)
 		{
-			nodeList[n] = DX12_RenderActionNode{1, {0}, DX12_BuiltinActionId_AO};
+			nodeList[n] = DX12_RenderActionNode{1,DX12_BuiltinActionId_AO};
 			FillRenderAction(actionList[n], layerDesc.actionAO, layerVp);
 			ReadActionEditRequest(layerDesc.actionAO, layer, n);
-			LinkActionNodeFronts(layer, n, frontTable, nodeOfId);
+			RegisterActionNode(layer, n, depthTable, nodeOfId);
 			n++;
 		}
 
 		if (layerDesc.actionAOBlur.drawProp != 0)
 		{
-			nodeList[n] = DX12_RenderActionNode{1, {0}, DX12_BuiltinActionId_AOBlur};
+			nodeList[n] = DX12_RenderActionNode{1,DX12_BuiltinActionId_AOBlur};
 			FillRenderAction(actionList[n], layerDesc.actionAOBlur, layerVp);
 			ReadActionEditRequest(layerDesc.actionAOBlur, layer, n);
-			LinkActionNodeFronts(layer, n, frontTable, nodeOfId);
+			RegisterActionNode(layer, n, depthTable, nodeOfId);
 			n++;
 		}
 
@@ -729,29 +880,23 @@ void D3D12Renderer::ReadActionNode()
 			if (IsEmpty(src.output))
 				continue;
 
-			blockedShadow = true;
-			continue;
-
-			nodeList[n] = DX12_RenderActionNode{1, {0}, DX12_BuiltinActionId_GlobalSDW0 + i};
+			nodeList[n] = DX12_RenderActionNode{1,DX12_BuiltinActionId_GlobalSDW0 + i};
 			FillRenderAction(actionList[n], src, layerVp);
 			ReadActionDrawRequests(src, layer, n);
-			LinkActionNodeFronts(layer, n, frontTable, nodeOfId);
+			RegisterActionNode(layer, n, depthTable, nodeOfId);
 			n++;
 		}
 
-		for (uint32_t i = 0; i < RENDER_LIGHT_MAX; i++)
+		for (uint32_t i = 0; i < RENDER_BUILTIN_LOCAL_SDW_MAX; i++)
 		{
 			const RTB_ActionDraw& src = layerDesc.actionLocalSDWs[i];
 			if (IsEmpty(src.output))
 				continue;
 
-			blockedShadow = true;
-			continue;
-
-			nodeList[n] = DX12_RenderActionNode{1, {0}, DX12_BuiltinActionId_LocalSDW0 + i};
+			nodeList[n] = DX12_RenderActionNode{1,DX12_BuiltinActionId_LocalSDW0 + i};
 			FillRenderAction(actionList[n], src, layerVp);
 			ReadActionDrawRequests(src, layer, n);
-			LinkActionNodeFronts(layer, n, frontTable, nodeOfId);
+			RegisterActionNode(layer, n, depthTable, nodeOfId);
 			n++;
 		}
 
@@ -761,10 +906,10 @@ void D3D12Renderer::ReadActionNode()
 
 			if (src.drawProp != 0)
 			{
-				nodeList[n] = DX12_RenderActionNode{1, {0}, DX12_BuiltinActionId_Lighting};
+				nodeList[n] = DX12_RenderActionNode{1,DX12_BuiltinActionId_Lighting};
 				FillRenderAction(actionList[n], src, layerVp);
 				ReadActionEditRequest(src, layer, n);
-				LinkActionNodeFronts(layer, n, frontTable, nodeOfId);
+				RegisterActionNode(layer, n, depthTable, nodeOfId);
 				n++;
 			}
 		}
@@ -774,30 +919,30 @@ void D3D12Renderer::ReadActionNode()
 
 			if (!IsEmpty(src.output))
 			{
-				nodeList[n] = DX12_RenderActionNode{1, {0}, DX12_BuiltinActionId_OPQ};
+				nodeList[n] = DX12_RenderActionNode{1,DX12_BuiltinActionId_OPQ};
 				FillRenderAction(actionList[n], src, layerVp);
 				ReadActionDrawRequests(src, layer, n);
-				LinkActionNodeFronts(layer, n, frontTable, nodeOfId);
+				RegisterActionNode(layer, n, depthTable, nodeOfId);
 				n++;
 			}
 		}
 
 		if (!IsEmpty(layerDesc.actionBackground.output))
 		{
-			nodeList[n] = DX12_RenderActionNode{1, {0}, DX12_BuiltinActionId_Background};
+			nodeList[n] = DX12_RenderActionNode{1,DX12_BuiltinActionId_Background};
 			FillRenderAction(actionList[n], layerDesc.actionBackground, layerVp);
 			requestList[n].clear();
 			sortedList[n].clear();
-			LinkActionNodeFronts(layer, n, frontTable, nodeOfId);
+			RegisterActionNode(layer, n, depthTable, nodeOfId);
 			n++;
 		}
 
 		if (!IsEmpty(layerDesc.actionTP.output))
 		{
-			nodeList[n] = DX12_RenderActionNode{1, {0}, DX12_BuiltinActionId_TP};
+			nodeList[n] = DX12_RenderActionNode{1,DX12_BuiltinActionId_TP};
 			FillRenderAction(actionList[n], layerDesc.actionTP, layerVp);
 			ReadActionDrawRequests(layerDesc.actionTP, layer, n);
-			LinkActionNodeFronts(layer, n, frontTable, nodeOfId);
+			RegisterActionNode(layer, n, depthTable, nodeOfId);
 			n++;
 		}
 
@@ -807,28 +952,28 @@ void D3D12Renderer::ReadActionNode()
 			if (src.drawProp == 0)
 				continue;
 
-			nodeList[n] = DX12_RenderActionNode{1, {0}, DX12_BuiltinActionId_PP0 + i};
+			nodeList[n] = DX12_RenderActionNode{1,DX12_BuiltinActionId_PP0 + i};
 			FillRenderAction(actionList[n], src, layerVp);
 			ReadActionEditRequest(src, layer, n);
-			LinkActionNodeFronts(layer, n, frontTable, nodeOfId);
+			RegisterActionNode(layer, n, depthTable, nodeOfId);
 			n++;
 		}
 
 		if (!IsEmpty(layerDesc.actionSC.output))
 		{
-			nodeList[n] = DX12_RenderActionNode{1, {0}, DX12_BuiltinActionId_SC};
+			nodeList[n] = DX12_RenderActionNode{1,DX12_BuiltinActionId_SC};
 			FillRenderAction(actionList[n], layerDesc.actionSC, layerVp);
 			ReadActionDrawRequests(layerDesc.actionSC, layer, n);
-			LinkActionNodeFronts(layer, n, frontTable, nodeOfId);
+			RegisterActionNode(layer, n, depthTable, nodeOfId);
 			n++;
 		}
 
 		if (!IsEmpty(layerDesc.actionDebug.output))
 		{
-			nodeList[n] = DX12_RenderActionNode{1, {0}, DX12_BuiltinActionId_Debug};
+			nodeList[n] = DX12_RenderActionNode{1,DX12_BuiltinActionId_Debug};
 			FillRenderAction(actionList[n], layerDesc.actionDebug, layerVp);
 			ReadActionDrawRequests(layerDesc.actionDebug, layer, n);
-			LinkActionNodeFronts(layer, n, frontTable, nodeOfId);
+			RegisterActionNode(layer, n, depthTable, nodeOfId);
 			n++;
 		}
 
@@ -837,13 +982,8 @@ void D3D12Renderer::ReadActionNode()
 		requestList.resize(n);
 		sortedList.resize(n);
 
-		if (blockedPreCompute)
-			DebugReport(RenderReport_Contract, L"[미지원] PreCompute 액션은 이 버전에서 막혀 있음 (노드 건너뜀)");
-		if (blockedShadow)
-			DebugReport(RenderReport_Contract, L"[미지원] 섀도우 액션은 이 버전에서 막혀 있음 (노드 건너뜀)");
 
-
-		BuildActionGraph(layer, layerDesc);
+		BuildActionGraph(layer, layerDesc, frontTable, nodeOfId, DX12_BuiltinActionId_Count);
 
 
 		layer.rtInstantOffset = renderFrame.rtInstantNeedCount;
@@ -1033,6 +1173,7 @@ const DataHub::RTB_Action& D3D12Renderer::GetActionSource(const DataHub::RTB_Lay
 	case DX12_BuiltinActionId_Background:	return layerDesc.actionBackground;
 	case DX12_BuiltinActionId_TP:			return layerDesc.actionTP;
 	case DX12_BuiltinActionId_SC:			return layerDesc.actionSC;
+	case DX12_BuiltinActionId_Debug:		return layerDesc.actionDebug;
 	default:								break;
 	}
 
@@ -1045,6 +1186,7 @@ const DataHub::RTB_Action& D3D12Renderer::GetActionSource(const DataHub::RTB_Lay
 	if (id >= DX12_BuiltinActionId_PP0 && id < DX12_BuiltinActionId_SC)
 		return layerDesc.actionPPs[id - DX12_BuiltinActionId_PP0];
 
+	DebugReport(DataHub::RenderReport_Invariant, L"[Graph] 빌트인 액션 id 가 칸 범위 밖");
 	return layerDesc.actionDebug;
 #else
 	const auto& v = layerDesc.actionList[id];
@@ -1059,7 +1201,8 @@ const DataHub::RTB_Action& D3D12Renderer::GetActionSource(const DataHub::RTB_Lay
 }
 
 
-void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB_Layer& layerDesc)
+void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB_Layer& layerDesc,
+	const std::array<ActionID, RENDER_ACTION_NODE_MAX>* frontTable, const uint32_t* nodeOfId, uint32_t idCount)
 {
 	using namespace DataHub;
 
@@ -1068,6 +1211,19 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 
 	if (layer.renderActionNodeList.size() != actionCount)
 		DebugReport(DataHub::RenderReport_Invariant, L"[Graph] 노드 리스트랑 액션 리스트 갯수 다름");
+
+	for (uint32_t i = 2; i < actionCount; i++)
+	{
+		if (layer.renderActionNodeList[i].nodeDepth < layer.renderActionNodeList[i - 1].nodeDepth)
+		{
+			DebugReport(DataHub::RenderReport_Invariant, L"[Graph] 노드 리스트가 깊이순이 아님");
+			break;
+		}
+	}
+
+	frontViewStateList.assign(idCount, 0);
+	frontViewOutList.resize((size_t)idCount * INSTANT_SLOT_MAX);
+	frontViewSRList.resize((size_t)idCount * INSTANT_SLOT_MAX);
 
 	static vector<DX12_InstantLogical> rtInstantLogicalList;
 	static vector<DX12_InstantLogical> dsInstantLogicalList;
@@ -1084,6 +1240,9 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 	for (uint32_t i = 1; i < actionCount; i++)
 	{
 		DX12_RenderAction& action = actionList[i];
+		const ActionID actionId = layer.renderActionNodeList[i].actionId;
+		const uint32_t depth = layer.renderActionNodeList[i].nodeDepth;
+		const RTB_Action& actionSrc = GetActionSource(layerDesc, actionId);
 
 		uint16_t outClaim[INSTANT_SLOT_MAX];
 		uint16_t srClaim[INSTANT_SLOT_MAX];
@@ -1103,19 +1262,27 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 
 		for (uint32_t f = 0; f < RENDER_ACTION_NODE_MAX; f++)
 		{
-			const uint32_t frontIdx = action.frontNodeIdx[f];
+			const ActionID frontId = frontTable[actionId][f];
 
-			if (frontIdx == 0)
+			if (frontId == 0)
 				continue;
 
-			if (frontIdx >= i)
+			if (frontId >= idCount)
+			{
+				DebugReport(DataHub::RenderReport_Contract, L"[Graph] 선행 칸 번호가 범위 밖 (무시)");
+				continue;
+			}
+
+			if (nodeOfId[frontId] >= i)
 			{
 				DebugReport(DataHub::RenderReport_Contract, L"[Graph] 선행 노드가 정렬상 뒤에 있음 / 자기 자신 (무시)");
 				continue;
 			}
 
-			const DX12_RenderAction& front = actionList[frontIdx];
-			const Action_Input& input = GetActionSource(layerDesc, layer.renderActionNodeList[i].actionId).inputs[f];
+			if (nodeOfId[frontId] == 0)
+				ResolveSkippedFront(layer, layerDesc, frontTable, nodeOfId, frontId);
+
+			const Action_Input& input = actionSrc.inputs[f];
 
 			for (uint8_t s = 0; s < INSTANT_SLOT_MAX; s++)
 			{
@@ -1124,13 +1291,14 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 
 				const Action_InputType type = isDS ? input.DSInputType : input.RTInputType[s];
 
-				if ((type & Action_InputType_ClearSR) == 0 && front.srInstantIdx[s] != TEX_INSTANT_NONE && inheritClaim[s] == TEX_INSTANT_NONE)
-					inheritClaim[s] = front.srInstantIdx[s];
+				const uint16_t frontSR = FrontSRInstant(layer, nodeOfId, frontId, s);
 
-				const TexID frontTexId = OutTexId(front, s);
-				const uint16_t logicalIdx = OutInstantIdx(front, s);
+				if ((type & Action_InputType_ClearSR) == 0 && frontSR != TEX_INSTANT_NONE && inheritClaim[s] == TEX_INSTANT_NONE)
+					inheritClaim[s] = frontSR;
 
-				if (frontTexId != 0 || logicalIdx == TEX_INSTANT_NONE)
+				const uint16_t logicalIdx = FrontOutInstant(layer, nodeOfId, frontId, s);
+
+				if (logicalIdx == TEX_INSTANT_NONE)
 					continue;
 
 				if (logicalIdx >= logicalList.size())
@@ -1146,16 +1314,13 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 
 				if (wantRead)
 				{
-					if (logicalList[logicalIdx].ownerActionIdx != frontIdx)
-						DebugReport(DataHub::RenderReport_Contract, L"[Graph] 선행 출력에 다른 액션이 먼저 이어 그림 (형제 노드 순서에 따라 결과 달라짐)");
-
 					if (srClaim[s] == TEX_INSTANT_NONE)
 					{
 						if (wantCopy)
 						{
 							srClaim[s] = (uint16_t)logicalList.size();
 							copySrc[s] = logicalIdx;
-							logicalList.push_back(DX12_InstantLogical{i, i, i, false, TEX_INSTANT_NONE});
+							logicalList.push_back(DX12_InstantLogical{depth, depth, i, 0, TEX_INSTANT_NONE});
 						}
 						else
 						{
@@ -1200,12 +1365,14 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 			if (texId != 0)
 			{
 				if (outClaim[s] != TEX_INSTANT_NONE)
-					DebugReport(DataHub::RenderReport_Contract, L"[Graph] 로디드 출력이라 선행 인스턴트 이어 그리기 무시");
+					DebugReport(DataHub::RenderReport_Contract, L"[Graph] 로디드 출력 칸에 선행 인스턴트 이어 그리기 요청 (무시됨, 끊으려면 Detach)");
 				continue;
 			}
 
 			if (outIdx != TEX_INSTANT_WANT)
 				continue;
+
+			const Action_Output_LoadOption loadOpt = isDS ? actionSrc.output.dsLoadOpt : actionSrc.output.loadOpt[s];
 
 			if (outClaim[s] != TEX_INSTANT_NONE)
 			{
@@ -1220,10 +1387,13 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 					srInherited[s] = false;
 				}
 
-				if (!IsFrontAction(action, logical.ownerActionIdx))
-					DebugReport(DataHub::RenderReport_Contract, L"[Graph] 선행 노드 출력이 아닌 인스턴트에 이어 그림 (다른 액션이 이미 이어받음)");
-				else if (logical.readAfterWrite && !readOnly)
-					DebugReport(DataHub::RenderReport_Contract, L"[Graph] 다른 액션이 읽은 인스턴트에 이어 그림 (형제 노드 순서에 따라 결과 달라짐)");
+				if (layer.renderActionNodeList[logical.ownerActionIdx].nodeDepth == depth)
+					DebugReport(DataHub::RenderReport_Contract, L"[Graph] 같은 깊이의 다른 액션이 쓴 인스턴트에 이어 그림 (같은 깊이끼리는 실행 순서 미보장)");
+				else if (logical.readDepth == depth && !readOnly)
+					DebugReport(DataHub::RenderReport_Contract, L"[Graph] 같은 깊이의 다른 액션이 읽은 인스턴트에 이어 그림 (같은 깊이끼리는 실행 순서 미보장)");
+
+				if (!readOnly && (loadOpt == Action_Output_LoadOption_Clear || (loadOpt == Action_Output_LoadOption_Auto && logical.ownerActionIdx == 0)))
+					action.clearMask |= (uint16_t)(1u << s);
 
 				SetOutInstant(action, s, logicalIdx);
 			}
@@ -1231,9 +1401,11 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 			{
 				if (readOnly)
 					DebugReport(DataHub::RenderReport_Contract, L"[Graph] 읽기전용 DS 인데 이어받을 DS 없음");
+				else if (loadOpt != Action_Output_LoadOption_Load)
+					action.clearMask |= (uint16_t)(1u << s);
 
 				SetOutInstant(action, s, (uint16_t)logicalList.size());
-				logicalList.push_back(DX12_InstantLogical{i, i, i, false, TEX_INSTANT_NONE});
+				logicalList.push_back(DX12_InstantLogical{depth, depth, readOnly ? 0u : i, 0, TEX_INSTANT_NONE});
 			}
 		}
 
@@ -1243,30 +1415,44 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 			const bool isDS = s == INSTANT_SLOT_DS;
 			auto& logicalList = isDS ? dsInstantLogicalList : rtInstantLogicalList;
 
+			const uint16_t outIdx = OutInstantIdx(action, s);
+			const uint16_t readIdx = copySrc[s] != TEX_INSTANT_NONE ? copySrc[s] : srClaim[s];
+
 			action.srInstantIdx[s] = srClaim[s];
 			action.copySrcInstantIdx[s] = copySrc[s];
 
+			if (readIdx != TEX_INSTANT_NONE && readIdx != outIdx
+				&& layer.renderActionNodeList[logicalList[readIdx].ownerActionIdx].nodeDepth == depth)
+				DebugReport(DataHub::RenderReport_Contract, L"[Graph] 같은 깊이의 다른 액션이 쓴 인스턴트를 읽음 (같은 깊이끼리는 실행 순서 미보장)");
+
 			if (srClaim[s] != TEX_INSTANT_NONE)
 			{
-				if (OutInstantIdx(action, s) != srClaim[s])
-					logicalList[srClaim[s]].readAfterWrite = true;
-				logicalList[srClaim[s]].lastUse = i;
+				if (logicalList[srClaim[s]].readDepth < depth)
+					logicalList[srClaim[s]].readDepth = depth;
+				logicalList[srClaim[s]].lastUse = depth;
 			}
 
 			if (copySrc[s] != TEX_INSTANT_NONE)
 			{
-				logicalList[copySrc[s]].readAfterWrite = true;
-				logicalList[copySrc[s]].lastUse = i;
+				if (logicalList[copySrc[s]].readDepth < depth)
+					logicalList[copySrc[s]].readDepth = depth;
+				logicalList[copySrc[s]].lastUse = depth;
 			}
-
-			const uint16_t outIdx = OutInstantIdx(action, s);
 
 			if (outIdx != TEX_INSTANT_NONE)
 			{
-				logicalList[outIdx].lastUse = i;
-				logicalList[outIdx].ownerActionIdx = i;
-				if (!(isDS && action.dsReadOnly))
-					logicalList[outIdx].readAfterWrite = false;
+				logicalList[outIdx].lastUse = depth;
+
+				if (isDS && action.dsReadOnly)
+				{
+					if (logicalList[outIdx].readDepth < depth)
+						logicalList[outIdx].readDepth = depth;
+				}
+				else
+				{
+					logicalList[outIdx].ownerActionIdx = i;
+					logicalList[outIdx].readDepth = 0;
+				}
 			}
 		}
 	}
@@ -1283,11 +1469,19 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 
 		uint16_t physicalCount = 0;
 		uint32_t cursor = 0;
+		uint32_t prevDepth = 0;
 		instantFreeList.clear();
 
 		for (uint32_t i = 1; i < actionCount; i++)
 		{
-			while (cursor < logicalCount && logicalList[cursor].firstUse == i)
+			const uint32_t depth = layer.renderActionNodeList[i].nodeDepth;
+
+			if (depth == prevDepth)
+				continue;
+
+			prevDepth = depth;
+
+			while (cursor < logicalCount && logicalList[cursor].firstUse == depth)
 			{
 				if (!instantFreeList.empty())
 				{
@@ -1304,7 +1498,7 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 
 			for (uint32_t l = 0; l < cursor; l++)
 			{
-				if (logicalList[l].lastUse == i)
+				if (logicalList[l].lastUse == depth)
 					instantFreeList.push_back(logicalList[l].physicalIdx);
 			}
 		}
@@ -1349,9 +1543,118 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 	rtInstantSimStateList.assign(layer.rtInstantCount, GetInstantBaseState(false));
 	dsInstantSimStateList.assign(layer.dsInstantCount, GetInstantBaseState(true));
 
+	loadedWriteDepthList.assign(textureList.size(), 0);
+	loadedReadDepthList.assign(textureList.size(), 0);
+	bufferWriteDepthList.assign(csBufferList.size(), 0);
+	bufferReadDepthList.assign(csBufferList.size(), 0);
+
+	uint32_t depthGroupCount = 0;
+
 	for (uint32_t i = 1; i < actionCount; i++)
 	{
-		BuildActionBarriers(actionList[i], rtInstantSimStateList, dsInstantSimStateList);
+		if (i == 1 || layer.renderActionNodeList[i].nodeDepth != layer.renderActionNodeList[i - 1].nodeDepth)
+			depthGroupCount++;
+	}
+
+	layer.depthBarrierLists.resize(depthGroupCount);
+
+	uint32_t depthGroup = 0;
+
+	for (uint32_t i = 1; i < actionCount; i++)
+	{
+		const uint32_t depth = layer.renderActionNodeList[i].nodeDepth;
+		const Action_Output& output = GetActionSource(layerDesc, layer.renderActionNodeList[i].actionId).output;
+
+		if (i == 1 || depth != layer.renderActionNodeList[i - 1].nodeDepth)
+		{
+			if (i != 1)
+				depthGroup++;
+
+			layer.depthBarrierLists[depthGroup].clear();
+
+			rtGroupReadStateList.assign(layer.rtInstantCount, D3D12_RESOURCE_STATE_COMMON);
+			dsGroupReadStateList.assign(layer.dsInstantCount, D3D12_RESOURCE_STATE_COMMON);
+			rtGroupTouchedList.assign(layer.rtInstantCount, 0);
+			dsGroupTouchedList.assign(layer.dsInstantCount, 0);
+
+			for (uint32_t j = i; j < actionCount && layer.renderActionNodeList[j].nodeDepth == depth; j++)
+				CollectGroupReadStates(actionList[j]);
+		}
+
+		BuildActionBarriers(actionList[i], rtInstantSimStateList, dsInstantSimStateList, layer.depthBarrierLists[depthGroup]);
+
+		actionList[i].layerShadowHideMask = 0;
+
+		for (uint8_t s = 0; s < INSTANT_SLOT_MAX; s++)
+		{
+			if (s == INSTANT_SLOT_DS && actionList[i].dsReadOnly)
+				continue;
+
+			const TexID outTexId = OutTexId(actionList[i], s);
+			if (outTexId == 0)
+				continue;
+
+			for (size_t k = 0; k < LAYER_SHADOW_SLOT_MAX; k++)
+			{
+				if (outTexId == layer.shadowTexIds[k])
+					actionList[i].layerShadowHideMask |= (uint8_t)(1 << k);
+			}
+
+			const Action_Output_LoadOption loadOpt = s == INSTANT_SLOT_DS ? output.dsLoadOpt : output.loadOpt[s];
+
+			if (loadOpt == Action_Output_LoadOption_Clear || (loadOpt == Action_Output_LoadOption_Auto && !loadedWrittenMask[outTexId]))
+				actionList[i].clearMask |= (uint16_t)(1u << s);
+
+			loadedWrittenMask[outTexId] = true;
+
+			if (loadedWriteDepthList[outTexId] == depth)
+				DebugReport(DataHub::RenderReport_Contract, L"[Graph] 같은 깊이의 액션들이 같은 텍스처에 씀 (같은 깊이끼리는 실행 순서 미보장)");
+			else if (loadedReadDepthList[outTexId] == depth)
+				DebugReport(DataHub::RenderReport_Contract, L"[Graph] 같은 깊이의 컴퓨트가 읽는 텍스처에 씀 (같은 깊이끼리는 실행 순서 미보장)");
+
+			loadedWriteDepthList[outTexId] = depth;
+		}
+
+		if (actionList[i].actionType == DX12_RenderActionType_Compute)
+		{
+			for (uint8_t k = 0; k < COMPUTE_BINDING_MAX; k++)
+			{
+				const uint8_t s = (uint8_t)(CS_SLOT_WRITE0 + k);
+				const uint16_t id = actionList[i].slotIds[s];
+
+				if (id == 0)
+					continue;
+
+				const bool isTex = IsCSTexture(actionList[i], s);
+				uint32_t* writeDepth = isTex ? &loadedWriteDepthList[id] : &bufferWriteDepthList[id];
+				const uint32_t readDepth = isTex ? loadedReadDepthList[id] : bufferReadDepthList[id];
+
+				if (*writeDepth == depth)
+					DebugReport(DataHub::RenderReport_Contract, L"[Graph] 같은 깊이의 액션들이 같은 컴퓨트 쓰기 자원에 씀 (같은 깊이끼리는 실행 순서 미보장)");
+				else if (readDepth == depth)
+					DebugReport(DataHub::RenderReport_Contract, L"[Graph] 같은 깊이의 컴퓨트가 읽는 자원에 씀 (같은 깊이끼리는 실행 순서 미보장)");
+
+				*writeDepth = depth;
+			}
+
+			for (uint8_t k = 0; k < COMPUTE_BINDING_MAX; k++)
+			{
+				const uint8_t s = (uint8_t)(CS_SLOT_READ0 + k);
+				const uint16_t id = actionList[i].slotIds[s];
+
+				if (id == 0)
+					continue;
+
+				const bool isTex = IsCSTexture(actionList[i], s);
+				uint32_t* readDepth = isTex ? &loadedReadDepthList[id] : &bufferReadDepthList[id];
+				const uint32_t writeDepth = isTex ? loadedWriteDepthList[id] : bufferWriteDepthList[id];
+
+				if (writeDepth == depth)
+					DebugReport(DataHub::RenderReport_Contract, L"[Graph] 같은 깊이의 다른 액션이 쓰는 자원을 컴퓨트가 읽음 (같은 깊이끼리는 실행 순서 미보장)");
+
+				*readDepth = depth;
+			}
+		}
 
 		if (actionList[i].actionType == DX12_RenderActionType_Compute)
 		{
@@ -1359,8 +1662,17 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 		}
 		else
 		{
-			const Action_Output& output = GetActionSource(layerDesc, layer.renderActionNodeList[i].actionId).output;
-			actionList[i].outputSigId = GetOutputSignatureId(MakeOutputSignature(actionList[i], output));
+			bool hasOutput = false;
+			for (uint8_t s = 0; s < INSTANT_SLOT_MAX && !hasOutput; s++)
+				hasOutput = OutTexId(actionList[i], s) != 0 || IsOutInstant(actionList[i], s);
+
+			if (hasOutput)
+				actionList[i].outputSigId = GetOutputSignatureId(MakeOutputSignature(actionList[i], output));
+			else
+			{
+				DebugReport(DataHub::RenderReport_Contract, L"[Graph] 출력 칸이 하나도 없는 액션 (그리기 건너뜀)");
+				actionList[i].outputSigId = OUTPUT_SIGNATURE_INVALID;
+			}
 		}
 	}
 
@@ -1381,11 +1693,12 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 	#pragma endregion
 }
 
-void D3D12Renderer::BuildActionBarriers(DX12_RenderAction& action, vector<D3D12_RESOURCE_STATES>& rtInstantSimStateList, vector<D3D12_RESOURCE_STATES>& dsInstantSimStateList)
+void D3D12Renderer::BuildActionBarriers(DX12_RenderAction& action, vector<D3D12_RESOURCE_STATES>& rtInstantSimStateList, vector<D3D12_RESOURCE_STATES>& dsInstantSimStateList,
+	vector<DX12_ActionBarrier>& depthBarriers)
 {
 	const bool isCompute = action.actionType == DX12_RenderActionType_Compute;
 
-	action.copyBarriers.clear();
+	action.errorCopyBarriers.clear();
 	action.beginBarriers.clear();
 	action.endBarriers.clear();
 
@@ -1402,6 +1715,8 @@ void D3D12Renderer::BuildActionBarriers(DX12_RenderAction& action, vector<D3D12_
 		const uint16_t dstIdx = action.srInstantIdx[s];
 		const bool isDS = s == INSTANT_SLOT_DS;
 		auto& simStates = isDS ? dsInstantSimStateList : rtInstantSimStateList;
+		auto& readStates = isDS ? dsGroupReadStateList : rtGroupReadStateList;
+		auto& touchedList = isDS ? dsGroupTouchedList : rtGroupTouchedList;
 		const DX12_BarrierTarget target = isDS ? DX12_BarrierTarget_DSInstant : DX12_BarrierTarget_RTInstant;
 
 		if (dstIdx == TEX_INSTANT_NONE || srcIdx >= simStates.size() || dstIdx >= simStates.size())
@@ -1412,8 +1727,10 @@ void D3D12Renderer::BuildActionBarriers(DX12_RenderAction& action, vector<D3D12_
 			continue;
 		}
 
-		TransitionInstant(action.copyBarriers, target, srcIdx, simStates[srcIdx], D3D12_RESOURCE_STATE_COPY_SOURCE);
-		TransitionInstant(action.copyBarriers, target, dstIdx, simStates[dstIdx], D3D12_RESOURCE_STATE_COPY_DEST);
+		TransitionInstant(depthBarriers, action.errorCopyBarriers, target, srcIdx, simStates[srcIdx], touchedList[srcIdx],
+			D3D12_RESOURCE_STATE_COPY_SOURCE | readStates[srcIdx]);
+		TransitionInstant(depthBarriers, action.errorCopyBarriers, target, dstIdx, simStates[dstIdx], touchedList[dstIdx],
+			D3D12_RESOURCE_STATE_COPY_DEST);
 	}
 
 	#pragma endregion
@@ -1430,6 +1747,8 @@ void D3D12Renderer::BuildActionBarriers(DX12_RenderAction& action, vector<D3D12_
 
 		const bool isDS = s == INSTANT_SLOT_DS;
 		auto& simStates = isDS ? dsInstantSimStateList : rtInstantSimStateList;
+		auto& readStates = isDS ? dsGroupReadStateList : rtGroupReadStateList;
+		auto& touchedList = isDS ? dsGroupTouchedList : rtGroupTouchedList;
 
 		if (instIdx >= simStates.size())
 		{
@@ -1437,8 +1756,8 @@ void D3D12Renderer::BuildActionBarriers(DX12_RenderAction& action, vector<D3D12_
 			continue;
 		}
 
-		TransitionInstant(action.beginBarriers, isDS ? DX12_BarrierTarget_DSInstant : DX12_BarrierTarget_RTInstant,
-			instIdx, simStates[instIdx], GetInstantReadState(action.actionType, isDS));
+		TransitionInstant(depthBarriers, action.beginBarriers, isDS ? DX12_BarrierTarget_DSInstant : DX12_BarrierTarget_RTInstant,
+			instIdx, simStates[instIdx], touchedList[instIdx], GetInstantReadState(action.actionType, isDS) | readStates[instIdx]);
 	}
 
 	#pragma endregion
@@ -1496,8 +1815,8 @@ void D3D12Renderer::BuildActionBarriers(DX12_RenderAction& action, vector<D3D12_
 				continue;
 			}
 
-			TransitionInstant(action.beginBarriers, DX12_BarrierTarget_RTInstant, instIdx,
-				rtInstantSimStateList[instIdx], D3D12_RESOURCE_STATE_RENDER_TARGET);
+			TransitionInstant(depthBarriers, action.beginBarriers, DX12_BarrierTarget_RTInstant, instIdx,
+				rtInstantSimStateList[instIdx], rtGroupTouchedList[instIdx], D3D12_RESOURCE_STATE_RENDER_TARGET);
 		}
 	}
 
@@ -1539,8 +1858,9 @@ void D3D12Renderer::BuildActionBarriers(DX12_RenderAction& action, vector<D3D12_
 		}
 		else
 		{
-			TransitionInstant(action.beginBarriers, DX12_BarrierTarget_DSInstant, dsInstIdx,
-				dsInstantSimStateList[dsInstIdx], dsUse);
+			TransitionInstant(depthBarriers, action.beginBarriers, DX12_BarrierTarget_DSInstant, dsInstIdx,
+				dsInstantSimStateList[dsInstIdx], dsGroupTouchedList[dsInstIdx],
+				action.dsReadOnly ? (dsUse | dsGroupReadStateList[dsInstIdx]) : dsUse);
 		}
 	}
 
@@ -1631,6 +1951,12 @@ void D3D12Renderer::BuildActionBarriers(DX12_RenderAction& action, vector<D3D12_
 				}
 			}
 
+			if (valid && isTex && !MarkOrBuildSingleTexture(id))
+			{
+				DebugReport(DataHub::RenderReport_Limit, L"[Barrier] 컴퓨트 읽기 텍스처 뷰 자리 없음 (칸 무시)");
+				valid = false;
+			}
+
 			if (!valid)
 			{
 				SetCSBinding(action, s, 0, false);
@@ -1639,8 +1965,13 @@ void D3D12Renderer::BuildActionBarriers(DX12_RenderAction& action, vector<D3D12_
 
 			if (isTex)
 			{
-				MarkOrBuildSingleTexture(id);
-				TransitionLoaded(action, id, texRefList_WTex[id].usage, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+				bool transitioned = false;
+				for (uint8_t i = CS_SLOT_READ0; i < s && !transitioned; i++)
+					transitioned = action.slotIds[i] == id && IsCSTexture(action, i);
+
+				if (!transitioned)
+					TransitionLoaded(action, id, texRefList_WTex[id].usage, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 			}
 		}
 	}

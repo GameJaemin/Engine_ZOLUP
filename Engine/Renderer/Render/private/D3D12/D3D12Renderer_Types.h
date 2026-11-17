@@ -6,6 +6,7 @@
 
 #include <memory>
 
+
 namespace Hakko
 {
 
@@ -51,15 +52,31 @@ constexpr uint16_t DEFAULT_RES_CTEX_COUNT = RESERVED_TEXPROP_COUNT;
 constexpr uint32_t DEFAULT_SHADER_COMPOSITE_PS = 1;
 constexpr uint32_t DEFAULT_SHADER_SKYBOX_VS = 2;
 constexpr uint32_t DEFAULT_SHADER_SKYBOX_PS = 3;
-constexpr uint32_t DEFAULT_SHADER_BG_VS = 4;
-constexpr uint32_t DEFAULT_SHADER_BG_PS = 5;
+constexpr uint32_t DEFAULT_SHADER_BG_PS = 4;
 constexpr uint32_t DEFAULT_SHADER_WORLD_VS = RESERVED_SHADER_WORLD_VS_ID;
 constexpr uint32_t DEFAULT_SHADER_WORLD_OPQ_PS = RESERVED_SHADER_WORLD_OPQ_PS_ID;
 constexpr uint32_t DEFAULT_SHADER_WORLD_TP_PS = RESERVED_SHADER_WORLD_TP_PS_ID;
+constexpr uint32_t DEFAULT_SHADER_PARTICLE_VS = RESERVED_SHADER_PARTICLE_VS_ID;
+constexpr uint32_t DEFAULT_SHADER_PARTICLE_PS = RESERVED_SHADER_PARTICLE_PS_ID;
+constexpr uint32_t DEFAULT_SHADER_SHADOW_VS = RESERVED_SHADER_SHADOW_VS_ID;
+constexpr uint32_t DEFAULT_SHADER_PP_VS = RESERVED_SHADER_PP_VS_ID;
+constexpr uint32_t DEFAULT_SHADER_SSAO_PS = RESERVED_SHADER_SSAO_PS_ID;
+constexpr uint32_t DEFAULT_SHADER_AOBLUR_PS = RESERVED_SHADER_AOBLUR_PS_ID;
+constexpr uint32_t DEFAULT_SHADER_DEFERRED_LIGHTING_PS = RESERVED_SHADER_DEFERRED_LIGHTING_PS_ID;
+constexpr uint32_t DEFAULT_SHADER_BLOOM_PREFILTER_PS = RESERVED_SHADER_BLOOM_PREFILTER_PS_ID;
+constexpr uint32_t DEFAULT_SHADER_BLOOM_DOWN_PS = RESERVED_SHADER_BLOOM_DOWN_PS_ID;
+constexpr uint32_t DEFAULT_SHADER_BLOOM_UP_PS = RESERVED_SHADER_BLOOM_UP_PS_ID;
+constexpr uint32_t DEFAULT_SHADER_BLOOM_COMBINE_PS = RESERVED_SHADER_BLOOM_COMBINE_PS_ID;
+constexpr uint32_t DEFAULT_SHADER_TONEMAP_PS = RESERVED_SHADER_TONEMAP_PS_ID;
+constexpr uint32_t DEFAULT_SHADER_FXAA_PS = RESERVED_SHADER_FXAA_PS_ID;
+constexpr uint32_t DEFAULT_SHADER_SKINNING_CS = RESERVED_SHADER_SKINNING_CS_ID;
+constexpr uint32_t DEFAULT_SHADER_PARTICLE_CS = RESERVED_SHADER_PARTICLE_CS_ID;
 static_assert(DEFAULT_SHADER_BG_PS + 1 == DEFAULT_SHADER_WORLD_VS, "렌더러 내부 셰이더 칸과 허브 기본 제공 셰이더 칸이 안 이어짐");
-static_assert(DEFAULT_SHADER_WORLD_TP_PS + 1 == DEFAULT_RES_SHADER_COUNT, "빌트인 셰이더 수가 허브 예약 (RESERVED_SHADER_COUNT) 과 다름");
+static_assert(DEFAULT_SHADER_PARTICLE_CS + 1 == DEFAULT_RES_SHADER_COUNT, "빌트인 셰이더 수가 허브 예약 (RESERVED_SHADER_COUNT) 과 다름");
 
 constexpr uint16_t DEFAULT_TEX_TRANSPARENT = RESERVED_TEX_TRANSPARENT_ID;
+constexpr uint16_t DEFAULT_TEX_NONE_SHADOW = RESERVED_TEX_NONE_SHADOW_ID;
+static_assert(DEFAULT_TEX_NONE_SHADOW + 1 == DEFAULT_RES_TEX_COUNT, "빌트인 텍스처 수가 허브 예약 (RESERVED_TEXTURE_COUNT) 과 다름");
 
 
 #pragma region RenderResource
@@ -134,7 +151,7 @@ struct DX12_InstantLogical{
 	uint32_t firstUse;
 	uint32_t lastUse;
 	uint32_t ownerActionIdx;
-	bool readAfterWrite;
+	uint32_t readDepth;
 	uint16_t physicalIdx;
 };
 
@@ -143,6 +160,7 @@ struct DX12_InstantLogical{
 
 #define INSTANT_SLOT_MAX (RENDER_TARGET_MAX + 1)
 #define INSTANT_SLOT_DS RENDER_TARGET_MAX
+#define CLEAR_MASK_AREA_SHIFT 15
 
 #pragma endregion
 
@@ -191,6 +209,7 @@ struct DX12_BufferView{
 #pragma region PSOVariant
 
 #define SHADER_VARIANT_NONE 0
+#define SHADER_VARIANT_PS_ALPHACLIP 0x80
 struct DX12_CompiledShader{
 	ShaderID shaderId;
 	uint8_t variant;
@@ -243,6 +262,13 @@ struct DX12_ComputePSO{
 
 #pragma region RootSignature
 
+constexpr size_t LAYER_SHADOW_SLOT_MAX = 2;
+
+static_assert(sizeof(DataHub::ShadowPreset_Entry) == 96 && sizeof(DataHub::DataBox_RenderShadowPreset) == 96 * (RENDER_SHADOW_PRESET_LOCAL_MAX + 1),
+	"그림자 프리셋 배치가 셰이더 (registers.hlsli 의 ShadowPresetEntry / SHADOW_PRESET_ENTRY_MAX) 와 다름");
+static_assert((RENDER_SHADOW_PRESET_MAX * sizeof(DataHub::DataBox_RenderShadowPreset)) % 256 == 0,
+	"레이어 그림자 프리셋 묶음이 256 배수가 아님 (RENDER_SHADOW_PRESET_MAX 는 8 의 배수로)");
+
 enum DX12_RootParam
 {
 	RootParam_ObjectCB0			= 0,								// b0~b4 space3 : 물체 칸 k = ObjectCB0 + k (DRAWREQ_DATABOX_MAX 개, CBV 2 DWORD 씩)
@@ -253,8 +279,9 @@ enum DX12_RootParam
 	RootParam_LayerDataCB,											// b0 space1 : 레이어 데이터 (2)
 	RootParam_ConditionCB,											// b0 space0 : 카메라 등 (2)
 	RootParam_LightCB,												// b1 space0 : 조명 64 (2)
-	RootParam_LightMatrixCB,										// b2 space0 : 조명 행렬 64 (2)
 	RootParam_LayerTexTable,										// t0 space4 : 레이어 전역 텍스처 (환경맵 큐브) 1칸 테이블 (1)
+	RootParam_LayerShadowTex0,										// t1~t2 space4 : 레이어 섀도우맵 (전역 / 로컬), 1칸 테이블 x 2 (칸 s = LayerShadowTex0 + s)
+	RootParam_ShadowPresetSB	= RootParam_LayerShadowTex0 + LAYER_SHADOW_SLOT_MAX,	// t3 space4 : 레이어 그림자 프리셋 묶음 (루트 SRV 2 DWORD)
 	RootParam_Constants,											// b4 space0 : 루트 상수 4 DWORD (배경 틴트 등)
 	RootParam_Count,
 };
@@ -334,7 +361,6 @@ enum DX12_RenderActionType{
 // TODO 아직 커스텀 모드, 그래프 노드분석은 미구현
 struct DX12_RenderActionNode{
 	uint32_t nodeDepth;
-	ActionID frontIds[RENDER_ACTION_NODE_MAX];
 	ActionID actionId;
 };
 
@@ -347,7 +373,7 @@ enum DX12_BuiltinActionId : uint32_t{
 	DX12_BuiltinActionId_AOBlur,
 	DX12_BuiltinActionId_GlobalSDW0,
 	DX12_BuiltinActionId_LocalSDW0 = DX12_BuiltinActionId_GlobalSDW0 + RENDER_BUILTIN_CSM_MAX,
-	DX12_BuiltinActionId_OPQ = DX12_BuiltinActionId_LocalSDW0 + RENDER_LIGHT_MAX,
+	DX12_BuiltinActionId_OPQ = DX12_BuiltinActionId_LocalSDW0 + RENDER_BUILTIN_LOCAL_SDW_MAX,
 	DX12_BuiltinActionId_Lighting,
 	DX12_BuiltinActionId_Background,
 	DX12_BuiltinActionId_TP,
@@ -364,14 +390,15 @@ enum DX12_BuiltinActionId : uint32_t{
 
 struct DX12_RenderAction
 {
+	// --- Action Header ---
 	DX12_RenderActionType actionType;
 	DataHub::BuiltinActionType builtinType;
 	DataHub::RenderIDType renderIdType;
-	std::array<uint32_t, RENDER_ACTION_NODE_MAX> frontNodeIdx;
 	
 	D3D12_VIEWPORT viewport;
 	D3D12_RECT scissorRect;
 
+	// --- I/O states ---
 	OutputSignatureID outputSigId;
 	DataHub::Action_OutputLayout outputLayout;
 
@@ -381,13 +408,16 @@ struct DX12_RenderAction
 	std::array<uint16_t, INSTANT_SLOT_MAX> copySrcInstantIdx;
 
 	bool dsReadOnly;
-	std::array<DataHub::Action_Output_LoadOption, RENDER_TARGET_MAX> rtLoadOpts;
-	DataHub::Action_Output_LoadOption dsLoadOpt;
 
-	std::vector<DX12_ActionBarrier> copyBarriers;
+	uint16_t clearMask;
+	uint8_t layerShadowHideMask;
+
 	std::vector<DX12_ActionBarrier> beginBarriers;
 	std::vector<DX12_ActionBarrier> endBarriers;
 
+	std::vector<DX12_ActionBarrier> errorCopyBarriers;
+
+	// --- Action Data / Data Info ---
 	DataHub::DataBoxTID actionDataTid;
 	DX12_RenderData actionRenderData;
 
@@ -401,21 +431,26 @@ struct DX12_RenderAction
 
 struct DX12_RenderLayer
 {
+	// --- Layer Header ---
 	TexID bgTexId;
 	bool bgIsCube;
 	float bgColor[4];
 	TexID envTexId;
+	TexID shadowTexIds[LAYER_SHADOW_SLOT_MAX];
 
+	// --- Layer Data ---
 	DX12_RenderData conditionRenderData;
 	DX12_RenderData lightRenderData;
-	DX12_RenderData lightMatrixRenderData;
+	DX12_RenderData shadowPresetRenderData;
 
 	DataHub::DataBoxTID layerDataTid;
 	DX12_RenderData layerRenderData;
 
+	// --- Action Graph ---
 	std::vector<DX12_RenderActionNode> renderActionNodeList;
 	std::vector<DX12_RenderAction> renderActionList;
 
+	std::vector<std::vector<DX12_ActionBarrier>> depthBarrierLists;
 	std::vector<DX12_ActionBarrier> finalBarriers;
 
 	uint16_t rtInstantCount;
@@ -424,6 +459,7 @@ struct DX12_RenderLayer
 	uint16_t rtInstantOffset;
 	uint16_t dsInstantOffset;
 
+	// --- Draw Data ---
 	std::vector<std::vector<DX12_RenderRequestProxy>> actionRenderRequestList;
 	std::vector<std::vector<DX12_RenderDrawData>> actionSortedRenderDataList;
 };
@@ -450,6 +486,8 @@ typedef DX12_RenderFrame DX12_RenderCanvas;
 
 
 #pragma region Helper
+
+#define RENDER_DEBUG_CHECK (RENDER_DEBUG_OUTPUT_MODE == RENDER_DEBUG_OUTPUT_ENABLE)
 
 inline static void DebugReport(DataHub::RenderReportKind kind, const wchar_t* msg)
 {
@@ -498,6 +536,16 @@ inline static D3D12_CLEAR_FLAGS GetDSClearFlags(DXGI_FORMAT dsvFormat)
 	case DXGI_FORMAT_D24_UNORM_S8_UINT:
 	case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:	return D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL;
 	default:								return D3D12_CLEAR_FLAG_DEPTH;
+	}
+}
+
+inline static D3D12_DSV_FLAGS GetDSVReadOnlyFlags(DXGI_FORMAT dsvFormat)
+{
+	switch (dsvFormat)
+	{
+	case DXGI_FORMAT_D24_UNORM_S8_UINT:
+	case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:	return D3D12_DSV_FLAG_READ_ONLY_DEPTH | D3D12_DSV_FLAG_READ_ONLY_STENCIL;
+	default:								return D3D12_DSV_FLAG_READ_ONLY_DEPTH;
 	}
 }
 

@@ -108,7 +108,7 @@ UINT D3D12Renderer::DescriptorHeapAllocator::GetUsageIndexCombined(UINT reqSize)
 		}
 		else
 		{
-			if (vHeapCount >= NUM_DESCRIPTORS)
+			if (vHeapCount + reqSize > NUM_DESCRIPTORS)
 			{
 				DebugReport(DataHub::RenderReport_Limit, L"[Heap] 디스크립터 힙 꽉참");
 				return NUM_DESCRIPTORS;
@@ -122,7 +122,7 @@ UINT D3D12Renderer::DescriptorHeapAllocator::GetUsageIndexCombined(UINT reqSize)
 	}
 	else
 	{
-		if (vHeapCount >= NUM_DESCRIPTORS)
+		if (vHeapCount + reqSize > NUM_DESCRIPTORS)
 		{
 			DebugReport(DataHub::RenderReport_Limit, L"[Heap] 디스크립터 힙 꽉참");
 			return NUM_DESCRIPTORS;

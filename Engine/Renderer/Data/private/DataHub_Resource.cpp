@@ -175,12 +175,6 @@ namespace Hakko::DataHub
 
     TexID CreateTexture(const wchar_t* name, Texture&& tex)
     {
-        if (tex.usage != TextureUsage_ReadOnly)
-        {
-            Internal::PushHubReport(HubReport_Contract, L"[미지원] CreateTexture: 쓰기 텍스처 (usage RT / DS / Compute) 는 이 버전에서 막혀 있음");
-            return 0;
-        }
-
         if (!ValidateTextureUsage(tex))
         {
             Internal::PushHubReport(HubReport_Contract, L"[Hub] CreateTexture: 포맷이 usage 와 안 맞음 (DS = 깊이 포맷만 / RT, Compute = 깊이, 블록 압축 불가 / Compute = sRGB 불가)");
@@ -210,9 +204,6 @@ namespace Hakko::DataHub
 
     CSBufferID CreateComputeBuffer(const wchar_t* name, const ComputeBuffer& desc)
     {
-        Internal::PushHubReport(HubReport_Contract, L"[미지원] CreateComputeBuffer: 컴퓨트 버퍼는 이 버전에서 막혀 있음");
-        return 0;
-
         if (!ValidateComputeBuffer(desc))
         {
             Internal::PushHubReport(HubReport_Contract, L"[Hub] CreateComputeBuffer: stride(4의 배수) / count 0 / data 크기 불일치");
@@ -339,9 +330,6 @@ namespace Hakko::DataHub
     MeshID LinkComputeBufferAsMesh(const wchar_t *csBufferName, const wchar_t *meshName, 
                                     std::vector<VIndex>&& indices, std::vector<SubMesh>&& subMeshes)
     {
-        Internal::PushHubReport(HubReport_Contract, L"[미지원] LinkComputeBufferAsMesh: 컴퓨트 버퍼 링크 메쉬는 이 버전에서 막혀 있음");
-        return 0;
-
         if (indices.empty())
         {
             Internal::PushHubReport(HubReport_Contract, L"[Hub] LinkComputeBufferAsMesh: 인덱스 정보 비어있음");
@@ -486,12 +474,6 @@ namespace Hakko::DataHub
 
     bool UpdateTexture(std::wstring_view name, Texture&& tex)
     {
-        if (tex.usage != TextureUsage_ReadOnly)
-        {
-            Internal::PushHubReport(HubReport_Contract, L"[미지원] UpdateTexture: 쓰기 텍스처 (usage RT / DS / Compute) 는 이 버전에서 막혀 있음");
-            return false;
-        }
-
         if (!ValidateTextureUsage(tex))
         {
             Internal::PushHubReport(HubReport_Contract, L"[Hub] UpdateTexture: 포맷이 usage 와 안 맞음 (DS = 깊이 포맷만 / RT, Compute = 깊이, 블록 압축 불가 / Compute = sRGB 불가)");
@@ -520,9 +502,6 @@ namespace Hakko::DataHub
 
     bool UpdateComputeBuffer(std::wstring_view name, const ComputeBuffer& desc)
     {
-        Internal::PushHubReport(HubReport_Contract, L"[미지원] UpdateComputeBuffer: 컴퓨트 버퍼는 이 버전에서 막혀 있음");
-        return false;
-
         if (!ValidateComputeBuffer(desc))
         {
             Internal::PushHubReport(HubReport_Contract, L"[Hub] UpdateComputeBuffer: stride(4의 배수) / count 0 / data 크기 불일치");
