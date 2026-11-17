@@ -19,6 +19,8 @@ void InputState::ClearFrameEvents()
 {
 	// clear는 원소만 지우고 할당한 메모리는 유지하므로 다음 프레임에 재사용한다.
 	frameEvents.clear();
+	mouseDelta = {};
+	mouseWheelDelta = 0.0f;
 }
 
 void InputState::PressKey(Key key)
@@ -67,4 +69,46 @@ bool InputState::IsKeyDown(Key key) const
 const std::vector<KeyEvent>& InputState::GetFrameEvents() const
 {
 	return frameEvents;
+}
+
+void InputState::RecordMousePosition(int x, int y)
+{
+	if (mousePosition.has_value())
+	{
+		mouseDelta.x += x - mousePosition->x;
+		mouseDelta.y += y - mousePosition->y;
+	}
+	mousePosition = MouseCoordinates{ x, y };
+}
+
+void InputState::InvalidateMousePosition()
+{
+	mousePosition.reset();
+}
+
+void InputState::ResetMouseInput()
+{
+	InvalidateMousePosition();
+	mouseDelta = {};
+	mouseWheelDelta = 0.0f;
+}
+
+std::optional<MouseCoordinates> InputState::GetMousePosition() const
+{
+	return mousePosition;
+}
+
+MouseCoordinates InputState::GetMouseDelta() const
+{
+	return mouseDelta;
+}
+
+void InputState::AddMouseWheelDelta(float delta)
+{
+	mouseWheelDelta += delta;
+}
+
+float InputState::GetMouseWheelDelta() const
+{
+	return mouseWheelDelta;
 }

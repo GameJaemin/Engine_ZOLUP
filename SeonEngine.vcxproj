@@ -19,6 +19,7 @@
     <ClCompile Include="Game\Source\GameApplication.cpp" />
     <ClCompile Include="Editor\Source\EditorApplication.cpp" />
     <ClCompile Include="Editor\Source\EditorCamera.cpp" />
+    <ClCompile Include="Editor\Source\EditorCameraController.cpp" />
     <ClCompile Include="Editor\Source\EditorSelection.cpp" />
     <ClCompile Include="Editor\Source\EditorWorldSession.cpp" />
     <ClCompile Include="Game\Source\PlayerObject.cpp" />
@@ -74,6 +75,7 @@
     <ClInclude Include="Game\Source\GameApplication.h" />
     <ClInclude Include="Editor\Source\EditorApplication.h" />
     <ClInclude Include="Editor\Source\EditorCamera.h" />
+    <ClInclude Include="Editor\Source\EditorCameraController.h" />
     <ClInclude Include="Editor\Source\EditorSelection.h" />
     <ClInclude Include="Editor\Source\EditorWorldSession.h" />
     <ClInclude Include="Engine\Source\Input\InputState.h" />

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "EditorCamera.h"
+#include "EditorCameraController.h"
 #include "EditorSelection.h"
 #include "EditorWorldSession.h"
 #include "IApplication.h"
@@ -19,4 +20,5 @@ private:
 	EditorWorldSession worldSession;
 	EditorSelection selection;
 	EditorCamera editorCamera;
+	EditorCameraController cameraController;
 };

@@ -3,17 +3,28 @@
 #include "Input/Key.h"
 
 #include <array>
+#include <optional>
 #include <vector>
 
+/** 픽셀 단위 마우스 위치 또는 이동량이다. +X는 오른쪽, +Y는 아래쪽이다. */
+struct MouseCoordinates
+{
+	int x = 0;
+	int y = 0;
+};
+
 /**
- * 창에서 수집한 키 상태를 메인 스레드에서 보관한다.
+ * 창에서 수집한 키와 마우스 입력을 메인 스레드에서 보관한다.
  * 키별 누르는 중 여부와 이번 프레임에 들어온 순서대로의 키 이벤트를 함께 유지한다.
  */
 class InputState
 {
 	// 프레임 갱신
 public:
-	/** 메시지 처리 전에 프레임당 한 번 호출한다. 이벤트 목록만 비우고 누르는 중 상태와 목록 메모리는 유지한다. */
+	/**
+	 * 메시지 처리 전에 프레임당 한 번 호출한다. 키 이벤트 목록과 마우스 이동량 및 휠 누적값을 비운다.
+	 * 누르는 중인 키, 마지막 마우스 위치와 이벤트 목록 메모리는 유지한다.
+	 */
 	void ClearFrameEvents();
 
 	// 키 상태
@@ -49,4 +60,32 @@ private:
 	// 인덱스는 Key 값이다.
 	std::array<bool, KeyCount> downKeys = {};
 	std::vector<KeyEvent> frameEvents;
+
+	// 마우스 입력
+public:
+	/** 클라이언트 좌표를 기록한다. 이전 위치가 있으면 두 위치의 차이를 이번 프레임 이동량에 더한다. */
+	void RecordMousePosition(int x, int y);
+
+	/** 커서가 창을 벗어날 때 위치 기준을 지운다. 이번 프레임에 쌓인 이동량은 유지한다. */
+	void InvalidateMousePosition();
+
+	/** 포커스 상실 시 마우스 위치 기준과 이번 프레임의 이동량 및 휠 누적값을 비운다. */
+	void ResetMouseInput();
+
+	/** 마지막으로 기록한 클라이언트 좌표를 반환한다. 유효한 위치가 없으면 std::nullopt를 반환한다. */
+	std::optional<MouseCoordinates> GetMousePosition() const;
+
+	/** 이번 프레임에 쌓인 마우스 이동량을 픽셀 단위로 반환한다. */
+	MouseCoordinates GetMouseDelta() const;
+
+	/** 이번 프레임의 휠 이동량에 더한다. 앞으로 한 칸은 +1.0이며 소수 입력도 받는다. */
+	void AddMouseWheelDelta(float delta);
+
+	/** 이번 프레임에 누적한 휠 이동량을 반환한다. 단위는 휠 한 칸이다. */
+	float GetMouseWheelDelta() const;
+
+private:
+	std::optional<MouseCoordinates> mousePosition;
+	MouseCoordinates mouseDelta = {};
+	float mouseWheelDelta = 0.0f;
 };

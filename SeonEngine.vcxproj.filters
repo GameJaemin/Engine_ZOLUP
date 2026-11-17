@@ -66,6 +66,9 @@
     <ClCompile Include="Editor\Source\EditorCamera.cpp">
       <Filter>Editor\Source</Filter>
     </ClCompile>
+    <ClCompile Include="Editor\Source\EditorCameraController.cpp">
+      <Filter>Editor\Source</Filter>
+    </ClCompile>
     <ClCompile Include="Editor\Source\EditorSelection.cpp">
       <Filter>Editor\Source</Filter>
     </ClCompile>
@@ -201,6 +204,9 @@
       <Filter>Editor\Source</Filter>
     </ClInclude>
     <ClInclude Include="Editor\Source\EditorCamera.h">
+      <Filter>Editor\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Editor\Source\EditorCameraController.h">
       <Filter>Editor\Source</Filter>
     </ClInclude>
     <ClInclude Include="Editor\Source\EditorSelection.h">

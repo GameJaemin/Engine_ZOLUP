@@ -3,6 +3,11 @@
 #include "Core/Log.h"
 #include "Input/Key.h"
 
+#include <Windowsx.h>
+
+// Windowsx.h의 매크로가 WindowsApplication::IsMinimized 정의를 바꾸지 않도록 한다.
+#undef IsMinimized
+
 #include <cstdio>
 
 namespace
@@ -63,13 +68,52 @@ namespace
 		}
 	}
 
+	void RecordMouseButton(HWND windowHandle, InputState& inputState, Key button, bool isPressed)
+	{
+		if (isPressed)
+		{
+			inputState.PressKey(button);
+			// 커서가 창 밖에서 버튼을 떼어도 이 창이 메시지를 받도록 한다.
+			if (GetCapture() != windowHandle) { SetCapture(windowHandle); }
+			return;
+		}
+
+		inputState.ReleaseKey(button);
+		if (inputState.IsKeyDown(Key::MouseLeft) || inputState.IsKeyDown(Key::MouseRight) || inputState.IsKeyDown(Key::MouseMiddle)) { return; }
+		if (GetCapture() == windowHandle) { ReleaseCapture(); }
+	}
+
+	void RecordMouseMove(HWND windowHandle, InputState& inputState, LPARAM lParam)
+	{
+		if (GetFocus() != windowHandle) { return; }
+
+		const int x = GET_X_LPARAM(lParam);
+		const int y = GET_Y_LPARAM(lParam);
+		RECT clientRect = {};
+		// 마우스 캡처 중에는 클라이언트 영역 밖 좌표도 받을 수 있다.
+		if (!GetClientRect(windowHandle, &clientRect) || !PtInRect(&clientRect, POINT{ x, y }))
+		{
+			inputState.InvalidateMousePosition();
+			return;
+		}
+
+		if (!inputState.GetMousePosition().has_value())
+		{
+			// 창을 처음 추적하거나 포커스 복귀 또는 창 재진입 후 다시 추적한다.
+			TRACKMOUSEEVENT tracking = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, windowHandle, 0 };
+			if (!TrackMouseEvent(&tracking)) { return; }
+		}
+
+		inputState.RecordMousePosition(x, y);
+	}
+
 	/**
-	 * 키 메시지와 포커스 상실을 입력 상태에 기록한다. 그 밖의 메시지는 무시한다.
+	 * 키, 마우스 버튼, 이동, 휠 및 입력 해제 메시지를 입력 상태에 기록한다.
 	 * Alt와 함께 누른 키는 WM_SYSKEYDOWN으로 들어오므로 일반 키 메시지와 같이 기록한다.
 	 * 창 프로시저는 Windows가 호출하므로 예외가 그 밖으로 나가지 않게 noexcept로 둔다.
 	 * 이벤트 목록 할당에 실패하면 std::terminate로 프로그램을 종료한다.
 	 */
-	void RecordInputMessage(InputState& inputState, UINT message, WPARAM wParam) noexcept
+	void RecordInputMessage(HWND windowHandle, InputState& inputState, UINT message, WPARAM wParam, LPARAM lParam) noexcept
 	{
 		switch (message)
 		{
@@ -81,8 +125,41 @@ namespace
 		case WM_SYSKEYUP:
 			inputState.ReleaseKey(TranslateKey(wParam));
 			break;
+		case WM_LBUTTONDOWN:
+		case WM_LBUTTONUP:
+			RecordMouseButton(windowHandle, inputState, Key::MouseLeft, message == WM_LBUTTONDOWN);
+			break;
+		case WM_RBUTTONDOWN:
+		case WM_RBUTTONUP:
+			RecordMouseButton(windowHandle, inputState, Key::MouseRight, message == WM_RBUTTONDOWN);
+			break;
+		case WM_MBUTTONDOWN:
+		case WM_MBUTTONUP:
+			RecordMouseButton(windowHandle, inputState, Key::MouseMiddle, message == WM_MBUTTONDOWN);
+			break;
+		case WM_MOUSEMOVE:
+			RecordMouseMove(windowHandle, inputState, lParam);
+			break;
+		case WM_MOUSELEAVE:
+			inputState.InvalidateMousePosition();
+			break;
+		case WM_MOUSEWHEEL:
+			if (GetFocus() == windowHandle)
+			{
+				const float delta = static_cast<float>(GET_WHEEL_DELTA_WPARAM(wParam)) / WHEEL_DELTA;
+				inputState.AddMouseWheelDelta(delta);
+			}
+			break;
 		case WM_KILLFOCUS:
 			inputState.ReleaseAllKeys();
+			inputState.ResetMouseInput();
+			if (GetCapture() == windowHandle) { ReleaseCapture(); }
+			break;
+		case WM_CAPTURECHANGED:
+			// 먼저 해제한 버튼은 ReleaseKey에서 무시하므로 뗌 이벤트가 중복되지 않는다.
+			inputState.ReleaseKey(Key::MouseLeft);
+			inputState.ReleaseKey(Key::MouseRight);
+			inputState.ReleaseKey(Key::MouseMiddle);
 			break;
 		default:
 			break;
@@ -255,7 +332,7 @@ LRESULT WindowsApplication::WindowProc(HWND windowHandle, UINT message, WPARAM w
 	if (windowsApplication != nullptr)
 	{
 		// 기록 후에도 아래 DefWindowProcW로 넘겨 Alt+F4 같은 시스템 키 처리를 유지한다.
-		RecordInputMessage(windowsApplication->inputState, message, wParam);
+		RecordInputMessage(windowHandle, windowsApplication->inputState, message, wParam, lParam);
 	}
 
 	if (message == WM_CLOSE && windowsApplication != nullptr)

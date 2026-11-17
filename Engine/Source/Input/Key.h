@@ -62,6 +62,10 @@ enum class Key : unsigned char
 	Left,
 	Right,
 
+	MouseLeft,
+	MouseRight,
+	MouseMiddle,
+
 	// 키별 배열 크기로만 사용하며 실제 키가 아니다.
 	Count
 };

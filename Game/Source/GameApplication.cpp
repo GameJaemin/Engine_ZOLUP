@@ -16,6 +16,7 @@
 #include "Core/Math/Vector3.h"
 #include "GameObject.h"
 #include "Input/InputDispatcher.h"
+#include "Input/InputState.h"
 #include "LevelLoader.h"
 #include "Paths.h"
 #include "PlayerObject.h"
@@ -229,8 +230,16 @@ bool GameApplication::OnInitialize()
 
 void GameApplication::OnUpdate(const InputState& input, float deltaTime)
 {
-	// 입력 바인딩을 먼저 실행한 뒤 월드를 갱신한다.
+	// 키와 마우스 입력을 먼저 전달해 같은 프레임의 월드 갱신에서 사용한다.
 	gameWorld->GetInputDispatcher().Dispatch(input, deltaTime);
+	if (CameraComponent* camera = gameWorld->GetActiveCamera())
+	{
+		if (PlayerObject* player = dynamic_cast<PlayerObject*>(camera->GetGameObject()))
+		{
+			const MouseCoordinates mouseDelta = input.GetMouseDelta();
+			player->AddMouseLookInput(mouseDelta.x, mouseDelta.y);
+		}
+	}
 	gameWorld->Tick(deltaTime);
 	gameWorld->DestroyPendingGameObjects();
 }

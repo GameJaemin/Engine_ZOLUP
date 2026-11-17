@@ -16,6 +16,10 @@ public:
 	explicit PlayerObject(World& targetWorld);
 
 	// 조작
+public:
+	/** 이번 프레임의 마우스 이동량을 픽셀 단위로 받는다. +X는 오른쪽, +Y는 아래쪽이다. */
+	void AddMouseLookInput(int deltaX, int deltaY);
+
 protected:
 	/** 이번 프레임의 회전을 적용한 뒤 새 yaw를 기준으로 이동한다. deltaTime은 초 단위다. */
 	void OnTick(float deltaTime) override;
@@ -36,4 +40,7 @@ private:
 	// 프레임 단위 입력이다. 각도 변화량은 회전 속도와 경과 시간을 곱해서 구한다.
 	float yawInput = 0.0f;
 	float pitchInput = 0.0f;
+	// 마우스 감도를 적용한 이번 프레임의 각도 변화량이며 OnTick에서 한 번 소비한다.
+	float mouseYawDeltaDegrees = 0.0f;
+	float mousePitchDeltaDegrees = 0.0f;
 };
