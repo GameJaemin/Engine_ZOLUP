@@ -97,16 +97,14 @@ public:
 	bool ContainsGameObject(const GameObject* gameObject) const;
 
 	/**
-	 * 등록 순서대로 각 객체의 비소유 참조를 visitor에 한 번씩 전달한다.
-	 * 순회 중 삭제 요청을 등록할 수 있다. 객체를 등록하거나 DestroyPendingGameObjects를 호출하지 않는다.
-	 * visitor가 던진 예외는 전파한다.
+	 * 삭제 예정 객체를 포함한 소유 목록을 등록 순서대로 빌려준다.
+	 * 컨테이너 자체는 World 수명 동안 유효하다.
+	 * 객체 추가나 실제 삭제 시 원소 참조와 반복자가 무효화될 수 있다.
+	 * 객체 포인터는 해당 객체의 실제 파괴 전까지만 유효하다.
+	 * const는 컨테이너에 적용되며 내부 GameObject는 수정할 수 있다.
+	 * 순회 중 삭제 요청은 등록할 수 있지만 객체 등록이나 실제 삭제를 수행하지 않는다.
 	 */
-	template <typename Visitor>
-	void ForEachGameObject(Visitor&& visitor);
-
-	/** 같은 순회 계약을 적용하며 visitor에는 const GameObject&를 전달한다. */
-	template <typename Visitor>
-	void ForEachGameObject(Visitor&& visitor) const;
+	const std::vector<std::unique_ptr<GameObject>>& GetGameObjects() const noexcept { return gameObjects; }
 
 private:
 	void NotifyGameObjectsDestroying() noexcept;
@@ -127,22 +125,3 @@ public:
 	 */
 	void Tick(float deltaTime);
 };
-
-template <typename Visitor>
-void World::ForEachGameObject(Visitor&& visitor)
-{
-	for (const std::unique_ptr<GameObject>& gameObject : gameObjects)
-	{
-		visitor(*gameObject);
-	}
-}
-
-template <typename Visitor>
-void World::ForEachGameObject(Visitor&& visitor) const
-{
-	for (const std::unique_ptr<GameObject>& gameObject : gameObjects)
-	{
-		const GameObject& readOnlyGameObject = *gameObject;
-		visitor(readOnlyGameObject);
-	}
-}

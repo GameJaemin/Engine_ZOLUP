@@ -77,8 +77,9 @@ public:
 private:
 	/**
 	 * glTF 재질 설명으로 Material을 만든다. 색 텍스처(sRGB), 노멀 텍스처와 ORM 텍스처(선형)는 modelDirectory(저장소 루트 기준 모델 폴더) 기준으로 불러온다.
-	 * 차폐 텍스처는 금속성-거칠기 텍스처와 같은 이미지일 때만 ORM의 R로 쓰이며, 아니면 경고 로그를 남기고 무시한다.
-	 * 텍스처를 불러오지 못하면 nullptr를 반환한다.
+	 * 차폐의 R과 금속성-거칠기의 G, B를 ORM으로 합성하며, 없는 입력의 채널은 1로 채운다.
+	 * 두 입력이 모두 없으면 ORM 텍스처 없이 계수만 사용한다.
+	 * 텍스처 로딩이나 ORM 생성에 실패하면 nullptr를 반환한다. 두 입력의 이미지 크기는 같아야 한다.
 	 */
 	std::shared_ptr<const Material> CreateMaterial(const GLTFModelMaterial& source, const std::filesystem::path& modelDirectory);
 
@@ -94,7 +95,18 @@ public:
 	std::shared_ptr<const Texture> LoadTexture(std::string_view relativePath, TextureFormat format);
 
 private:
+	/**
+	 * 저장소 루트 기준 UTF-8 경로의 이미지를 합쳐 선형 ORM 텍스처를 만든다.
+	 * 빈 경로는 해당 이미지가 없다는 뜻이며, 같은 입력 조합은 매니저 수명 동안 재사용한다.
+	 * 두 경로가 모두 비었거나 로딩, 합성 또는 초기화에 실패하면 nullptr를 반환한다.
+	 * 생성 텍스처의 경로는 파일을 가리키지 않는 식별자다. 경로 변환과 할당 예외는 전파한다.
+	 */
+	std::shared_ptr<const Texture> LoadORMTexture(std::string_view occlusionPath, std::string_view metallicRoughnessPath);
+
+private:
 	std::map<std::pair<std::string, TextureFormat>, std::shared_ptr<const Texture>> textures;
+	// 정규화한 절대 경로를 차폐, 금속성-거칠기 순서로 묶는다. 빈 키는 입력 없음이다.
+	std::map<std::pair<std::string, std::string>, std::shared_ptr<const Texture>> ormTextures;
 
 	// 프리팹
 public:

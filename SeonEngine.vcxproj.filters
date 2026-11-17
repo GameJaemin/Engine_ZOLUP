@@ -10,6 +10,9 @@
     <Filter Include="Editor\Source">
       <UniqueIdentifier>{25cdbceb-9105-46bd-8e85-e048afc64b2b}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Editor\Source\Panels">
+      <UniqueIdentifier>{cb40b2cc-9ad0-4ddd-8807-3b7347bb6377}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Game\Source">
       <UniqueIdentifier>{0bc5d6c8-f10b-4c48-bd57-3298348ea81a}</UniqueIdentifier>
     </Filter>
@@ -75,6 +78,12 @@
     <ClCompile Include="Editor\Source\EditorWorldSession.cpp">
       <Filter>Editor\Source</Filter>
     </ClCompile>
+    <ClCompile Include="Editor\Source\Panels\HierarchyPanel.cpp">
+      <Filter>Editor\Source\Panels</Filter>
+    </ClCompile>
+    <ClCompile Include="Editor\Source\Panels\InspectorPanel.cpp">
+      <Filter>Editor\Source\Panels</Filter>
+    </ClCompile>
     <ClCompile Include="Game\Source\PlayerObject.cpp">
       <Filter>Game\Source</Filter>
     </ClCompile>
@@ -88,6 +97,9 @@
       <Filter>Engine\Source\Mesh</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Source\Texture\Texture.cpp">
+      <Filter>Engine\Source\Texture</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Texture\ORMImageBuilder.cpp">
       <Filter>Engine\Source\Texture</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Source\AssetManager.cpp">
@@ -215,6 +227,12 @@
     <ClInclude Include="Editor\Source\EditorWorldSession.h">
       <Filter>Editor\Source</Filter>
     </ClInclude>
+    <ClInclude Include="Editor\Source\Panels\HierarchyPanel.h">
+      <Filter>Editor\Source\Panels</Filter>
+    </ClInclude>
+    <ClInclude Include="Editor\Source\Panels\InspectorPanel.h">
+      <Filter>Editor\Source\Panels</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\Source\Asset.h">
       <Filter>Engine\Source</Filter>
     </ClInclude>
@@ -321,6 +339,9 @@
       <Filter>Engine\Source\Mesh</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Texture\Texture.h">
+      <Filter>Engine\Source\Texture</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Texture\ORMImageBuilder.h">
       <Filter>Engine\Source\Texture</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\GameObject.h">

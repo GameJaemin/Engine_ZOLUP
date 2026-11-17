@@ -8,6 +8,7 @@
 #include "Paths.h"
 #include "Prefab.h"
 #include "Renderer/Material.h"
+#include "Texture/ORMImageBuilder.h"
 #include "Texture/Texture.h"
 
 #include <cassert>
@@ -15,10 +16,25 @@
 #include <format>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace
 {
+	// 생성 식별자가 경로 정규화를 거쳐도 원본 키의 구분자와 문자가 해석되지 않게 한다.
+	std::string EncodeORMPathKey(std::string_view key)
+	{
+		constexpr char HexDigits[] = "0123456789abcdef";
+		std::string encoded;
+		for (const char character : key)
+		{
+			const unsigned char value = static_cast<unsigned char>(character);
+			encoded += HexDigits[value >> 4];
+			encoded += HexDigits[value & 15];
+		}
+		return encoded;
+	}
+
 	/** 모델 폴더 기준 UTF-8 uri를 modelDirectory와 합쳐 저장소 루트 기준 UTF-8 상대 경로로 바꾼다. */
 	std::string MakeModelImagePath(const std::filesystem::path& modelDirectory, const std::string& uri)
 	{
@@ -296,24 +312,23 @@ std::shared_ptr<const Material> AssetManager::CreateMaterial(const GLTFModelMate
 		if (material.normalTexture == nullptr) { return nullptr; }
 	}
 
-	if (!source.metallicRoughnessImageUri.empty())
+	if (!source.occlusionImageUri.empty() || !source.metallicRoughnessImageUri.empty())
 	{
-		// glTF 금속성-거칠기 텍스처의 G, B는 엔진 ORM의 거칠기, 금속성 자리와 같아 그대로 ORM으로 쓴다.
-		// 차폐가 따로 묶여 있지 않으면 R은 파일에 든 값이 차폐로 읽힌다.
-		material.ormTexture = LoadTexture(MakeModelImagePath(modelDirectory, source.metallicRoughnessImageUri), TextureFormat::RGBA8UNorm);
-		if (material.ormTexture == nullptr) { return nullptr; }
-	}
+		std::string occlusionPath;
+		std::string metallicRoughnessPath;
 
-	if (!source.occlusionImageUri.empty())
-	{
-		// 엔진은 ORM 한 장만 받으므로 차폐는 금속성-거칠기 텍스처와 같은 이미지(R 채널)일 때만 쓰인다.
-		// uri 표기가 달라도(./orm.png와 orm.png) 같은 파일로 보도록 정리한 경로끼리 비교한다.
-		const bool isPackedWithMetallicRoughness = !source.metallicRoughnessImageUri.empty()
-			&& MakeModelImagePath(modelDirectory, source.occlusionImageUri) == MakeModelImagePath(modelDirectory, source.metallicRoughnessImageUri);
-		if (!isPackedWithMetallicRoughness)
+		if (!source.occlusionImageUri.empty())
 		{
-			Log::Write(LogLevel::Warning, "AssetManager", std::format("Material '{}': occlusion texture is not packed with the metallic-roughness texture; ignored", source.name));
+			occlusionPath = MakeModelImagePath(modelDirectory, source.occlusionImageUri);
 		}
+
+		if (!source.metallicRoughnessImageUri.empty())
+		{
+			metallicRoughnessPath = MakeModelImagePath(modelDirectory, source.metallicRoughnessImageUri);
+		}
+
+		material.ormTexture = LoadORMTexture(occlusionPath, metallicRoughnessPath);
+		if (material.ormTexture == nullptr) { return nullptr; }
 	}
 
 	return std::make_shared<const Material>(std::move(material));
@@ -368,6 +383,82 @@ std::shared_ptr<const Texture> AssetManager::LoadTexture(std::string_view relati
 	texture = std::make_shared<const Texture>(std::move(textureData));
 
 	textures.emplace(cacheKey, texture);
+	return texture;
+}
+
+std::shared_ptr<const Texture> AssetManager::LoadORMTexture(std::string_view occlusionPath, std::string_view metallicRoughnessPath)
+{
+	if (occlusionPath.empty() && metallicRoughnessPath.empty()) { return nullptr; }
+
+	std::filesystem::path occlusionAbsolutePath;
+	std::filesystem::path metallicRoughnessAbsolutePath;
+	std::pair<std::string, std::string> cacheKey;
+	if (!occlusionPath.empty())
+	{
+		if (!Paths::GetAbsolutePath(occlusionPath, occlusionAbsolutePath))
+		{
+			Log::Write(LogLevel::Error, "AssetManager", "Failed to resolve ORM occlusion path: " + std::string(occlusionPath));
+			return nullptr;
+		}
+		occlusionAbsolutePath = occlusionAbsolutePath.lexically_normal();
+		const std::u8string pathUtf8 = occlusionAbsolutePath.generic_u8string();
+		cacheKey.first = Paths::MakeAssetKey(std::string(pathUtf8.begin(), pathUtf8.end()));
+	}
+	if (!metallicRoughnessPath.empty())
+	{
+		if (!Paths::GetAbsolutePath(metallicRoughnessPath, metallicRoughnessAbsolutePath))
+		{
+			Log::Write(LogLevel::Error, "AssetManager", "Failed to resolve ORM metallic-roughness path: " + std::string(metallicRoughnessPath));
+			return nullptr;
+		}
+		metallicRoughnessAbsolutePath = metallicRoughnessAbsolutePath.lexically_normal();
+		const std::u8string pathUtf8 = metallicRoughnessAbsolutePath.generic_u8string();
+		cacheKey.second = Paths::MakeAssetKey(std::string(pathUtf8.begin(), pathUtf8.end()));
+	}
+
+	const auto cachedTexture = ormTextures.find(cacheKey);
+	if (cachedTexture != ormTextures.end()) { return cachedTexture->second; }
+
+	const bool isSameImage = !cacheKey.first.empty() && cacheKey.first == cacheKey.second;
+
+	Image occlusion;
+	Image metallicRoughness;
+	if (!occlusionPath.empty() && !ImageLoader::LoadImageFile(occlusionAbsolutePath, occlusion)) { return nullptr; }
+	if (!metallicRoughnessPath.empty() && !isSameImage)
+	{
+		if (!ImageLoader::LoadImageFile(metallicRoughnessAbsolutePath, metallicRoughness)) { return nullptr; }
+	}
+
+	const Image* occlusionImage = occlusionPath.empty() ? nullptr : &occlusion;
+	const Image* metallicRoughnessImage = nullptr;
+	if (isSameImage)
+	{
+		// 같은 RGBA 이미지를 두 입력이 공유하여 중복 디코딩과 원본 픽셀 복사를 피한다.
+		metallicRoughnessImage = &occlusion;
+	}
+	else if (!metallicRoughnessPath.empty())
+	{
+		metallicRoughnessImage = &metallicRoughness;
+	}
+
+	Image ormImage;
+	if (!ORMImageBuilder::Create(occlusionImage, metallicRoughnessImage, ormImage))
+	{
+		Log::Write(LogLevel::Error, "AssetManager", std::format("Failed to combine ORM images: occlusion='{}', metallicRoughness='{}'", occlusionPath, metallicRoughnessPath));
+		return nullptr;
+	}
+
+	// ':'와 '|'로 실제 파일 경로와 구분하고, 역할과 원본 바이트 길이를 포함한다.
+	const std::string generatedPath = std::format("generated:orm|o={}:{}|m={}:{}", cacheKey.first.size(), EncodeORMPathKey(cacheKey.first), cacheKey.second.size(), EncodeORMPathKey(cacheKey.second));
+	Texture textureData("ORM", generatedPath);
+	if (!textureData.Initialize(std::move(ormImage), TextureFormat::RGBA8UNorm))
+	{
+		Log::Write(LogLevel::Error, "AssetManager", "Failed to initialize ORM texture: " + generatedPath);
+		return nullptr;
+	}
+
+	std::shared_ptr<const Texture> texture = std::make_shared<const Texture>(std::move(textureData));
+	ormTextures.emplace(cacheKey, texture);
 	return texture;
 }
 

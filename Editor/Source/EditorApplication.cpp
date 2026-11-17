@@ -24,3 +24,12 @@ void EditorApplication::OnShutdown() noexcept
 	selection.SetWorld(nullptr);
 	worldSession.Close();
 }
+
+void EditorApplication::DrawPanels()
+{
+	World* world = worldSession.GetEditWorld();
+	if (world == nullptr) { return; }
+
+	hierarchyPanel.Draw(*world, selection);
+	inspectorPanel.Draw(selection);
+}

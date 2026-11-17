@@ -116,16 +116,14 @@ public:
 	const T* GetComponent() const;
 
 	/**
-	 * 기본 TransformComponent를 포함하여 부착 순서대로 각 컴포넌트의 비소유 참조를 visitor에 한 번씩 전달한다.
-	 * 순회 중 이 객체의 컴포넌트 목록에 추가하거나 목록의 구조를 변경하지 않는다.
-	 * visitor가 던진 예외는 전파한다.
+	 * 기본 TransformComponent를 포함한 소유 목록을 부착 순서대로 빌려준다.
+	 * 컨테이너 자체는 이 GameObject의 수명 동안 유효하다.
+	 * 컴포넌트 추가 시 원소 참조와 반복자가 무효화될 수 있다.
+	 * 컴포넌트 포인터는 해당 컴포넌트의 파괴 전까지만 유효하다.
+	 * const는 컨테이너에 적용되며 내부 Component는 수정할 수 있다.
+	 * 순회 중 컴포넌트 목록의 구조를 변경하지 않는다.
 	 */
-	template <typename Visitor>
-	void ForEachComponent(Visitor&& visitor);
-
-	/** 같은 순회 계약을 적용하며 visitor에는 const Component&를 전달한다. */
-	template <typename Visitor>
-	void ForEachComponent(Visitor&& visitor) const;
+	const std::vector<std::unique_ptr<Component>>& GetComponents() const noexcept { return components; }
 
 private:
 	std::vector<std::unique_ptr<Component>> components;
@@ -166,23 +164,4 @@ const T* GameObject::GetComponent() const
 		}
 	}
 	return nullptr;
-}
-
-template <typename Visitor>
-void GameObject::ForEachComponent(Visitor&& visitor)
-{
-	for (const std::unique_ptr<Component>& component : components)
-	{
-		visitor(*component);
-	}
-}
-
-template <typename Visitor>
-void GameObject::ForEachComponent(Visitor&& visitor) const
-{
-	for (const std::unique_ptr<Component>& component : components)
-	{
-		const Component& readOnlyComponent = *component;
-		visitor(readOnlyComponent);
-	}
 }
