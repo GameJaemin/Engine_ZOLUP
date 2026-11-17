@@ -447,6 +447,12 @@
     <ClCompile Include="Engine\Renderer\Render\private\D3D12\D3D12Renderer_BasicImpl.cpp">
       <Filter>Engine\Renderer</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Renderer\Render\private\D3D12\D3D12Renderer_ImGui.cpp">
+      <Filter>Engine\Renderer</Filter>
+    </ClCompile>
+    <ClInclude Include="Engine\Renderer\Render\private\D3D12\D3D12Renderer_ImGui.h">
+      <Filter>Engine\Renderer</Filter>
+    </ClInclude>
     <ClCompile Include="Engine\Renderer\Render\private\D3D12\D3D12Renderer_FrameNPass.cpp">
       <Filter>Engine\Renderer</Filter>
     </ClCompile>
@@ -490,6 +496,12 @@
       <Filter>Engine\Renderer</Filter>
     </None>
     <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultWorld_VS.hlsl">
+      <Filter>Engine\Renderer</Filter>
+    </None>
+    <None Include="Engine\Renderer\Render\private\D3D12\shader\imgui_PS.hlsl">
+      <Filter>Engine\Renderer</Filter>
+    </None>
+    <None Include="Engine\Renderer\Render\private\D3D12\shader\imgui_VS.hlsl">
       <Filter>Engine\Renderer</Filter>
     </None>
     <ClCompile Include="Engine\Renderer\Render\private\RenderFactory.cpp">

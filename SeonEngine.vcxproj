@@ -146,6 +146,8 @@
     <ClInclude Include="Engine\Renderer\Render\private\D3D12\D3D12Renderer_Allocator.h" />
     <ClCompile Include="Engine\Renderer\Render\private\D3D12\D3D12Renderer_BasicImpl.cpp" />
     <ClCompile Include="Engine\Renderer\Render\private\D3D12\D3D12Renderer_FrameNPass.cpp" />
+    <ClCompile Include="Engine\Renderer\Render\private\D3D12\D3D12Renderer_ImGui.cpp" />
+    <ClInclude Include="Engine\Renderer\Render\private\D3D12\D3D12Renderer_ImGui.h" />
     <ClCompile Include="Engine\Renderer\Render\private\D3D12\D3D12Renderer_MsgProcess.cpp" />
     <ClCompile Include="Engine\Renderer\Render\private\D3D12\D3D12Renderer_ResCtrl.cpp" />
     <ClInclude Include="Engine\Renderer\Render\private\D3D12\D3D12Renderer_Template.h" />
@@ -160,6 +162,8 @@
     <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultWorldOPQ_PS.hlsl" />
     <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultWorldTP_PS.hlsl" />
     <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultWorld_VS.hlsl" />
+    <None Include="Engine\Renderer\Render\private\D3D12\shader\imgui_PS.hlsl" />
+    <None Include="Engine\Renderer\Render\private\D3D12\shader\imgui_VS.hlsl" />
     <ClCompile Include="Engine\Renderer\Render\private\RenderFactory.cpp" />
     <ClInclude Include="Engine\Renderer\Render\public\RenderAdapter.h" />
     <ClInclude Include="Engine\Renderer\Render\public\RenderFactory.h" />
@@ -236,6 +240,8 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup>
     <ClCompile>
+      <!-- ImGui 렌더러 모듈 ON (imgui 패키지는 Engine/ThirdParty/vcpkg.json 매니페스트, include/lib는 vcpkg 자동 연결) -->
+      <PreprocessorDefinitions>RENDER_IMGUI_MODE=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(ProjectDir)Engine\Renderer\Data\public;$(ProjectDir)Engine\Renderer\Render\public;$(ProjectDir)Engine\Renderer\Core\private\D3D12;$(ProjectDir)Engine\Renderer\Render\private\D3D12;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
