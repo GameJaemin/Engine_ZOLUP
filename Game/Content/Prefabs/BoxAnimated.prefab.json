@@ -1,3 +1,71 @@
 {
-	"model": "Game/Content/Meshes/BoxAnimated/BoxAnimated.gltf"
+	"root": {
+		"name": "BoxAnimated",
+		"components": [
+			{
+				"type": "animation",
+				"properties": {
+					"model": "Game/Content/Meshes/BoxAnimated/BoxAnimated.gltf",
+					"nodeBindings": [
+						{
+							"sourceNode": 0,
+							"target": "pivot"
+						},
+						{
+							"sourceNode": 1,
+							"target": "boxParent"
+						},
+						{
+							"sourceNode": 2,
+							"target": "innerBox"
+						},
+						{
+							"sourceNode": 3,
+							"target": "outerBox"
+						}
+					]
+				}
+			}
+		],
+		"children": [
+			{
+				"id": "outerBox",
+				"name": "OuterBox",
+				"components": [
+					{
+						"type": "staticMesh",
+						"properties": {
+							"model": "Game/Content/Meshes/BoxAnimated/BoxAnimated.gltf",
+							"meshIndex": 1
+						}
+					}
+				]
+			},
+			{
+				"id": "pivot",
+				"name": "Pivot",
+				"children": [
+					{
+						"id": "boxParent",
+						"name": "BoxParent",
+						"children": [
+							{
+								"id": "innerBox",
+								"name": "InnerBox",
+								"components": [
+									{
+										"type": "staticMesh",
+										"properties": {
+											"model": "Game/Content/Meshes/BoxAnimated/BoxAnimated.gltf",
+											"meshIndex": 0
+										}
+									}
+								]
+							}
+						]
+					}
+				]
+			}
+		]
+	}
 }

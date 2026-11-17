@@ -28,6 +28,7 @@
 #include <format>
 #include <memory>
 #include <optional>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -139,27 +140,46 @@ namespace
 		return root;
 	}
 
-	/** 맵의 AnimatedBox 객체에서 BoxAnimated 프리팹의 첫 클립을 반복 재생한다. 찾지 못하면 경고만 남긴다. */
-	void PlayAnimatedBox(const std::vector<GameObject*>& levelObjects)
+	/** 객체 계층에서 처음 만나는 animation 컴포넌트의 모델이다. 없으면 nullptr이다. */
+	const Model* FindAnimationModel(const PrefabObject& object)
+	{
+		if (object.animation.has_value()) { return object.animation->model.get(); }
+
+		for (const PrefabObject& child : object.children)
+		{
+			if (const Model* model = FindAnimationModel(child)) { return model; }
+		}
+		return nullptr;
+	}
+
+	/** 맵에서 objectName인 GameObject를 찾아 prefabPath 프리팹의 첫 클립을 반복 재생한다. 찾지 못하면 경고만 남긴다. */
+	void PlayFirstClip(const std::vector<GameObject*>& levelObjects, std::string_view objectName, std::string_view prefabPath)
 	{
 		// 맵을 읽을 때 같은 경로로 불러 캐시에 있으므로, 노드 목록을 만든 것과 같은 Model을 돌려받는다.
-		const std::shared_ptr<const Prefab> prefab = AssetManager::Get().LoadPrefab("Game/Content/Prefabs/BoxAnimated.prefab.json");
-		if (prefab == nullptr || prefab->model == nullptr || prefab->model->animations.empty())
+		const std::shared_ptr<const Prefab> prefab = AssetManager::Get().LoadPrefab(prefabPath);
+
+		// 기존 형식은 최상위 model, 새 형식은 animation 컴포넌트의 model이 클립을 가진다.
+		const Model* model = nullptr;
+		if (prefab != nullptr)
 		{
-			Log::Write(LogLevel::Warning, "Animation", "BoxAnimated prefab has no animation clip");
+			model = prefab->model != nullptr ? prefab->model.get() : FindAnimationModel(prefab->root);
+		}
+		if (model == nullptr || model->animations.empty())
+		{
+			Log::Write(LogLevel::Warning, "Animation", std::format("{} has no animation clip", prefabPath));
 			return;
 		}
 
 		for (GameObject* object : levelObjects)
 		{
-			if (object->GetName() != "AnimatedBox") { continue; }
+			if (object->GetName() != objectName) { continue; }
 
 			AnimationComponent* animation = object->GetComponent<AnimationComponent>();
 			if (animation == nullptr) { break; }
-			animation->Play(prefab->model->animations[0], true);
+			animation->Play(model->animations[0], true);
 			return;
 		}
-		Log::Write(LogLevel::Warning, "Animation", "AnimatedBox with AnimationComponent was not found in the level");
+		Log::Write(LogLevel::Warning, "Animation", std::format("{} with AnimationComponent was not found in the level", objectName));
 	}
 }
 
@@ -172,6 +192,7 @@ bool GameApplication::OnInitialize()
 	gameWorld = std::make_unique<World>();
 	World& world = *gameWorld;
 	std::filesystem::path levelPath;
+	//if (!Paths::GetAbsolutePath("Game/Content/Maps/BistroMap.json", levelPath))
 	if (!Paths::GetAbsolutePath("Game/Content/Maps/DevMap.json", levelPath))
 	{
 		Log::Write(LogLevel::Error, "Level", "Could not resolve Game/Content/Maps/DevMap.json from the repository root");
@@ -191,7 +212,8 @@ bool GameApplication::OnInitialize()
 		const Vector3& scale = transform.scale;
 		Log::Write(LogLevel::Info, "Level", std::format("{}: position(cm) [{}, {}, {}], rotation [{}, {}, {}, {}], scale [{}, {}, {}]", object->GetName(), position.x, position.y, position.z, rotation.x, rotation.y, rotation.z, rotation.w, scale.x, scale.y, scale.z));
 	}
-	PlayAnimatedBox(*loadedObjects);
+	PlayFirstClip(*loadedObjects, "AnimatedBox", "Game/Content/Prefabs/BoxAnimated.prefab.json");
+	PlayFirstClip(*loadedObjects, "RiggedSimple", "Game/Content/Prefabs/RiggedSimple.prefab.json");
 
 	GameObject* player = world.AddGameObject(std::make_unique<PlayerObject>(world));
 	// World에 등록된 객체의 카메라만 지정할 수 있으므로 AddGameObject 뒤에 지정한다.

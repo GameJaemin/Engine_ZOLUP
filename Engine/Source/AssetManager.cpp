@@ -27,6 +27,120 @@ namespace
 		const std::u8string imagePathUtf8 = imagePath.generic_u8string();
 		return std::string(imagePathUtf8.begin(), imagePathUtf8.end());
 	}
+
+	std::shared_ptr<const Material> LoadMaterialWithBaseColorTexture(AssetManager& assets, const Material& baseMaterial, std::string_view texturePath)
+	{
+		std::shared_ptr<const Texture> texture = assets.LoadTexture(texturePath, TextureFormat::RGBA8SRGB);
+		if (texture == nullptr) { return nullptr; }
+
+		Material material = baseMaterial;
+		material.baseColorTexture = std::move(texture);
+		return std::make_shared<const Material>(std::move(material));
+	}
+
+	bool LoadPrefabObject(AssetManager& assets, const PrefabObjectDefinition& definition, std::string_view context, PrefabObject& object)
+	{
+		object.id = definition.id;
+		object.name = definition.name;
+		object.localTransform = definition.localTransform;
+
+		if (definition.staticMesh.has_value())
+		{
+			const PrefabStaticMeshDefinition& mesh = *definition.staticMesh;
+			const std::shared_ptr<const Model> model = assets.LoadModel(mesh.modelPath);
+			if (model == nullptr)
+			{
+				Log::Write(LogLevel::Error, "AssetManager", std::format("{}: could not load staticMesh model {}", context, mesh.modelPath));
+				return false;
+			}
+			if (mesh.meshIndex >= model->meshes.size() || mesh.meshIndex >= model->meshMaterials.size())
+			{
+				Log::Write(LogLevel::Error, "AssetManager", std::format("{}: staticMesh meshIndex {} is out of range for {}", context, mesh.meshIndex, mesh.modelPath));
+				return false;
+			}
+
+			std::shared_ptr<const Material> material = model->meshMaterials[mesh.meshIndex];
+			if (mesh.baseColorTexturePath.has_value())
+			{
+				material = LoadMaterialWithBaseColorTexture(assets, *material, *mesh.baseColorTexturePath);
+				if (material == nullptr)
+				{
+					Log::Write(LogLevel::Error, "AssetManager", std::format("{}: staticMesh could not load baseColorTexture {}", context, *mesh.baseColorTexturePath));
+					return false;
+				}
+			}
+
+			object.staticMesh = PrefabStaticMesh{ model->meshes[mesh.meshIndex], std::move(material) };
+		}
+
+		if (definition.skybox.has_value())
+		{
+			const PrefabSkyboxDefinition& source = *definition.skybox;
+			PrefabSkybox& skybox = object.skybox.emplace();
+			skybox.enabled = source.enabled;
+			for (std::size_t index = 0; index < skybox.faces.size(); ++index)
+			{
+				const std::string& facePath = source.facePaths[index];
+				skybox.faces[index] = assets.LoadTexture(facePath, TextureFormat::RGBA8SRGB);
+				if (skybox.faces[index] == nullptr)
+				{
+					Log::Write(LogLevel::Error, "AssetManager", std::format("{}: could not load skybox face {}", context, facePath));
+					return false;
+				}
+			}
+		}
+
+		if (definition.animation.has_value())
+		{
+			const PrefabAnimationDefinition& animation = *definition.animation;
+			std::shared_ptr<const Model> model = assets.LoadModel(animation.modelPath);
+			if (model == nullptr)
+			{
+				Log::Write(LogLevel::Error, "AssetManager", std::format("{}: could not load animation model {}", context, animation.modelPath));
+				return false;
+			}
+
+			// 노드 번호는 모델 배치표의 줄 번호라 모델을 읽은 뒤에 범위를 확인한다.
+			for (const PrefabNodeBinding& binding : animation.nodeBindings)
+			{
+				if (binding.sourceNode < model->sceneNodes.size()) { continue; }
+
+				Log::Write(LogLevel::Error, "AssetManager", std::format("{}: animation sourceNode {} is out of range for {}", context, binding.sourceNode, animation.modelPath));
+				return false;
+			}
+
+			object.animation = PrefabAnimation{ std::move(model), animation.nodeBindings };
+		}
+
+		if (definition.skin.has_value())
+		{
+			const PrefabSkinDefinition& skin = *definition.skin;
+			std::shared_ptr<const Model> model = assets.LoadModel(skin.modelPath);
+			if (model == nullptr)
+			{
+				Log::Write(LogLevel::Error, "AssetManager", std::format("{}: could not load skin model {}", context, skin.modelPath));
+				return false;
+			}
+
+			// SkinComponent는 이 노드의 skin 번호로 스킨을 찾으므로, 범위 안이고 스킨이 붙은 노드여야 한다.
+			if (skin.sourceNode >= model->sceneNodes.size() || !model->sceneNodes[skin.sourceNode].skin.has_value())
+			{
+				Log::Write(LogLevel::Error, "AssetManager", std::format("{}: skin sourceNode {} is not a skinned node in {}", context, skin.sourceNode, skin.modelPath));
+				return false;
+			}
+
+			object.skin = PrefabSkin{ std::move(model), skin.sourceNode };
+		}
+
+		object.children.reserve(definition.children.size());
+		for (std::size_t index = 0; index < definition.children.size(); ++index)
+		{
+			const std::string childContext = std::format("{}.children[{}]", context, index);
+			if (!LoadPrefabObject(assets, definition.children[index], childContext, object.children.emplace_back())) { return false; }
+		}
+
+		return true;
+	}
 }
 
 AssetManager* AssetManager::instance = nullptr;
@@ -303,38 +417,18 @@ std::shared_ptr<const Prefab> AssetManager::LoadPrefab(std::string_view relative
 				return nullptr;
 			}
 
-			std::shared_ptr<const Texture> texture = LoadTexture(entry.baseColorTexturePath, TextureFormat::RGBA8SRGB);
-			if (texture == nullptr)
+			std::shared_ptr<const Material> material = LoadMaterialWithBaseColorTexture(*this, *defaultMaterials[meshIndex], entry.baseColorTexturePath);
+			if (material == nullptr)
 			{
 				Log::Write(LogLevel::Error, "AssetManager", std::format("{}: mesh {} could not load texture {}", relativePath, meshIndex, entry.baseColorTexturePath));
 				return nullptr;
 			}
 
-			Material material = *defaultMaterials[meshIndex];
-			material.baseColorTexture = std::move(texture);
-			prefab.meshMaterialOverrides[meshIndex] = std::make_shared<const Material>(std::move(material));
+			prefab.meshMaterialOverrides[meshIndex] = std::move(material);
 		}
 	}
 
-	if (definition.skybox.has_value())
-	{
-		const PrefabSkyboxDefinition& source = *definition.skybox;
-		PrefabSkybox skybox;
-		skybox.enabled = source.enabled;
-
-		for (std::size_t index = 0; index < skybox.faces.size(); ++index)
-		{
-			const std::string& facePath = source.facePaths[index];
-			skybox.faces[index] = LoadTexture(facePath, TextureFormat::RGBA8SRGB);
-			if (skybox.faces[index] == nullptr)
-			{
-				Log::Write(LogLevel::Error, "AssetManager", std::format("{}: could not load skybox face {}", relativePath, facePath));
-				return nullptr;
-			}
-		}
-
-		prefab.skybox = std::move(skybox);
-	}
+	if (!LoadPrefabObject(*this, definition.root, std::format("{}: root", relativePath), prefab.root)) { return nullptr; }
 
 	std::shared_ptr<const Prefab> result = std::make_shared<const Prefab>(std::move(prefab));
 	prefabs.emplace(cacheKey, result);

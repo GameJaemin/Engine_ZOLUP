@@ -1,3 +1,19 @@
 {
-	"model": "Game/Content/Meshes/UtahTeapot/UtahTeapot.gltf"
+	"root": {
+		"name": "Teapot",
+		"transform": {
+			"position": [0.0, 0.0, 0.0],
+			"rotation": [0.0, -0.7071067, 0.0, 0.7071068],
+			"scale": [1.0, 1.0, 1.0]
+		},
+		"components": [
+			{
+				"type": "staticMesh",
+				"properties": {
+					"model": "Game/Content/Meshes/UtahTeapot/UtahTeapot.gltf",
+					"meshIndex": 0
+				}
+			}
+		]
+	}
 }

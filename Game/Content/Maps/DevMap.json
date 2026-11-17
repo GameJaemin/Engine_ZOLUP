@@ -5,7 +5,7 @@
 			"prefab": "Game/Content/Prefabs/Teapot.prefab.json",
 			"transform": {
 				"position": [1000.0, 500.0, 3000.0],
-				"rotation": [0.0, 1.0, 0.0, 0.0],
+				"rotation": [0.0, 0.7071068, 0.0, 0.7071068],
 				"scale": [1.0, 1.0, 1.0]
 			}
 		},
@@ -23,7 +23,7 @@
 			"prefab": "Game/Content/Prefabs/CheckerTeapot.prefab.json",
 			"transform": {
 				"position": [-1000.0, 500.0, 3000.0],
-				"rotation": [0.0, 1.0, 0.0, 0.0],
+				"rotation": [0.0, 0.7071068, 0.0, 0.7071068],
 				"scale": [1.0, 1.0, 1.0]
 			}
 		},

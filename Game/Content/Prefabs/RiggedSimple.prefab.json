@@ -1,3 +1,71 @@
 {
-	"model": "Game/Content/Meshes/RiggedSimple/RiggedSimple.gltf"
+	"root": {
+		"name": "RiggedSimple",
+		"components": [
+			{
+				"type": "animation",
+				"properties": {
+					"model": "Game/Content/Meshes/RiggedSimple/RiggedSimple.gltf",
+					"nodeBindings": [
+						{
+							"sourceNode": 0,
+							"target": "zUp"
+						},
+						{
+							"sourceNode": 1,
+							"target": "armature"
+						},
+						{
+							"sourceNode": 2,
+							"target": "cylinder"
+						}
+					]
+				}
+			}
+		],
+		"children": [
+			{
+				"id": "zUp",
+				"name": "Z_UP",
+				"transform": {
+					"position": [0.0, 0.0, 0.0],
+					"rotation": [-0.7071068, 0.0, 0.0, 0.7071068],
+					"scale": [1.0, 1.0, 1.0]
+				},
+				"children": [
+					{
+						"id": "armature",
+						"name": "Armature",
+						"transform": {
+							"position": [0.0, 0.0, 0.0],
+							"rotation": [0.0, 0.0, 0.7071068, 0.7071068],
+							"scale": [1.0, 1.0, 1.0]
+						},
+						"children": [
+							{
+								"id": "cylinder",
+								"name": "Cylinder",
+								"components": [
+									{
+										"type": "staticMesh",
+										"properties": {
+											"model": "Game/Content/Meshes/RiggedSimple/RiggedSimple.gltf",
+											"meshIndex": 0
+										}
+									},
+									{
+										"type": "skin",
+										"properties": {
+											"model": "Game/Content/Meshes/RiggedSimple/RiggedSimple.gltf",
+											"sourceNode": 2
+										}
+									}
+								]
+							}
+						]
+					}
+				]
+			}
+		]
+	}
 }

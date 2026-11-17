@@ -24,13 +24,21 @@
 #include <format>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 namespace
 {
+	struct PrefabPlacement
+	{
+		std::optional<std::string> name;
+		std::optional<Transform> transform;
+	};
+
 	bool IsFloatArray(const rapidjson::Value& value, rapidjson::SizeType size)
 	{
 		if (!value.IsArray() || value.Size() != size) { return false; }
@@ -48,18 +56,10 @@ namespace
 		return true;
 	}
 
-	// 배열 인덱스 뒤에 붙일 오류를 반환한다. 빈 문자열이면 항목이 유효하다.
-	std::string_view ValidateObject(const rapidjson::Value& object)
+	std::string_view ValidateTransform(const rapidjson::Value& fields)
 	{
-		if (!object.IsObject()) { return " must be an object"; }
+		if (!fields.IsObject()) { return ".transform must be an object"; }
 
-		const auto name = object.FindMember("name");
-		if (name == object.MemberEnd() || !name->value.IsString()) { return ".name must be a string"; }
-
-		const auto transform = object.FindMember("transform");
-		if (transform == object.MemberEnd() || !transform->value.IsObject()) { return ".transform must be an object"; }
-
-		const rapidjson::Value& fields = transform->value;
 		const auto position = fields.FindMember("position");
 		if (position == fields.MemberEnd() || !IsFloatArray(position->value, 3)) { return ".transform.position must contain three finite floats"; }
 
@@ -79,8 +79,29 @@ namespace
 		const auto scale = fields.FindMember("scale");
 		if (scale == fields.MemberEnd() || !IsFloatArray(scale->value, 3)) { return ".transform.scale must contain three finite floats"; }
 
+		return {};
+	}
+
+	// 배열 인덱스 뒤에 붙일 오류를 반환한다. 빈 문자열이면 항목이 유효하다.
+	std::string_view ValidateObject(const rapidjson::Value& object)
+	{
+		if (!object.IsObject()) { return " must be an object"; }
+
 		const auto prefab = object.FindMember("prefab");
-		if (prefab != object.MemberEnd())
+		const bool hasPrefab = prefab != object.MemberEnd();
+		const auto name = object.FindMember("name");
+		if (name == object.MemberEnd() && !hasPrefab) { return ".name must be a string"; }
+		if (name != object.MemberEnd() && !name->value.IsString()) { return ".name must be a string"; }
+
+		const auto transform = object.FindMember("transform");
+		if (transform == object.MemberEnd() && !hasPrefab) { return ".transform must be an object"; }
+		if (transform != object.MemberEnd())
+		{
+			const std::string_view error = ValidateTransform(transform->value);
+			if (!error.empty()) { return error; }
+		}
+
+		if (hasPrefab)
 		{
 			if (!prefab->value.IsString()) { return ".prefab must be a string"; }
 
@@ -99,18 +120,149 @@ namespace
 		return {};
 	}
 
-	// root는 같은 월드에 등록되어 있어야 한다. 모델의 인덱스와 계층은 로더가 검증한다.
-	void ApplyPrefab(GameObject& root, const Prefab& prefab)
+	// 검증된 맵 항목에서 루트 인스턴스의 배치 값을 읽는다.
+	PrefabPlacement ReadPlacement(const rapidjson::Value& entry)
 	{
-		if (prefab.skybox.has_value())
+		PrefabPlacement placement;
+		const auto name = entry.FindMember("name");
+		if (name != entry.MemberEnd())
 		{
-			const PrefabSkybox& source = *prefab.skybox;
+			placement.name.emplace(name->value.GetString(), name->value.GetStringLength());
+		}
+
+		const auto transform = entry.FindMember("transform");
+		if (transform != entry.MemberEnd())
+		{
+			const rapidjson::Value& fields = transform->value;
+			const rapidjson::Value::ConstArray position = fields["position"].GetArray();
+			const rapidjson::Value::ConstArray rotation = fields["rotation"].GetArray();
+			const rapidjson::Value::ConstArray scale = fields["scale"].GetArray();
+			placement.transform = Transform{
+				.position = { position[0].GetFloat(), position[1].GetFloat(), position[2].GetFloat() },
+				.rotation = { rotation[0].GetFloat(), rotation[1].GetFloat(), rotation[2].GetFloat(), rotation[3].GetFloat() },
+				.scale = { scale[0].GetFloat(), scale[1].GetFloat(), scale[2].GetFloat() }
+			};
+		}
+		return placement;
+	}
+
+	GameObject* AddLevelObject(World& world, const std::optional<std::string>& name, const Transform& transform)
+	{
+		std::unique_ptr<GameObject> object = std::make_unique<GameObject>(world);
+		if (name.has_value())
+		{
+			object->SetName(*name);
+		}
+		object->GetComponent<TransformComponent>()->SetTransform(transform);
+		// World가 객체를 소유하고 호출부에는 빌린 포인터를 돌려준다.
+		return world.AddGameObject(std::move(object));
+	}
+
+	// 프리팹 인스턴스 하나를 만드는 동안 모은다. 계층을 모두 만든 뒤 animation 대상을 연결하는 데 쓴다.
+	struct PrefabInstanceLinks
+	{
+		// 이 인스턴스 안의 객체 id별 객체다. 비소유이며 World가 소유한다.
+		std::unordered_map<std::string, GameObject*> objectsByID;
+		// animation 컴포넌트를 붙일 객체와 그 설정이다. 설정은 프리팹 에셋이 소유한다.
+		std::vector<std::pair<GameObject*, const PrefabAnimation*>> animations;
+		// skin 컴포넌트를 붙일 객체와 그 설정이다. 포즈를 읽을 animation이 먼저 붙어야 해서 그 뒤에 붙인다.
+		std::vector<std::pair<GameObject*, const PrefabSkin*>> skins;
+	};
+
+	// 대상 id는 프리팹 파일 단계에서, 노드 번호 범위는 에셋 단계에서 확인했다.
+	void AttachPrefabAnimation(GameObject& object, const PrefabAnimation& animation, const std::unordered_map<std::string, GameObject*>& objectsByID)
+	{
+		const Model& model = *animation.model;
+
+		// 연결하지 않은 노드는 nullptr이며, 재생 컴포넌트는 그 노드 값을 포즈에만 적는다.
+		std::vector<TransformComponent*> nodeTransforms(model.sceneNodes.size(), nullptr);
+		for (const PrefabNodeBinding& binding : animation.nodeBindings)
+		{
+			nodeTransforms[binding.sourceNode] = objectsByID.at(binding.targetID)->GetComponent<TransformComponent>();
+		}
+
+		// 원래 자세는 기존 형식과 같이 모델 배치표의 값이다.
+		std::vector<Transform> restPose;
+		restPose.reserve(model.sceneNodes.size());
+		for (const GLTFSceneNode& sceneNode : model.sceneNodes)
+		{
+			restPose.push_back(sceneNode.localTransform);
+		}
+
+		std::unique_ptr<AnimationComponent> animationComponent = std::make_unique<AnimationComponent>();
+		animationComponent->SetNodeTransforms(std::move(nodeTransforms));
+		animationComponent->SetRestPose(std::move(restPose));
+		object.AddComponent(std::move(animationComponent));
+	}
+
+	// 포즈는 자신이나 조상 중 같은 모델의 animation 컴포넌트에서 읽는다. 없으면 배치표의 원래 값을 쓴다.
+	void AttachPrefabSkin(GameObject& object, const PrefabSkin& skin, const std::vector<std::pair<GameObject*, const PrefabAnimation*>>& animations)
+	{
+		const AnimationComponent* animation = nullptr;
+		for (GameObject* current = &object; current != nullptr && animation == nullptr; current = current->GetParent())
+		{
+			for (const auto& [animationObject, animationData] : animations)
+			{
+				if (animationObject != current || animationData->model != skin.model) { continue; }
+
+				animation = current->GetComponent<AnimationComponent>();
+				break;
+			}
+		}
+
+		std::unique_ptr<SkinComponent> skinComponent = std::make_unique<SkinComponent>();
+		skinComponent->SetSkin(skin.model, skin.sourceNode, animation);
+		object.AddComponent(std::move(skinComponent));
+	}
+
+	// object는 월드에 이미 등록되어 있고 삭제 예정이 아니어야 한다.
+	void ApplyPrefabObject(GameObject& object, const PrefabObject& data, PrefabInstanceLinks& links)
+	{
+		if (data.id.has_value())
+		{
+			links.objectsByID.emplace(*data.id, &object);
+		}
+
+		if (data.staticMesh.has_value())
+		{
+			std::unique_ptr<StaticMeshComponent> mesh = std::make_unique<StaticMeshComponent>();
+			mesh->SetStaticMesh(data.staticMesh->mesh);
+			mesh->SetMaterial(data.staticMesh->material);
+			object.AddComponent(std::move(mesh));
+		}
+
+		if (data.skybox.has_value())
+		{
+			const PrefabSkybox& source = *data.skybox;
 			std::unique_ptr<SkyboxComponent> skybox = std::make_unique<SkyboxComponent>();
 			skybox->SetFaces(source.faces);
 			skybox->SetEnabled(source.enabled);
-			root.AddComponent(std::move(skybox));
+			object.AddComponent(std::move(skybox));
 		}
 
+		// 대상 객체가 아직 없을 수 있어 계층을 모두 만든 뒤 붙인다.
+		if (data.animation.has_value())
+		{
+			links.animations.emplace_back(&object, &*data.animation);
+		}
+
+		if (data.skin.has_value())
+		{
+			links.skins.emplace_back(&object, &*data.skin);
+		}
+
+		for (const PrefabObject& child : data.children)
+		{
+			// SetParent는 월드에 등록된 객체끼리만 연결할 수 있다.
+			GameObject* childObject = AddLevelObject(object.GetWorld(), child.name, child.localTransform);
+			childObject->SetParent(&object);
+			ApplyPrefabObject(*childObject, child, links);
+		}
+	}
+
+	// 기존 최상위 model을 전개한다. 모델의 인덱스와 계층은 로더가 검증한다.
+	void ApplyLegacyPrefabModel(GameObject& root, const Prefab& prefab)
+	{
 		if (prefab.model == nullptr) { return; }
 
 		World& world = root.GetWorld();
@@ -221,6 +373,28 @@ namespace
 			nodeObjects[i]->AddComponent(std::move(skin));
 		}
 	}
+
+	GameObject* InstantiatePrefab(World& world, const Prefab& prefab, const PrefabPlacement& placement)
+	{
+		const std::optional<std::string>& name = placement.name.has_value() ? placement.name : prefab.root.name;
+		const Transform& transform = placement.transform.has_value() ? *placement.transform : prefab.root.localTransform;
+		GameObject* root = AddLevelObject(world, name, transform);
+
+		// id 조회표는 인스턴스마다 따로 만든다. 같은 프리팹을 여러 번 놓아도 각 인스턴스 안에서만 연결된다.
+		PrefabInstanceLinks links;
+		ApplyPrefabObject(*root, prefab.root, links);
+		for (const auto& [object, animation] : links.animations)
+		{
+			AttachPrefabAnimation(*object, *animation, links.objectsByID);
+		}
+		for (const auto& [object, skin] : links.skins)
+		{
+			AttachPrefabSkin(*object, *skin, links.animations);
+		}
+
+		ApplyLegacyPrefabModel(*root, prefab);
+		return root;
+	}
 }
 
 std::optional<std::vector<GameObject*>> LoadLevel(const std::filesystem::path& path, World& world)
@@ -307,29 +481,15 @@ std::optional<std::vector<GameObject*>> LoadLevel(const std::filesystem::path& p
 	loadedObjects.reserve(entries.Size());
 	for (rapidjson::SizeType i = 0; i < entries.Size(); ++i)
 	{
-		const rapidjson::Value& entry = entries[i];
-		// 위에서 필수 필드의 타입, 배열 길이와 숫자 범위를 검사했다.
-		const rapidjson::Value& name = entry["name"];
-		const rapidjson::Value& fields = entry["transform"];
-		const rapidjson::Value::ConstArray position = fields["position"].GetArray();
-		const rapidjson::Value::ConstArray rotation = fields["rotation"].GetArray();
-		const rapidjson::Value::ConstArray scale = fields["scale"].GetArray();
-		const Transform transform{
-			.position = { position[0].GetFloat(), position[1].GetFloat(), position[2].GetFloat() },
-			.rotation = { rotation[0].GetFloat(), rotation[1].GetFloat(), rotation[2].GetFloat(), rotation[3].GetFloat() },
-			.scale = { scale[0].GetFloat(), scale[1].GetFloat(), scale[2].GetFloat() }
-		};
-
-		std::unique_ptr<GameObject> object = std::make_unique<GameObject>(world);
-		object->SetName(std::string(name.GetString(), name.GetStringLength()));
-		object->GetComponent<TransformComponent>()->SetTransform(transform);
-		// World가 소유권을 가져가고 호출부에는 빌린 포인터를 돌려준다.
-		GameObject* root = world.AddGameObject(std::move(object));
+		const PrefabPlacement placement = ReadPlacement(entries[i]);
 		if (prefabs[i] != nullptr)
 		{
-			ApplyPrefab(*root, *prefabs[i]);
+			loadedObjects.push_back(InstantiatePrefab(world, *prefabs[i], placement));
+			continue;
 		}
-		loadedObjects.push_back(root);
+
+		// 프리팹이 없는 항목은 검증 단계에서 이름과 배치 Transform을 요구한다.
+		loadedObjects.push_back(AddLevelObject(world, placement.name, *placement.transform));
 	}
 	return loadedObjects;
 }
