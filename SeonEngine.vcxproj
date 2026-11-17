@@ -41,6 +41,7 @@
     <ClCompile Include="Engine\Source\Component\DirectionalLightComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\LightComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\PointLightComponent.cpp" />
+    <ClCompile Include="Engine\Source\Component\SkinComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\SkyboxComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\SpotLightComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\StaticMeshComponent.cpp" />
@@ -87,6 +88,7 @@
     <ClInclude Include="Engine\Source\Component\DirectionalLightComponent.h" />
     <ClInclude Include="Engine\Source\Component\LightComponent.h" />
     <ClInclude Include="Engine\Source\Component\PointLightComponent.h" />
+    <ClInclude Include="Engine\Source\Component\SkinComponent.h" />
     <ClInclude Include="Engine\Source\Component\SkyboxComponent.h" />
     <ClInclude Include="Engine\Source\Component\SpotLightComponent.h" />
     <ClInclude Include="Engine\Source\Component\StaticMeshComponent.h" />

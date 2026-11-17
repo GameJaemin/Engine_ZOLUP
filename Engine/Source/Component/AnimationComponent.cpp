@@ -33,6 +33,7 @@ void AnimationComponent::Play(std::shared_ptr<const AnimationClip> newClip, bool
 	pose = restPose;
 	for (std::size_t node = 0; node < pose.size() && node < nodeTransforms.size(); ++node)
 	{
+		if (nodeTransforms[node] == nullptr) { continue; }
 		nodeTransforms[node]->SetTransform(pose[node]);
 	}
 }
@@ -68,7 +69,7 @@ void AnimationComponent::Tick(float deltaTime)
 	// 2) 트랙이 있는 노드만 노드 객체에 반영한다. 게임 코드가 다른 노드에 넣은 값은 덮어쓰지 않는다.
 	for (const AnimationNodeTrack& track : clip->tracks)
 	{
-		if (track.node >= pose.size() || track.node >= nodeTransforms.size())
+		if (track.node >= pose.size() || track.node >= nodeTransforms.size() || nodeTransforms[track.node] == nullptr)
 		{
 			continue;
 		}

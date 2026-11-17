@@ -13,6 +13,7 @@ namespace HakkoResources
 	/**
 	 * DataHub 초기화 후 호출한다. 같은 에셋 경로로 등록한 메시를 재사용한다.
 	 * 빈 경로나 등록 실패는 false를 반환한다. 새 메시는 같은 프레임에 렌더러가 업로드 요청을 처리해야 한다.
+	 * skinWeights가 있으면 스킨 정점으로 등록하므로, 그리는 쪽은 스킨용 그리기 설정과 뼈 행렬을 함께 넘겨야 한다.
 	 * 경로 변환과 할당 실패 예외는 전파한다.
 	 */
 	bool PrepareStaticMesh(const StaticMesh& mesh);

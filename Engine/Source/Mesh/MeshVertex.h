@@ -27,7 +27,7 @@ static_assert(sizeof(MeshVertex) == 44, "MeshVertex는 float 11개로 빈틈없�
 /** 스킨 메시 정점 하나가 따라 움직일 뼈 4개와 그 비율이다. */
 struct SkinWeights
 {
-	// 뼈 번호. 노드 번호가 아니라 그 메시를 쓰는 스킨의 joints 배열 번호다.
+	// 뼈 번호. 노드 번호가 아니라 그 메시를 쓰는 스킨의 joints 배열 번호다. 가중치가 0인 칸은 0이다.
 	std::array<std::uint16_t, 4> joints = {};
 	// joints와 같은 순서의 비율. 0 이상이고 합이 1이다.
 	std::array<float, 4> weights = {};

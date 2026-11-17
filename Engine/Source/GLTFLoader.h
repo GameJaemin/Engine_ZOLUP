@@ -67,7 +67,7 @@ struct GLTFModelMaterial
 };
 
 /**
- * glTF 파일 하나에서 얻은 메시들과 재질들과 배치표와 애니메이션 클립들이다. 모두 엔진 좌표계(왼손, cm)다.
+ * glTF 파일 하나에서 얻은 메시들과 재질들과 배치표와 애니메이션 클립들과 스킨들이다. 모두 엔진 좌표계(왼손, cm)다.
  * meshes는 glTF meshes 번호, sceneNodes는 glTF nodes 번호와 같은 순서라, 배치표의 mesh 번호로 meshes를 찾는다.
  * materials는 glTF materials 번호 순서이며, meshMaterials의 번호로 찾는다.
  * meshes와 animations의 경로는 비어 있으며, 받는 쪽이 에셋으로 보관할 때 정한다.
@@ -89,7 +89,8 @@ struct GLTFModel
 namespace GLTFLoader
 {
 	/**
-	 * .gltf 파일의 모든 메시, 재질, 배치표와 애니메이션 클립을 채운다. 메시마다 첫 프리미티브만 쓰고, 애니메이션은 노드의 이동, 회전, 크기만 읽는다.
+	 * .gltf 파일의 모든 메시, 재질, 배치표, 애니메이션 클립과 스킨을 채운다. 메시마다 첫 프리미티브만 쓰고, 애니메이션은 노드의 이동, 회전, 크기만 읽는다.
+	 * 스킨 메시는 JOINTS_0과 WEIGHTS_0만 읽고, 스킨이 붙은 노드는 정점 뼈 번호가 그 스킨의 joints 범위 안인지 확인한다.
 	 * 재질은 색, 금속성, 거칠기 계수와 알파 모드, 색, 노멀, 금속성-거칠기, 차폐 텍스처 경로를 읽는다.
 	 * BLEND 재질은 색상의 알파 계수도 읽는다. 실패하면 출력값을 유지하고 false를 반환한다.
 	 */

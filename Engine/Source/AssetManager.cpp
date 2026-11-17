@@ -88,9 +88,10 @@ std::shared_ptr<const Model> AssetManager::LoadModel(std::string_view relativePa
 		// 경로는 만든 뒤 바꿀 수 없으므로, 이름과 "파일경로#번호" 경로로 메시를 새로 만든다.
 		StaticMesh meshData(source.GetName(), modelPath + "#" + std::to_string(i));
 
-		// 정점과 인덱스는 복사하지 않고 옮겨 담는다.
+		// 정점, 인덱스와 정점별 뼈 가중치는 복사하지 않고 옮겨 담는다.
 		meshData.vertices = std::move(source.vertices);
 		meshData.indices = std::move(source.indices);
+		meshData.skinWeights = std::move(source.skinWeights);
 
 		model.meshes.push_back(std::make_shared<const StaticMesh>(std::move(meshData)));
 	}
@@ -141,6 +142,13 @@ std::shared_ptr<const Model> AssetManager::LoadModel(std::string_view relativePa
 		clip.duration = source.duration;
 
 		model.animations.push_back(std::make_shared<const AnimationClip>(std::move(clip)));
+	}
+
+	// 스킨은 경로로 찾지 않으므로 메시나 클립과 달리 경로를 붙이지 않고 그대로 옮겨 담는다.
+	model.skins.reserve(gltfModel.skins.size());
+	for (Skin& source : gltfModel.skins)
+	{
+		model.skins.push_back(std::make_shared<const Skin>(std::move(source)));
 	}
 
 	model.sceneNodes = std::move(gltfModel.sceneNodes);

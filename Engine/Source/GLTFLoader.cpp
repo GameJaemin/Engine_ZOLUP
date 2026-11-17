@@ -19,6 +19,7 @@
 #include <cstring>
 #include <format>
 #include <optional>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -842,6 +843,41 @@ namespace
 		return transform;
 	}
 
+	/** glTF 좌표계(오른손, m)의 행 벡터 규칙 행렬을 엔진 좌표계(왼손, cm)로 바꾼다. Transform으로 나눌 수 없는 역바인드 행렬에 쓴다. */
+	Matrix4x4 ConvertMatrixToEngine(const Matrix4x4& source)
+	{
+		// 정점 위치 변환의 축별 배율이다. x만 뒤집고 cm로 바꾸며, 넷째 칸은 동차 좌표라 1이다.
+		constexpr float axisScale[4] = { -MetersToCentimeters, MetersToCentimeters, MetersToCentimeters, 1.0f };
+
+		// E = D^-1 * A * D를 칸별로 계산한다. 비율을 먼저 구해 위쪽 3x3은 정확히 +1 또는 -1을 곱한다.
+		Matrix4x4 result;
+		for (int row = 0; row < 4; ++row)
+		{
+			for (int column = 0; column < 4; ++column)
+			{
+				result.m[row][column] = source.m[row][column] * (axisScale[column] / axisScale[row]);
+			}
+		}
+
+		return result;
+	}
+
+	/** glTF의 열 우선 16개 값을 행 단위로 채워 행 벡터 규칙 행렬로 만든다. 좌표계는 바꾸지 않는다. */
+	Matrix4x4 CreateMatrixFromColumnMajor(std::span<const float, 16> values)
+	{
+		// glTF는 열 우선 순서라, 16개 값을 행 단위로 채우면 엔진의 행 벡터 규칙 행렬이 된다.
+		Matrix4x4 matrix;
+		for (int row = 0; row < 4; ++row)
+		{
+			for (int column = 0; column < 4; ++column)
+			{
+				matrix.m[row][column] = values[row * 4 + column];
+			}
+		}
+
+		return matrix;
+	}
+
 	/** 노드의 이동, 회전, 크기를 엔진 좌표계(왼손, cm)의 Transform으로 바꾼다. matrix로 적힌 노드는 행렬을 나눠서 바꾼다. */
 	Transform ConvertNodeTransform(const GLTFNode& node)
 	{
@@ -852,19 +888,8 @@ namespace
 		Transform source;
 		if (node.matrix.has_value())
 		{
-			// glTF는 열 우선 순서라, 16개 값을 행 단위로 채우면 엔진의 행 벡터 규칙 행렬이 된다.
-			const std::array<float, 16>& values = node.matrix.value();
-			Matrix4x4 matrix;
-			for (int row = 0; row < 4; ++row)
-			{
-				for (int column = 0; column < 4; ++column)
-				{
-					matrix.m[row][column] = values[row * 4 + column];
-				}
-			}
-
 			// 행렬을 glTF 좌표 그대로의 이동, 회전, 크기로 나눈다.
-			source = Transform::CreateFromMatrix(matrix);
+			source = Transform::CreateFromMatrix(CreateMatrixFromColumnMajor(node.matrix.value()));
 		}
 		else
 		{
@@ -1026,7 +1051,12 @@ namespace
 			// 메시 번호는 파일에 적힌 값이라, 범위를 벗어나면 나중에 없는 메시를 찾게 되므로 확인한다.
 			if (gltfDocument.nodes[i].mesh.has_value() && gltfDocument.nodes[i].mesh.value() >= gltfDocument.meshes.size()) { return false; }
 
+			// 스킨 번호도 파일 값이라 범위를 확인한다. 명세상 스킨이 있는 노드는 메시도 있어야 하며, 메시 없이는 휘게 할 대상이 없다.
+			const std::optional<std::size_t>& skin = gltfDocument.nodes[i].skin;
+			if (skin.has_value() && (skin.value() >= gltfDocument.skins.size() || !gltfDocument.nodes[i].mesh.has_value())) { return false; }
+
 			sceneNodes[i].mesh = gltfDocument.nodes[i].mesh;
+			sceneNodes[i].skin = skin;
 			sceneNodes[i].localTransform = ConvertNodeTransform(gltfDocument.nodes[i]);
 			sceneNodes[i].name = gltfDocument.nodes[i].name;
 		}
@@ -1305,6 +1335,47 @@ namespace
 	}
 
 	/**
+	 * glTF 스킨 하나를 엔진 스킨으로 바꾼다. joints는 배치표 번호와 같아 그대로 옮기고, 역바인드 행렬은 엔진 좌표계로 바꾼다.
+	 * 쓸 수 없는 값이면 출력값을 유지하고 false를 반환한다.
+	 */
+	bool ConvertSkin(const GLTFDocument& gltfDocument, std::size_t skinIndex, Skin& outSkin)
+	{
+		const GLTFSkin& gltfSkin = gltfDocument.skins[skinIndex];
+
+		// 없는 노드를 가리키면 뼈 행렬을 찾을 때 범위를 벗어난다.
+		for (const std::size_t joint : gltfSkin.joints)
+		{
+			if (joint >= gltfDocument.nodes.size()) { return false; }
+		}
+
+		// 명세상 역바인드 행렬이 없으면 모두 단위 행렬이다. Matrix4x4의 기본값이 단위 행렬이다.
+		std::vector<Matrix4x4> inverseBindMatrices(gltfSkin.joints.size());
+		if (gltfSkin.inverseBindMatrices.has_value())
+		{
+			std::vector<float> values;
+			if (!ReadFloatAccessor(gltfDocument, gltfSkin.inverseBindMatrices.value(), 16, values)) { return false; }
+
+			// i번째 행렬이 joints[i]의 것이다. 명세상 행렬 수는 joints 수 이상이며, 짝이 없는 남는 행렬은 쓰지 않는다.
+			if (values.size() < gltfSkin.joints.size() * 16) { return false; }
+
+			for (std::size_t i = 0; i < gltfSkin.joints.size(); ++i)
+			{
+				const std::span<const float, 16> matrixValues(values.data() + i * 16, 16);
+				// NaN은 비교 검사를 통과하고 그 뼈를 따르는 정점을 모두 깨뜨리므로 거른다.
+				if (!std::ranges::all_of(matrixValues, [](float value) { return std::isfinite(value); })) { return false; }
+
+				inverseBindMatrices[i] = ConvertMatrixToEngine(CreateMatrixFromColumnMajor(matrixValues));
+			}
+		}
+
+		outSkin.name = gltfSkin.name;
+		outSkin.joints = gltfSkin.joints;
+		outSkin.inverseBindMatrices = std::move(inverseBindMatrices);
+
+		return true;
+	}
+
+	/**
 	 * primitive의 JOINTS_0과 WEIGHTS_0을 정점별 스킨 가중치로 읽는다. 둘 다 없으면 빈 배열로 성공한다.
 	 * 가중치는 정점마다 합이 1이 되도록 맞춘다. 명세를 어긴 값이면 출력값을 유지하고 false를 반환한다.
 	 */
@@ -1360,7 +1431,8 @@ namespace
 			// 렌더러가 합으로 나누지 않으므로 여기서 합을 1로 맞춘다.
 			for (std::size_t c = 0; c < 4; ++c)
 			{
-				skinWeights[i].joints[c] = joints[i * 4 + c];
+				// 가중치가 0인 칸도 셰이더가 뼈 행렬을 읽으므로, 명세 권장대로 0번 뼈를 가리키게 한다.
+				skinWeights[i].joints[c] = weights[i * 4 + c] > 0.0f ? joints[i * 4 + c] : 0;
 				skinWeights[i].weights[c] = weights[i * 4 + c] / sum;
 			}
 		}
@@ -1526,6 +1598,36 @@ bool GLTFLoader::LoadModel(const std::filesystem::path& path, GLTFModel& outMode
 	// 배치표 만들기
 	// ----------
 	if (!ConvertSceneNodes(gltfDocument, model.sceneNodes)) { return false; }
+
+	// ----------
+	// 스킨마다 뼈 목록과 역바인드 행렬 만들기
+	// ----------
+	model.skins.resize(gltfDocument.skins.size());
+	for (std::size_t i = 0; i < gltfDocument.skins.size(); ++i)
+	{
+		if (!ConvertSkin(gltfDocument, i, model.skins[i])) { return false; }
+	}
+
+	// 스킨이 붙은 노드는 그 메시의 정점 뼈 번호가 모두 스킨의 joints 범위 안이어야 한다.
+	// 벗어나면 그릴 때 없는 뼈 행렬을 읽는다. 같은 메시를 다른 스킨으로 쓰는 노드도 있어 노드마다 확인한다.
+	for (const GLTFSceneNode& node : model.sceneNodes)
+	{
+		if (!node.skin.has_value()) { continue; }
+
+		const StaticMesh& mesh = model.meshes[node.mesh.value()];
+		const std::size_t jointCount = model.skins[node.skin.value()].joints.size();
+
+		// 가중치가 없는 메시는 휘게 할 수 없다.
+		if (mesh.skinWeights.empty()) { return false; }
+
+		for (const SkinWeights& skinWeights : mesh.skinWeights)
+		{
+			for (const std::uint16_t joint : skinWeights.joints)
+			{
+				if (joint >= jointCount) { return false; }
+			}
+		}
+	}
 
 	// ----------
 	// 애니메이션마다 클립 만들기

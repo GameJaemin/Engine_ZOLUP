@@ -19,7 +19,7 @@ class Texture;
 enum class TextureFormat;
 
 /**
- * glTF 파일 하나에서 불러온 메시들과 배치표와 애니메이션 클립들이다. 모두 엔진 좌표계(왼손, cm)다.
+ * glTF 파일 하나에서 불러온 메시들과 배치표와 애니메이션 클립들과 스킨들이다. 모두 엔진 좌표계(왼손, cm)다.
  * 장면에 놓기 전의 원본이며, 배치는 배치표를 읽어 만든 GameObject가 맡는다.
  */
 struct Model

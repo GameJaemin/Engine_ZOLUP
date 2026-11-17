@@ -180,12 +180,18 @@ bool HakkoResources::PrepareStaticMesh(const StaticMesh& mesh)
 	const std::wstring name = MakeHakkoAssetName(path);
 	if (Hakko::DataHub::GetMeshId(name) != 0) { return true; }
 
-	Hakko::DataHub::Mesh renderMesh{};
-	renderMesh.vertexType = Hakko::DataHub::VertexType_Static;
-	renderMesh.verticesStatic.reserve(mesh.vertices.size());
+	// 스킨 메시는 정점마다 뼈 번호와 가중치를 더한 스킨 정점으로 등록한다. skinWeights는 vertices와 같은 개수와 순서다.
+	const bool isSkinned = !mesh.skinWeights.empty();
 
-	for (const MeshVertex& vertex : mesh.vertices)
+	Hakko::DataHub::Mesh renderMesh{};
+	renderMesh.vertexType = isSkinned ? Hakko::DataHub::VertexType_Skinned : Hakko::DataHub::VertexType_Static;
+	if (isSkinned) { renderMesh.verticesSkinned.reserve(mesh.vertices.size()); }
+	else { renderMesh.verticesStatic.reserve(mesh.vertices.size()); }
+
+	for (std::size_t i = 0; i < mesh.vertices.size(); ++i)
 	{
+		const MeshVertex& vertex = mesh.vertices[i];
+
 		Hakko::DataHub::VertexStatic renderVertex{};
 		renderVertex.Pos = { vertex.position.x, vertex.position.y, vertex.position.z };
 		renderVertex.UV = { vertex.uv.x, vertex.uv.y };
@@ -194,7 +200,22 @@ bool HakkoResources::PrepareStaticMesh(const StaticMesh& mesh)
 		// 엔진 정점에는 색상이 없으므로 흰색으로 채운다.
 		renderVertex.Color = { 1.0f, 1.0f, 1.0f, 1.0f };
 
-		renderMesh.verticesStatic.push_back(renderVertex);
+		if (!isSkinned)
+		{
+			renderMesh.verticesStatic.push_back(renderVertex);
+			continue;
+		}
+
+		// 스킨 정점은 일반 정점을 상속하므로 공통 칸을 복사한 뒤 뼈 칸만 채운다.
+		Hakko::DataHub::VertexSkinned skinnedVertex{};
+		static_cast<Hakko::DataHub::VertexStatic&>(skinnedVertex) = renderVertex;
+		for (std::size_t c = 0; c < 4; ++c)
+		{
+			skinnedVertex.BoneIdx[c] = mesh.skinWeights[i].joints[c];
+			skinnedVertex.BoneWeight[c] = mesh.skinWeights[i].weights[c];
+		}
+
+		renderMesh.verticesSkinned.push_back(skinnedVertex);
 	}
 
 	// Hakko의 인덱스 타입이 std::uint32_t로 전환된 것을 전제로 한다.

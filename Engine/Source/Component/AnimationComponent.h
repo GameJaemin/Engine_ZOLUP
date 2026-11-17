@@ -20,6 +20,7 @@ public:
 	/**
 	 * 클립 node 번호 순서의 노드 TransformComponent 목록을 받는다.
 	 * 노드 객체는 이 컴포넌트를 붙인 객체의 자손이어야 하고 따로 삭제하지 않는다.
+	 * 객체로 만들지 않은 노드(뼈)는 nullptr이며, 그 노드의 값은 포즈에만 적는다.
 	 */
 	void SetNodeTransforms(std::vector<TransformComponent*> newNodeTransforms);
 
@@ -31,6 +32,9 @@ private:
 public:
 	/** 노드 번호 순서의 원래 부모 기준 값을 받고, 현재 포즈도 이 값으로 채운다. */
 	void SetRestPose(std::vector<Transform> newRestPose);
+
+	/** 노드 번호 순서의 이번 프레임 부모 기준 값을 빌려준다. 재생 전에는 원래 값이다. */
+	const std::vector<Transform>& GetPose() const { return pose; }
 
 private:
 	// 노드 번호 순서의 원래 값(배치표의 localTransform). 엔진 좌표계(왼손, cm)이며 바뀌지 않는다.

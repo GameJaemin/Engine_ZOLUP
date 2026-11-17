@@ -29,6 +29,40 @@ Matrix4x4 Matrix4x4::operator*(const Matrix4x4& other) const
 	return result;
 }
 
+bool Matrix4x4::GetAffineInverse(Matrix4x4& outInverse) const
+{
+	// 위쪽 3x3의 여인수다. 0행 전개로 행렬식을 구하고, 역행렬의 0열에도 쓴다.
+	const float cofactor00 = m[1][1] * m[2][2] - m[1][2] * m[2][1];
+	const float cofactor01 = m[1][2] * m[2][0] - m[1][0] * m[2][2];
+	const float cofactor02 = m[1][0] * m[2][1] - m[1][1] * m[2][0];
+	const float determinant = m[0][0] * cofactor00 + m[0][1] * cofactor01 + m[0][2] * cofactor02;
+
+	// 크기가 0인 축이 있으면 행렬식이 0이라 역이 없다. 0이나 너무 작은 값으로 나누면 무한대가 되므로 그것으로 거른다.
+	const float inverseDeterminant = 1.0f / determinant;
+	if (!std::isfinite(inverseDeterminant)) { return false; }
+
+	// 위쪽 3x3의 역은 여인수를 전치해 행렬식으로 나눈 것이다.
+	Matrix4x4 inverse;
+	inverse.m[0][0] = cofactor00 * inverseDeterminant;
+	inverse.m[0][1] = (m[0][2] * m[2][1] - m[0][1] * m[2][2]) * inverseDeterminant;
+	inverse.m[0][2] = (m[0][1] * m[1][2] - m[0][2] * m[1][1]) * inverseDeterminant;
+	inverse.m[1][0] = cofactor01 * inverseDeterminant;
+	inverse.m[1][1] = (m[0][0] * m[2][2] - m[0][2] * m[2][0]) * inverseDeterminant;
+	inverse.m[1][2] = (m[0][2] * m[1][0] - m[0][0] * m[1][2]) * inverseDeterminant;
+	inverse.m[2][0] = cofactor02 * inverseDeterminant;
+	inverse.m[2][1] = (m[0][1] * m[2][0] - m[0][0] * m[2][1]) * inverseDeterminant;
+	inverse.m[2][2] = (m[0][0] * m[1][1] - m[0][1] * m[1][0]) * inverseDeterminant;
+
+	// 행 벡터 규칙이라 v' = v * A + t이고, 되돌리면 새 이동은 -t * (A의 역)이다.
+	for (int column = 0; column < 3; ++column)
+	{
+		inverse.m[3][column] = -(m[3][0] * inverse.m[0][column] + m[3][1] * inverse.m[1][column] + m[3][2] * inverse.m[2][column]);
+	}
+
+	outInverse = inverse;
+	return true;
+}
+
 Matrix4x4 Matrix4x4::CreateScale(const Vector3& scale)
 {
 	Matrix4x4 result;

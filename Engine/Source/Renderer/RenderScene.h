@@ -150,7 +150,7 @@ private:
 
 public:
 	/**
-	 * 종료 시 장면 제출을 중단한 뒤 객체 데이터 ID와 메시 경계 상자 중심 캐시를 비운다. 이후 이 장면을 제출하지 않는다.
+	 * 종료 시 장면 제출을 중단한 뒤 객체 데이터 ID와 뼈 행렬 데이터 ID와 메시 경계 상자 중심 캐시를 비운다. 이후 이 장면을 제출하지 않는다.
 	 * 실제 객체 데이터는 DataHub에 남으며 GPU 작업 완료 뒤 DataHub 종료에서 정리한다.
 	 */
 	void ClearObjectDataIds();
@@ -158,6 +158,8 @@ public:
 private:
 	// 컴포넌트별 객체 데이터 ID다. 키는 비소유이며 컴포넌트 제거 시 항목도 제거해야 한다.
 	std::unordered_map<const StaticMeshComponent*, Hakko::DataHub::DataBoxID> objectDataIds;
+	// 스킨 메시 컴포넌트별 뼈 행렬 데이터 ID다. 키는 비소유이며 컴포넌트 제거 시 항목도 제거해야 한다.
+	std::unordered_map<const StaticMeshComponent*, Hakko::DataHub::DataBoxID> boneDataIds;
 	// 투명 정렬에 쓰는 메시 로컬 좌표다. 등록된 메시 ID가 유효한 동안 재사용한다.
 	std::unordered_map<Hakko::DataHub::MeshID, Vector3> translucentBoundsCenters;
 };

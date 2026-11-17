@@ -5,6 +5,7 @@
 #include "Component/DirectionalLightComponent.h"
 #include "Component/LightComponent.h"
 #include "Component/PointLightComponent.h"
+#include "Component/SkinComponent.h"
 #include "Component/SkyboxComponent.h"
 #include "Component/SpotLightComponent.h"
 #include "Component/StaticMeshComponent.h"
@@ -81,8 +82,8 @@ namespace
 		return static_cast<std::uint16_t>(std::clamp(normalizedDepth, 0.0f, 1.0f) * maxDepth);
 	}
 
-	/** HLSL의 열 단위 저장에 맞춰 전치하고 Hakko가 받는 행렬 타입으로 옮긴다. */
-	DirectX::XMMATRIX ToHakkoMatrix(const Matrix4x4& matrix)
+	/** 셰이더(HLSL)가 행렬을 열 단위로 읽으므로 전치하고, 렌더러가 받는 행렬 타입으로 옮긴다. */
+	DirectX::XMMATRIX ToShaderMatrix(const Matrix4x4& matrix)
 	{
 		DirectX::XMFLOAT4X4 values;
 		for (int row = 0; row < 4; ++row)
@@ -94,6 +95,17 @@ namespace
 		}
 
 		return DirectX::XMLoadFloat4x4(&values);
+	}
+
+	/** 모든 뼈를 단위 행렬로 채운 뼈 행렬 묶음을 만든다. 뼈 자세를 계산하기 전에 메시를 원래 모양으로 그릴 때 쓴다. */
+	Hakko::DataHub::DataBox_Render3DOptional CreateIdentityBoneData()
+	{
+		Hakko::DataHub::DataBox_Render3DOptional boneData{};
+		for (DirectX::XMMATRIX& boneTransform : boneData.boneTransforms)
+		{
+			boneTransform = DirectX::XMMatrixIdentity();
+		}
+		return boneData;
 	}
 }
 
@@ -115,6 +127,13 @@ void RenderScene::RemoveStaticMeshComponent(StaticMeshComponent* component)
 	{
 		Hakko::DataHub::RemoveDataBox(Hakko::DataHub::DataBoxType_DtB_3DGeneral, objectData->second);
 		objectDataIds.erase(objectData);
+	}
+
+	const auto boneData = boneDataIds.find(component);
+	if (boneData != boneDataIds.end())
+	{
+		Hakko::DataHub::RemoveDataBox(Hakko::DataHub::DataBoxType_DtB_3DOptional, boneData->second);
+		boneDataIds.erase(boneData);
 	}
 
 	// 그리는 순서가 의미를 가질 수 있으므로 마지막 원소와 바꾸지 않고 순서를 유지해 지운다.
@@ -236,9 +255,9 @@ bool RenderScene::PrepareCamera(const CameraViewInfo& cameraViewInfo, const Matr
 	const Matrix4x4 viewProjectionMatrix = viewMatrix * projectionMatrix;
 
 	Hakko::DataHub::RTB_SetCamera camera{};
-	camera.view = ToHakkoMatrix(viewMatrix);
-	camera.proj = ToHakkoMatrix(projectionMatrix);
-	camera.viewProj = ToHakkoMatrix(viewProjectionMatrix);
+	camera.view = ToShaderMatrix(viewMatrix);
+	camera.proj = ToShaderMatrix(projectionMatrix);
+	camera.viewProj = ToShaderMatrix(viewProjectionMatrix);
 	camera.eyePos = { cameraViewInfo.position.x, cameraViewInfo.position.y, cameraViewInfo.position.z };
 	Hakko::DataHub::SendRTB(camera);
 
@@ -404,7 +423,7 @@ bool RenderScene::PrepareDrawRequests(const CameraViewInfo& cameraViewInfo, cons
 		Hakko::DataHub::DataBox_Render3DGeneral objectData{};
 		objectData.affectLights[0] = pointLightSlot;
 		objectData.affectLights[1] = spotLightSlot;
-		objectData.worldMat = ToHakkoMatrix(worldMatrix);
+		objectData.worldMat = ToShaderMatrix(worldMatrix);
 		// 재질 미지정 시에도 객체 데이터에는 유효한 수치를 채운다.
 		// 정상 표면과 오류용 표면의 구분은 텍스처 조합에서 처리한다.
 		objectData.blendColor = { 1.0f, 1.0f, 1.0f, 1.0f };
@@ -451,29 +470,82 @@ bool RenderScene::PrepareDrawRequests(const CameraViewInfo& cameraViewInfo, cons
 
 		const Hakko::DataHub::DataBoxID objectDataId = objectDataIds.at(component);
 
+		// HakkoResources::PrepareStaticMesh와 같은 기준이다. 스킨 정점으로 등록한 메시는 스킨용 설정과 뼈 행렬로 그린다.
+		const bool isSkinned = !mesh->skinWeights.empty();
+
+		// 0은 뼈 행렬 없음이다. 스킨 메시가 아니면 그대로 둔다.
+		Hakko::DataHub::DataBoxID boneDataId = 0;
+		if (isSkinned)
+		{
+			// 기본은 단위 행렬이라 SkinComponent가 없거나 계산할 수 없으면 메시를 원래 모양으로 그린다.
+			Hakko::DataHub::DataBox_Render3DOptional boneData = CreateIdentityBoneData();
+
+			const SkinComponent* skin = component->GetGameObject()->GetComponent<SkinComponent>();
+			std::vector<Matrix4x4> boneMatrices;
+			if (skin != nullptr && skin->CalculateBoneMatrices(boneMatrices))
+			{
+				// 셰이더의 뼈 행렬 배열보다 뼈가 많으면 정점이 배열 밖을 읽는다.
+				if (boneMatrices.size() > SKIN_BONE_MAX)
+				{
+					Log::Write(LogLevel::Error, "RenderScene", "Skinned mesh has more joints than the renderer supports: " + path);
+					ClearDrawRequests();
+					return false;
+				}
+
+				for (std::size_t i = 0; i < boneMatrices.size(); ++i)
+				{
+					boneData.boneTransforms[i] = ToShaderMatrix(boneMatrices[i]);
+				}
+			}
+
+			// 객체 데이터처럼 처음에는 넣어 ID를 받아 두고, 이후 프레임에는 내용만 바꾼다.
+			if (!boneDataIds.contains(component))
+			{
+				const Hakko::DataHub::DataBoxID newBoneDataId = Hakko::DataHub::AddDataBox(boneData);
+				if (newBoneDataId == 0)
+				{
+					Log::Write(LogLevel::Error, "RenderScene", "Failed to register skinned mesh bone data");
+					ClearDrawRequests();
+					return false;
+				}
+
+				boneDataIds.emplace(component, newBoneDataId);
+			}
+			else if (!Hakko::DataHub::UpdateDataBox(boneDataIds.at(component), boneData))
+			{
+				Log::Write(LogLevel::Error, "RenderScene", "Failed to update skinned mesh bone data");
+				ClearDrawRequests();
+				return false;
+			}
+
+			boneDataId = boneDataIds.at(component);
+		}
+
 		if (isBlended)
 		{
 			const auto [center, inserted] = translucentBoundsCenters.try_emplace(meshId);
 			if (inserted) { center->second = CalculateLocalBoundsCenter(*mesh); }
 
 			Hakko::DataHub::RTB_DrawTP request{};
-			request.drawProp = RESERVED_DRAWPROP_TRANSLUCENT_ID;
+			request.drawProp = isSkinned ? RESERVED_DRAWPROP_TRANSLUCENT_SKINNED_ID : RESERVED_DRAWPROP_TRANSLUCENT_ID;
 			request.depth = CalculateTranslucentDepth(
 				center->second, worldMatrix, viewMatrix, cameraViewInfo.nearClipDistance, cameraViewInfo.farClipDistance);
 			request.texProp = texturePropID;
 			request.meshId = meshId;
 			request.subMeshId = 0;
 			request.generalId = objectDataId;
+			request.optionalId = boneDataId;
 			Hakko::DataHub::SendRTB(request);
 		}
 		else
 		{
 			Hakko::DataHub::RTB_DrawOPQ request{};
-			request.drawProp = RESERVED_DRAWPROP_OPAQUE_ID;
+			request.drawProp = isSkinned ? RESERVED_DRAWPROP_OPAQUE_SKINNED_ID : RESERVED_DRAWPROP_OPAQUE_ID;
 			request.texProp = texturePropID;
 			request.meshId = meshId;
 			request.subMeshId = 0;
 			request.generalId = objectDataId;
+			request.optionalId = boneDataId;
 			Hakko::DataHub::SendRTB(request);
 		}
 	}
@@ -484,5 +556,6 @@ bool RenderScene::PrepareDrawRequests(const CameraViewInfo& cameraViewInfo, cons
 void RenderScene::ClearObjectDataIds()
 {
 	objectDataIds.clear();
+	boneDataIds.clear();
 	translucentBoundsCenters.clear();
 }
