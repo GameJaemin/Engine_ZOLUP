@@ -10,10 +10,12 @@
 
 #include <optional>
 
+class Engine;
+
 class EditorApplication final : public IApplication
 {
 public:
-	bool OnInitialize() override;
+	bool OnInitialize(Engine& inEngine) override;
 	void OnUpdate(const InputState& input, float deltaTime) override;
 	std::optional<SceneView> GetSceneView() override;
 	void OnShutdown() noexcept override;
@@ -26,6 +28,9 @@ public:
 	void DrawPanels();
 
 private:
+	// OnInitialize에서 빌리고 OnShutdown에서 비운다. 소유하지 않는다.
+	Engine* engine = nullptr;
+
 	EditorWorldSession worldSession;
 	EditorSelection selection;
 	EditorCamera editorCamera;

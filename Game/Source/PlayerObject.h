@@ -17,7 +17,10 @@ public:
 
 	// 조작
 public:
-	/** 이번 프레임의 마우스 이동량을 픽셀 단위로 받는다. +X는 오른쪽, +Y는 아래쪽이다. */
+	/**
+	 * 이번 프레임의 마우스 상대 이동량을 장치 보고 단위로 받는다.
+	 * +X는 오른쪽, +Y는 아래쪽이다.
+	 */
 	void AddMouseLookInput(int deltaX, int deltaY);
 
 protected:

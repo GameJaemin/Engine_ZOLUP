@@ -14,6 +14,7 @@
 #include "Core/Math/Quaternion.h"
 #include "Core/Math/Transform.h"
 #include "Core/Math/Vector3.h"
+#include "Engine.h"
 #include "GameObject.h"
 #include "Input/InputDispatcher.h"
 #include "Input/InputState.h"
@@ -188,8 +189,10 @@ GameApplication::GameApplication() = default;
 
 GameApplication::~GameApplication() = default;
 
-bool GameApplication::OnInitialize()
+bool GameApplication::OnInitialize(Engine& inEngine)
 {
+	engine = &inEngine;
+
 	gameWorld = std::make_unique<World>();
 	World& world = *gameWorld;
 	std::filesystem::path levelPath;
@@ -225,6 +228,8 @@ bool GameApplication::OnInitialize()
 	AddSpotLight(world);
 	AddAmbientLight(world);
 
+	engine->SetCursorConfined(true);
+	engine->SetCursorVisible(false);
 	return true;
 }
 
@@ -236,7 +241,7 @@ void GameApplication::OnUpdate(const InputState& input, float deltaTime)
 	{
 		if (PlayerObject* player = dynamic_cast<PlayerObject*>(camera->GetGameObject()))
 		{
-			const MouseCoordinates mouseDelta = input.GetMouseDelta();
+			const RawMouseDelta mouseDelta = input.GetRawMouseDelta();
 			player->AddMouseLookInput(mouseDelta.x, mouseDelta.y);
 		}
 	}
@@ -263,4 +268,12 @@ void GameApplication::OnShutdown() noexcept
 		gameWorld->GetRenderScene().ClearObjectDataIds();
 	}
 	gameWorld.reset();
+
+	if (engine != nullptr)
+	{
+		engine->SetCursorVisible(true);
+		engine->SetCursorConfined(false);
+	}
+
+	engine = nullptr;
 }

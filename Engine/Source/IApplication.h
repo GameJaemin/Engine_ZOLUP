@@ -5,6 +5,7 @@
 #include <functional>
 #include <optional>
 
+class Engine;
 class InputState;
 class RenderScene;
 
@@ -22,8 +23,12 @@ class IApplication
 public:
 	virtual ~IApplication() = default;
 
-	/** 창, DataHub 및 렌더러 초기화가 끝난 뒤 호출한다. */
-	virtual bool OnInitialize() = 0;
+	/**
+	 * 창, DataHub 및 렌더러 초기화가 끝난 뒤 호출한다.
+	 * engine은 OnShutdown이 끝날 때까지 빌려 사용할 수 있다.
+	 * 보관한 Engine 포인터는 OnShutdown에서 비운다.
+	 */
+	virtual bool OnInitialize(Engine& engine) = 0;
 
 	/** 메시지 처리 뒤 호출한다. input은 호출 중에 빌리며 deltaTime은 초 단위다. */
 	virtual void OnUpdate(const InputState& input, float deltaTime) = 0;

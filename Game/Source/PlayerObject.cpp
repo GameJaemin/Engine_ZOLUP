@@ -20,7 +20,7 @@ namespace
 	// 초당 회전 각도와 pitch의 최대 절댓값을 도 단위로 지정한다.
 	constexpr float LookSpeed = 90.0f;
 	constexpr float MaxPitch = 89.0f;
-	// 마우스가 1픽셀 움직일 때 회전하는 각도다.
+	// 마우스 상대 이동량 1단위당 회전하는 각도(도)다.
 	constexpr float MouseLookSensitivity = 0.15f;
 }
 
@@ -66,7 +66,7 @@ void PlayerObject::OnTick(float deltaTime)
 	const Vector3 frameMove = std::exchange(moveInput, Vector3{});
 	const float frameYaw = std::exchange(yawInput, 0.0f);
 	const float framePitch = std::exchange(pitchInput, 0.0f);
-	// 방향키 회전은 누른 시간에 비례하고 마우스 회전은 이미 픽셀 이동량으로 계산했다.
+	// 방향키 회전은 누른 시간에 비례하고 마우스 회전은 이미 상대 이동량으로 계산했다.
 	const float lookDelta = LookSpeed * deltaTime;
 	const float yawDelta = frameYaw * lookDelta + std::exchange(mouseYawDeltaDegrees, 0.0f);
 	const float pitchDelta = framePitch * lookDelta + std::exchange(mousePitchDeltaDegrees, 0.0f);

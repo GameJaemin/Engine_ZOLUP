@@ -34,6 +34,21 @@ public:
 	 */
 	int Run(IApplication& application);
 
+	/**
+	 * 커서 가두기 설정을 지정한다. 메인 스레드에서 호출한다.
+	 * 애플리케이션의 OnInitialize부터 OnShutdown까지 사용할 수 있다.
+	 * 포커스 상실 또는 최소화 중에는 설정을 유지하고 실제 제한만 해제한다.
+	 * 설정이 켜져 있으면 창으로 복귀해 조작 가능한 상태가 될 때 다시 적용한다.
+	 */
+	void SetCursorConfined(bool confined);
+
+	/**
+	 * 커서 표시 설정을 지정한다. 메인 스레드에서 호출한다.
+	 * 애플리케이션의 OnInitialize부터 OnShutdown까지 사용할 수 있다.
+	 * 숨김 설정은 포커스 상실 또는 최소화 중에도 유지하며 복귀 시 다시 반영한다.
+	 */
+	void SetCursorVisible(bool visible);
+
 private:
 	/** 창, DataHub와 렌더러를 순서대로 준비하고 기본 배경을 설정한다. */
 	bool Initialize();

@@ -107,6 +107,31 @@ namespace
 		inputState.RecordMousePosition(x, y);
 	}
 
+	/** 포커스가 있는 창의 마우스 상대 이동량만 기록한다. */
+	void RecordRawMouseInput(HWND windowHandle, InputState& inputState, LPARAM lParam)
+	{
+		if (GetFocus() != windowHandle) { return; }
+
+		RAWINPUT rawInput{};
+		UINT dataSize = static_cast<UINT>(sizeof(rawInput));
+
+		const UINT bytesRead = GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam), RID_INPUT, &rawInput, &dataSize, static_cast<UINT>(sizeof(RAWINPUTHEADER)));
+		if (bytesRead == static_cast<UINT>(-1))
+		{
+			LogWindowsError("GetRawInputData", GetLastError());
+			return;
+		}
+
+		if (rawInput.header.dwType != RIM_TYPEMOUSE) { return; }
+
+		const RAWMOUSE& mouse = rawInput.data.mouse;
+
+		// 절대 좌표를 상대 이동량으로 해석하지 않는다.
+		if ((mouse.usFlags & MOUSE_MOVE_ABSOLUTE) != 0) { return; }
+
+		inputState.AddRawMouseDelta(static_cast<int>(mouse.lLastX), static_cast<int>(mouse.lLastY));
+	}
+
 	/**
 	 * 키, 마우스 버튼, 이동, 휠 및 입력 해제 메시지를 입력 상태에 기록한다.
 	 * Alt와 함께 누른 키는 WM_SYSKEYDOWN으로 들어오므로 일반 키 메시지와 같이 기록한다.
@@ -139,6 +164,9 @@ namespace
 			break;
 		case WM_MOUSEMOVE:
 			RecordMouseMove(windowHandle, inputState, lParam);
+			break;
+		case WM_INPUT:
+			RecordRawMouseInput(windowHandle, inputState, lParam);
 			break;
 		case WM_MOUSELEAVE:
 			inputState.InvalidateMousePosition();
@@ -175,12 +203,21 @@ WindowsApplication::~WindowsApplication()
 bool WindowsApplication::Initialize()
 {
 	if (closeRequested) { return false; }
-	return Create();
+	if (!Create()) { return false; }
+
+	return RegisterRawMouseInput();
 }
 
 bool WindowsApplication::Shutdown()
 {
 	closeRequested = true;
+
+	SetCursorVisible(true);
+
+	cursorConfinementRequested = false;
+	const bool cursorReleased = UpdateCursorConfinement();
+	const bool rawInputUnregistered = UnregisterRawMouseInput();
+
 	if (window != nullptr)
 	{
 		if (!DestroyWindow(window))
@@ -202,7 +239,7 @@ bool WindowsApplication::Shutdown()
 		isWindowClassRegistered = false;
 	}
 
-	return true;
+	return cursorReleased && rawInputUnregistered;
 }
 
 bool WindowsApplication::Create()
@@ -331,6 +368,54 @@ LRESULT WindowsApplication::WindowProc(HWND windowHandle, UINT message, WPARAM w
 	WindowsApplication* windowsApplication = reinterpret_cast<WindowsApplication*>(GetWindowLongPtrW(windowHandle, GWLP_USERDATA));
 	if (windowsApplication != nullptr)
 	{
+		switch (message)
+		{
+		case WM_CLOSE:
+		case WM_DESTROY:
+			windowsApplication->SetCursorVisible(true);
+			windowsApplication->SetCursorConfined(false);
+			break;
+
+		case WM_KILLFOCUS:
+			windowsApplication->UpdateCursorVisibility(true);
+			// 설정은 유지하고 실제 제한만 해제한다.
+			if (windowsApplication->cursorConfined)
+			{
+				if (ClipCursor(nullptr))
+				{
+					windowsApplication->cursorConfined = false;
+				}
+				else
+				{
+					LogWindowsError("ClipCursor", GetLastError());
+				}
+			}
+			break;
+
+		case WM_SETFOCUS:
+		case WM_MOVE:
+		case WM_SIZE:
+			windowsApplication->UpdateCursorConfinement();
+			windowsApplication->UpdateCursorVisibility();
+			break;
+
+		case WM_SETCURSOR:
+			if (reinterpret_cast<HWND>(wParam) == windowHandle && LOWORD(lParam) == HTCLIENT)
+			{
+				windowsApplication->UpdateCursorVisibility();
+				return TRUE;
+			}
+			break;
+
+		case WM_MOUSEMOVE:
+		case WM_CAPTURECHANGED:
+			windowsApplication->UpdateCursorVisibility();
+			break;
+
+		default:
+			break;
+		}
+
 		// 기록 후에도 아래 DefWindowProcW로 넘겨 Alt+F4 같은 시스템 키 처리를 유지한다.
 		RecordInputMessage(windowHandle, windowsApplication->inputState, message, wParam, lParam);
 	}
@@ -373,4 +458,158 @@ LRESULT WindowsApplication::WindowProc(HWND windowHandle, UINT message, WPARAM w
 const InputState& WindowsApplication::GetInputState() const
 {
 	return inputState;
+}
+
+void WindowsApplication::SetCursorConfined(bool confined)
+{
+	cursorConfinementRequested = confined;
+	UpdateCursorConfinement();
+}
+
+void WindowsApplication::SetCursorVisible(bool visible)
+{
+	cursorVisibleRequested = visible;
+	UpdateCursorVisibility();
+}
+
+bool WindowsApplication::RegisterRawMouseInput()
+{
+	RAWINPUTDEVICE device{};
+	device.usUsagePage = 0x01; // Generic Desktop Controls
+	device.usUsage = 0x02;     // Mouse
+	device.dwFlags = 0;
+	device.hwndTarget = window;
+
+	if (!RegisterRawInputDevices(&device, 1, static_cast<UINT>(sizeof(device))))
+	{
+		LogWindowsError("RegisterRawInputDevices", GetLastError());
+		return false;
+	}
+
+	rawMouseInputRegistered = true;
+	return true;
+}
+
+bool WindowsApplication::UnregisterRawMouseInput()
+{
+	if (!rawMouseInputRegistered) { return true; }
+
+	RAWINPUTDEVICE device{};
+	device.usUsagePage = 0x01; // Generic Desktop Controls
+	device.usUsage = 0x02;     // Mouse
+	device.dwFlags = RIDEV_REMOVE;
+	device.hwndTarget = nullptr;
+
+	if (!RegisterRawInputDevices(&device, 1, static_cast<UINT>(sizeof(device))))
+	{
+		LogWindowsError("RegisterRawInputDevices", GetLastError());
+		return false;
+	}
+
+	rawMouseInputRegistered = false;
+	return true;
+}
+
+bool WindowsApplication::UpdateCursorConfinement()
+{
+	const bool shouldConfine = cursorConfinementRequested && window != nullptr && GetFocus() == window && !IsIconic(window);
+
+	if (shouldConfine)
+	{
+		return ApplyCursorConfinement();
+	}
+
+	if (!cursorConfined) { return true; }
+
+	if (!ClipCursor(nullptr))
+	{
+		LogWindowsError("ClipCursor", GetLastError());
+		return false;
+	}
+
+	cursorConfined = false;
+	return true;
+}
+
+bool WindowsApplication::ApplyCursorConfinement()
+{
+	RECT clientRect = {};
+	if (!GetClientRect(window, &clientRect))
+	{
+		LogWindowsError("GetClientRect", GetLastError());
+		return false;
+	}
+
+	if (clientRect.right <= clientRect.left || clientRect.bottom <= clientRect.top)
+	{
+		return false;
+	}
+
+	POINT topLeft{ clientRect.left, clientRect.top };
+	POINT bottomRight{ clientRect.right, clientRect.bottom };
+
+	if (!ClientToScreen(window, &topLeft) || !ClientToScreen(window, &bottomRight))
+	{
+		LogWindowsError("ClientToScreen", GetLastError());
+		return false;
+	}
+
+	const RECT screenRect{ topLeft.x, topLeft.y, bottomRight.x, bottomRight.y };
+
+	if (!ClipCursor(&screenRect))
+	{
+		LogWindowsError("ClipCursor", GetLastError());
+		return false;
+	}
+
+	cursorConfined = true;
+	return true;
+}
+
+void WindowsApplication::UpdateCursorVisibility(bool forceVisible)
+{
+	if (window == nullptr) { return; }
+
+	// 다른 창이나 비클라이언트 영역의 커서를 덮어쓰지 않는다. 캡처 중에는 창 밖도 제어할 수 있다.
+	if (GetCapture() != window)
+	{
+		POINT cursorPosition{};
+		if (!GetCursorPos(&cursorPosition))
+		{
+			LogWindowsError("GetCursorPos", GetLastError());
+			return;
+		}
+
+		if (WindowFromPoint(cursorPosition) != window) { return; }
+
+		RECT clientRect{};
+		if (!GetClientRect(window, &clientRect))
+		{
+			LogWindowsError("GetClientRect", GetLastError());
+			return;
+		}
+
+		if (!ScreenToClient(window, &cursorPosition))
+		{
+			LogWindowsError("ScreenToClient", GetLastError());
+			return;
+		}
+
+		if (!PtInRect(&clientRect, cursorPosition)) { return; }
+	}
+
+	const bool shouldShow = forceVisible || cursorVisibleRequested || GetFocus() != window || IsIconic(window);
+	HCURSOR cursor = nullptr;
+	if (shouldShow)
+	{
+		cursor = LoadCursorW(nullptr, IDC_ARROW);
+		if (cursor == nullptr)
+		{
+			LogWindowsError("LoadCursorW", GetLastError());
+			return;
+		}
+	}
+
+	// 반환값은 이전 커서 핸들이므로 nullptr을 실패로 해석하지 않는다.
+	SetCursor(cursor);
 }

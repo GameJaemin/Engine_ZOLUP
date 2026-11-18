@@ -27,7 +27,7 @@ int Engine::Run(IApplication& application)
 	int exitCode = 1;
 	if (Initialize())
 	{
-		if (application.OnInitialize())
+		if (application.OnInitialize(*this))
 		{
 			exitCode = RunFrameLoop(application);
 		}
@@ -38,6 +38,16 @@ int Engine::Run(IApplication& application)
 	if (!Shutdown()) { return 1; }
 
 	return exitCode;
+}
+
+void Engine::SetCursorConfined(bool confined)
+{
+	windowsApplication.SetCursorConfined(confined);
+}
+
+void Engine::SetCursorVisible(bool visible)
+{
+	windowsApplication.SetCursorVisible(visible);
 }
 
 bool Engine::Initialize()

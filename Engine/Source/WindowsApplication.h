@@ -72,7 +72,51 @@ public:
 	 */
 	const InputState& GetInputState() const;
 
+	/**
+	 * 커서 가두기 설정을 저장하고 현재 창 상태에 맞춰 실제 제한을 갱신한다.
+	 * 메인 스레드에서 호출한다.
+	 * 포커스 상실 또는 최소화 중에는 설정을 유지하고 실제 제한만 해제한다.
+	 * 설정이 켜져 있으면 포커스가 있고 최소화되지 않은 창으로 복귀할 때 다시 적용한다.
+	 * 실제 적용 또는 해제에 실패해도 설정은 유지한다.
+	 */
+	void SetCursorConfined(bool confined);
+
+	/**
+	 * 커서 표시 설정을 저장하고 현재 커서에 반영한다. 메인 스레드에서 호출한다.
+	 * 우리 창의 클라이언트 영역 또는 마우스 캡처 중에만 커서 모양을 변경한다.
+	 * 숨김은 포커스가 있고 최소화되지 않은 창에서 적용하며, 그 외에는 기본 화살표를 사용한다.
+	 * 포커스 상실 또는 최소화 중에도 저장한 설정은 유지한다.
+	 */
+	void SetCursorVisible(bool visible);
+
+private:
+	/** 생성된 창을 마우스 Raw Input 수신 대상으로 등록한다. */
+	bool RegisterRawMouseInput();
+
+	/** 등록을 해제한다. 미등록 상태의 반복 호출은 성공한다. */
+	bool UnregisterRawMouseInput();
+
+	/** 저장한 설정과 창의 포커스 및 최소화 상태에 따라 실제 제한을 적용하거나 해제한다. */
+	bool UpdateCursorConfinement();
+
+	/** 현재 클라이언트 영역을 화면 좌표로 변환해 제한을 적용한다. */
+	bool ApplyCursorConfinement();
+
+	/**
+	 * 우리 창의 클라이언트 영역 또는 마우스 캡처 중인 커서에 표시 설정을 반영한다.
+	 * forceVisible이 true면 저장된 설정을 바꾸지 않고 표시를 우선한다.
+	 */
+	void UpdateCursorVisibility(bool forceVisible = false);
+
 private:
 	InputState inputState;
+	// 등록 성공 후 설정하고, 해제 성공 후 지운다.
+	bool rawMouseInputRegistered{false};
+	// 호출자가 요청한 설정이며 포커스 상실 또는 최소화 중에도 유지한다.
+	bool cursorConfinementRequested = false;
+	// 실제 제한 적용에 성공하면 설정하고, 해제에 성공하면 지운다.
+	bool cursorConfined = false;
+	// 호출자가 요청한 표시 설정이며 포커스 상실 또는 최소화 중에도 유지한다.
+	bool cursorVisibleRequested = true;
 };
 

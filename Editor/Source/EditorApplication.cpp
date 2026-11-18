@@ -2,8 +2,10 @@
 
 #include "World.h"
 
-bool EditorApplication::OnInitialize()
+bool EditorApplication::OnInitialize(Engine& inEngine)
 {
+	engine = &inEngine;
+
 	worldSession.Open();
 	return selection.SetWorld(worldSession.GetEditWorld());
 }
@@ -23,6 +25,8 @@ void EditorApplication::OnShutdown() noexcept
 {
 	selection.SetWorld(nullptr);
 	worldSession.Close();
+
+	engine = nullptr;
 }
 
 void EditorApplication::DrawPanels()
