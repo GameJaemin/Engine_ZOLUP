@@ -11,6 +11,7 @@ class SkyboxComponent;
 class StaticMeshComponent;
 struct CameraViewInfo;
 struct Matrix4x4;
+struct ViewportRect;
 
 enum class FramePreparationResult
 {
@@ -82,11 +83,12 @@ private:
 	// Hakko 프레임 준비
 public:
 	/**
-	 * DataHub 초기화 후 호출한다. aspectRatio는 그릴 영역의 가로를 세로로 나눈 값이다.
-	 * 카메라 투영 계산에 실패하면 SkipFrame을, 조명이나 리소스 및 그리기 요청 준비에 실패하면 Failed를 반환한다.
+	 * DataHub 초기화 후 호출한다. viewport는 장면을 그릴 클라이언트 영역의 픽셀 사각형이다.
+	 * viewport의 너비나 높이가 0 이하이거나 카메라 투영 계산에 실패하면 SkipFrame을,
+	 * 조명이나 리소스 및 그리기 요청 준비에 실패하면 Failed를 반환한다.
 	 * Ready를 반환한 프레임은 Sketch에서 준비한 요청을 소비해야 한다.
 	 */
-	FramePreparationResult PrepareFrame(const CameraViewInfo& cameraViewInfo, float aspectRatio);
+	FramePreparationResult PrepareFrame(const CameraViewInfo& cameraViewInfo, const ViewportRect& viewport);
 
 	// Hakko 메시 등록
 private:

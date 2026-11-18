@@ -16,6 +16,7 @@
 #include "HakkoResources.h"
 #include "Mesh/StaticMesh.h"
 #include "Renderer/Material.h"
+#include "Renderer/ViewportRect.h"
 
 #include "DataHub.h"
 #include "DataHub_Interface.h"
@@ -198,9 +199,17 @@ void RenderScene::PrepareBackground() const
 	Hakko::DataHub::SetLayerBackgroundColor(1.0f, 1.0f, 1.0f, 1.0f);
 }
 
-FramePreparationResult RenderScene::PrepareFrame(const CameraViewInfo& cameraViewInfo, float aspectRatio)
+FramePreparationResult RenderScene::PrepareFrame(const CameraViewInfo& cameraViewInfo, const ViewportRect& viewport)
 {
 	ClearDrawRequests();
+
+	// 크기가 0 이하이면 화면 비율을 계산할 수 없다. NaN도 함께 거르도록 양수인지 확인한다.
+	if (!(viewport.width > 0.0f) || !(viewport.height > 0.0f)) { return FramePreparationResult::SkipFrame; }
+
+	// 기본 레이어의 그리기 동작이 이 영역만 사용하도록 한다.
+	Hakko::DataHub::SetLayerViewport(Hakko::DataHub::Layer_Viewport{ viewport.x, viewport.y, viewport.width, viewport.height });
+
+	const float aspectRatio = viewport.width / viewport.height;
 	const Matrix4x4 viewMatrix = cameraViewInfo.CalculateViewMatrix();
 	if (!PrepareCamera(cameraViewInfo, viewMatrix, aspectRatio))
 	{

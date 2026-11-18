@@ -83,6 +83,10 @@ public:
 	 */
 	void Draw();
 
+public:
+	// ImGui 창 이름이다. 도킹 기본 배치도 이 이름으로 창을 찾으므로 같은 상수를 쓴다.
+	static constexpr const char* WindowName = "Content Browser";
+
 private:
 	/**
 	 * 이동 버튼, Breadcrumb, 검색과 새로고침을 한 줄에 배치한다.

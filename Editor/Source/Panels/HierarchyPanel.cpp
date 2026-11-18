@@ -10,7 +10,7 @@
 
 void HierarchyPanel::Draw(World& world, EditorSelection& selection) const
 {
-	if (ImGui::Begin("Hierarchy"))
+	if (ImGui::Begin(WindowName))
 	{
 		for (const std::unique_ptr<GameObject>& object : world.GetGameObjects())
 		{

@@ -120,6 +120,7 @@
     <ClInclude Include="Engine\Source\World.h" />
     <ClInclude Include="Engine\Source\Renderer\Material.h" />
     <ClInclude Include="Engine\Source\Renderer\RenderScene.h" />
+    <ClInclude Include="Engine\Source\Renderer\ViewportRect.h" />
     <ClInclude Include="Engine\Source\Renderer\HakkoResources.h" />
     <ClInclude Include="Engine\Source\Animation\AnimationClip.h" />
     <ClInclude Include="Engine\Source\Mesh\MeshVertex.h" />

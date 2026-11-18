@@ -14,6 +14,10 @@ public:
 	 */
 	void Draw(World& world, EditorSelection& selection) const;
 
+public:
+	// ImGui 창 이름이다. 도킹 기본 배치도 이 이름으로 창을 찾으므로 같은 상수를 쓴다.
+	static constexpr const char* WindowName = "Hierarchy";
+
 private:
 	void DrawGameObjectNode(GameObject& gameObject, EditorSelection& selection) const;
 };

@@ -254,7 +254,7 @@ void ContentBrowserPanel::Draw()
 {
 	ValidateSelection();
 
-	if (ImGui::Begin("Content Browser"))
+	if (ImGui::Begin(WindowName))
 	{
 		// 툴바 내부의 배치와 개별 작업 오류 처리는 DrawToolbar에 맡긴다.
 		const std::error_code toolbarError = DrawToolbar();

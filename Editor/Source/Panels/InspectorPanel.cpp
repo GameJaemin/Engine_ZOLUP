@@ -17,7 +17,7 @@
 
 void InspectorPanel::Draw(EditorSelection& selection)
 {
-	if (!ImGui::Begin("Inspector"))
+	if (!ImGui::Begin(WindowName))
 	{
 		ImGui::End();
 		return;

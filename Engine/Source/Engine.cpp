@@ -4,6 +4,7 @@
 #include "Core/Log.h"
 #include "IApplication.h"
 #include "Renderer/RenderScene.h"
+#include "Renderer/ViewportRect.h"
 
 #include "D3D12Renderer.h"
 #include "DataHub.h"
@@ -182,8 +183,10 @@ int Engine::RunFrameLoop(IApplication& application)
 		if (sceneView.has_value())
 		{
 			RenderScene& scene = sceneView->scene.get();
-			const float aspectRatio = static_cast<float>(clientWidth) / static_cast<float>(clientHeight);
-			const FramePreparationResult preparationResult = scene.PrepareFrame(sceneView->camera, aspectRatio);
+			// 앱이 영역을 지정하지 않으면 클라이언트 영역 전체에 그린다.
+			const ViewportRect fullClientRect{ 0.0f, 0.0f, static_cast<float>(clientWidth), static_cast<float>(clientHeight) };
+			const ViewportRect viewport = sceneView->viewport.value_or(fullClientRect);
+			const FramePreparationResult preparationResult = scene.PrepareFrame(sceneView->camera, viewport);
 			if (preparationResult == FramePreparationResult::Failed) { return 1; }
 
 			hasScene = preparationResult == FramePreparationResult::Ready;

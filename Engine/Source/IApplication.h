@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CameraViewInfo.h"
+#include "Renderer/ViewportRect.h"
 
 #include <functional>
 #include <optional>
@@ -15,6 +16,8 @@ struct SceneView
 	// 장면은 같은 프레임의 렌더 제출이 끝날 때까지 살아 있어야 한다.
 	std::reference_wrapper<RenderScene> scene;
 	CameraViewInfo camera;
+	// 장면을 그릴 클라이언트 영역이다. nullopt면 클라이언트 영역 전체에 그린다.
+	std::optional<ViewportRect> viewport;
 };
 
 /** Engine::Run이 메인 스레드에서 빌려 쓰는 애플리케이션 실행 정책이다. */

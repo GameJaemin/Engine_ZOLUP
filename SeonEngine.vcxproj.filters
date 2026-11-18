@@ -275,6 +275,9 @@
     <ClInclude Include="Engine\Source\Renderer\RenderScene.h">
       <Filter>Engine\Source\Renderer</Filter>
     </ClInclude>
+    <ClInclude Include="Engine\Source\Renderer\ViewportRect.h">
+      <Filter>Engine\Source\Renderer</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\Source\Renderer\HakkoResources.h">
       <Filter>Engine\Source\Renderer</Filter>
     </ClInclude>
