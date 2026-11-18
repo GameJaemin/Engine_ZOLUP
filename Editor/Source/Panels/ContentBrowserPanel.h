@@ -284,6 +284,9 @@ private:
 	// 현재 폴더의 직계 항목만 소유한다. 하위 폴더 내부는 포함하지 않는다.
 	std::vector<ContentBrowserEntry> currentEntries;
 
+	// 다른 폴더로 이동한 뒤 콘텐츠 영역을 그릴 때 세로 스크롤을 초기화한다.
+	bool resetContentScroll = false;
+
 	// 키는 Paths::MakeAssetKey로 만든 저장소 기준 상대 경로다.
 	// 캐시에 없으면 미조회 상태이며, 있으면 성공 또는 실패 결과를 보관한다.
 	std::unordered_map<std::string, ContentBrowserDirectoryCache> directoryCache;

@@ -289,6 +289,13 @@ void ContentBrowserPanel::Draw()
 			// 트리에서 이동한 결과를 같은 프레임의 오른쪽 목록에 반영한다.
 			if (ImGui::BeginChild("ContentArea", ImVec2(0.0f, areaHeight), ImGuiChildFlags_Borders))
 			{
+				// 현재 콘텐츠 창에만 스크롤 초기화를 요청하고, 처리한 요청은 해제한다.
+				if (resetContentScroll)
+				{
+					ImGui::SetScrollY(0.0f);
+					resetContentScroll = false;
+				}
+
 				contentError = DrawContentGrid();
 			}
 			ImGui::EndChild();
@@ -926,6 +933,9 @@ bool ContentBrowserPanel::NavigateTo(std::string_view relativePath, std::error_c
 	if (isDirectoryChanged)
 	{
 		selectedFilePath.clear();
+
+		// 콘텐츠 영역을 그릴 때 새 폴더의 첫 줄부터 표시하도록 요청한다.
+		resetContentScroll = true;
 	}
 
 	// 기록을 요청한 이동만 방문 기록에 반영한다.
