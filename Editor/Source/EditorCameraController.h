@@ -3,7 +3,7 @@
 class EditorCamera;
 class InputState;
 
-/** 입력을 해석해 에디터 카메라의 위치, 회전 및 투영 설정을 갱신한다. */
+/** 입력을 해석해 에디터 카메라의 위치와 투영 설정을 갱신한다. */
 class EditorCameraController
 {
 public:
@@ -15,8 +15,6 @@ public:
 
 private:
 	float moveSpeed = 500.0f;
-	// 마우스가 1픽셀 움직일 때 회전하는 각도다.
-	float mouseSensitivity = 0.15f;
 	// 원근 투영에서 휠을 앞으로 한 칸 굴릴 때 전진하는 거리(cm)다.
 	float dollyDistancePerNotch = 100.0f;
 	// 직교 투영에서 휠을 앞으로 한 칸 굴릴 때 세로 범위에 곱하는 배율이다.
