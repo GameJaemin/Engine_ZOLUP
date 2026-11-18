@@ -78,6 +78,9 @@
     <ClCompile Include="Editor\Source\EditorWorldSession.cpp">
       <Filter>Editor\Source</Filter>
     </ClCompile>
+    <ClCompile Include="Editor\Source\Panels\ContentBrowserPanel.cpp">
+      <Filter>Editor\Source\Panels</Filter>
+    </ClCompile>
     <ClCompile Include="Editor\Source\Panels\HierarchyPanel.cpp">
       <Filter>Editor\Source\Panels</Filter>
     </ClCompile>
@@ -226,6 +229,9 @@
     </ClInclude>
     <ClInclude Include="Editor\Source\EditorWorldSession.h">
       <Filter>Editor\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Editor\Source\Panels\ContentBrowserPanel.h">
+      <Filter>Editor\Source\Panels</Filter>
     </ClInclude>
     <ClInclude Include="Editor\Source\Panels\HierarchyPanel.h">
       <Filter>Editor\Source\Panels</Filter>
