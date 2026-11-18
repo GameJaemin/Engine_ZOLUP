@@ -1,14 +1,21 @@
 #include "EditorApplication.h"
 
+#include "Core/Log.h"
+#include "Paths.h"
 #include "World.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <filesystem>
 #include <optional>
+#include <string_view>
 
 namespace
 {
+	// 맵 열기 기능이 생기기 전까지 에디터가 시작할 때 여는 맵이다. 저장소 루트 기준 경로다.
+	constexpr std::string_view DefaultLevelPath = "Game/Content/Maps/DevMap.json";
+
 	/**
 	 * 도킹 공간을 오른쪽 Inspector, 아래 Content Browser, 왼쪽 Hierarchy와 가운데 빈 칸으로 나눈다.
 	 * 비율은 viewport 작업 영역 기준이다.
@@ -57,7 +64,22 @@ bool EditorApplication::OnInitialize(Engine& inEngine)
 	// 패널을 탭과 칸으로 붙일 수 있게 한다. 렌더러가 창 밖 출력을 지원하지 않아 멀티 뷰포트는 켜지 않는다.
 	ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
-	worldSession.Open();
+	// TODO: 맵 열기 기능이 생기면 기본 맵 대신 사용자가 고른 맵을 연다.
+	std::filesystem::path levelPath;
+	if (!Paths::GetAbsolutePath(DefaultLevelPath, levelPath))
+	{
+		Log::Write(LogLevel::Error, "Editor", "Could not resolve the default level path from the repository root");
+	}
+	else if (!worldSession.OpenLevel(levelPath))
+	{
+		Log::Write(LogLevel::Error, "Editor", "Failed to open the default level");
+	}
+
+	// 기본 맵을 열지 못해도 패널과 콘텐츠 브라우저는 쓸 수 있으므로 빈 World로 시작한다.
+	if (worldSession.GetEditWorld() == nullptr)
+	{
+		worldSession.NewLevel();
+	}
 
 	if (!selection.SetWorld(worldSession.GetEditWorld()))
 	{
