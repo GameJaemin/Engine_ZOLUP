@@ -389,8 +389,9 @@ bool D3D12Renderer::Init(HWND hwnd, int width, int height)
 	imguiModule = make_unique<ImGuiModule>(*this);
 	if (!imguiModule->Init())
 	{
-		DebugReport(DataHub::RenderReport_Init, L"[ImGui] 준비 실패, ImGui 안 그림");
+		DebugReport(DataHub::RenderReport_Init, L"[ImGui] 준비 실패");
 		imguiModule.reset();
+		return false;
 	}
 #endif
 
@@ -553,7 +554,8 @@ void D3D12Renderer::Sketch()
 	DataHub::RenderReportList.clear();
 #endif
 
-	if (!MarkOrBuildSingleTexture(0) || !MarkOrBuildSingleTexture(DEFAULT_TEX_TRANSPARENT) || !MarkOrBuildSingleTexture(DEFAULT_TEX_NONE_SHADOW))
+	if (!MarkOrBuildSingleTexture(0) || !MarkOrBuildSingleTexture(DEFAULT_TEX_TRANSPARENT) || !MarkOrBuildSingleTexture(DEFAULT_TEX_NONE_SHADOW)
+		|| !MarkOrBuildSingleTexture(DEFAULT_TEX_NONE_CUBE) || !MarkOrBuildSingleTexture(DEFAULT_TEX_BRDF_LUT))
 	{
 		DebugReport(DataHub::RenderReport_Limit, L"[STex] 기본 텍스처 뷰 자리 없음 (디스크립터 힙 한도), 이번 프레임 무효");
 		renderFrame.frameInvalidated = true;
@@ -644,7 +646,10 @@ void D3D12Renderer::Render()
 
 	const D3D12_GPU_DESCRIPTOR_HANDLE defaultSRHandle = rvHeap->GetGPUHandle(singleTextureList[0].RVHeapIndex);
 	const D3D12_GPU_DESCRIPTOR_HANDLE transparentSRHandle = rvHeap->GetGPUHandle(singleTextureList[DEFAULT_TEX_TRANSPARENT].RVHeapIndex);
-	const D3D12_GPU_DESCRIPTOR_HANDLE noneShadowSRHandle = rvHeap->GetGPUHandle(singleTextureList[DEFAULT_TEX_NONE_SHADOW].RVHeapIndex);
+
+	D3D12_GPU_DESCRIPTOR_HANDLE layerTexDefaultSRs[LAYER_TEX_SLOT_MAX];
+	for (size_t s = 0; s < LAYER_TEX_SLOT_MAX; s++)
+		layerTexDefaultSRs[s] = rvHeap->GetGPUHandle(singleTextureList[LAYER_TEX_SLOT_INFOS[s].defaultTexId].RVHeapIndex);
 
 	const auto& rtInstants = rtTextureInstantLists[frameIdx];
 	const auto& dsInstants = dsTextureInstantLists[frameIdx];
@@ -687,18 +692,13 @@ void D3D12Renderer::Render()
 		cmd->SetGraphicsRootConstantBufferView(RootParam_LightCB, cbArea_Light[frameIdx].GetGPUAddress(layer.lightRenderData.CBAreaIndex));
 		cmd->SetGraphicsRootShaderResourceView(RootParam_ShadowPresetSB, cbArea_ShadowPreset[frameIdx].GetGPUAddress(layer.shadowPresetRenderData.CBAreaIndex));
 
-		if (layer.envTexId != 0)
-			cmd->SetGraphicsRootDescriptorTable(RootParam_LayerTexTable, rvHeap->GetGPUHandle(singleTextureList[layer.envTexId].RVHeapIndex));
-		else
-			cmd->SetGraphicsRootDescriptorTable(RootParam_LayerTexTable, defaultSRHandle);
-
-		D3D12_GPU_DESCRIPTOR_HANDLE layerShadowSRs[LAYER_SHADOW_SLOT_MAX];
-		D3D12_GPU_DESCRIPTOR_HANDLE boundShadowSRs[LAYER_SHADOW_SLOT_MAX];
-		for (size_t s = 0; s < LAYER_SHADOW_SLOT_MAX; s++)
+		D3D12_GPU_DESCRIPTOR_HANDLE layerTexSRs[LAYER_TEX_SLOT_MAX];
+		D3D12_GPU_DESCRIPTOR_HANDLE boundLayerTexSRs[LAYER_TEX_SLOT_MAX];
+		for (size_t s = 0; s < LAYER_TEX_SLOT_MAX; s++)
 		{
-			layerShadowSRs[s] = rvHeap->GetGPUHandle(singleTextureList[layer.shadowTexIds[s]].RVHeapIndex);
-			boundShadowSRs[s] = layerShadowSRs[s];
-			cmd->SetGraphicsRootDescriptorTable((UINT)(RootParam_LayerShadowTex0 + s), layerShadowSRs[s]);
+			layerTexSRs[s] = rvHeap->GetGPUHandle(singleTextureList[layer.layerTexIds[s]].RVHeapIndex);
+			boundLayerTexSRs[s] = layerTexSRs[s];
+			cmd->SetGraphicsRootDescriptorTable((UINT)(RootParam_LayerTex0 + s), layerTexSRs[s]);
 		}
 
 		if (layer.layerDataTid != 0)
@@ -879,14 +879,14 @@ void D3D12Renderer::Render()
 					}
 				}
 
-				for (size_t s = 0; s < LAYER_SHADOW_SLOT_MAX; s++)
+				for (size_t s = 0; s < LAYER_TEX_SLOT_MAX; s++)
 				{
-					const D3D12_GPU_DESCRIPTOR_HANDLE handle = ((action.layerShadowHideMask >> s) & 1) != 0 ? noneShadowSRHandle : layerShadowSRs[s];
+					const D3D12_GPU_DESCRIPTOR_HANDLE handle = ((action.layerTexHideMask >> s) & 1) != 0 ? layerTexDefaultSRs[s] : layerTexSRs[s];
 
-					if (handle.ptr != boundShadowSRs[s].ptr)
+					if (handle.ptr != boundLayerTexSRs[s].ptr)
 					{
-						cmd->SetGraphicsRootDescriptorTable((UINT)(RootParam_LayerShadowTex0 + s), handle);
-						boundShadowSRs[s] = handle;
+						cmd->SetGraphicsRootDescriptorTable((UINT)(RootParam_LayerTex0 + s), handle);
+						boundLayerTexSRs[s] = handle;
 					}
 				}
 
@@ -1101,6 +1101,54 @@ void D3D12Renderer::Render()
 			layerResultHandles[l] = rvHeap->GetGPUHandle(rtSTexInstantLists[frameIdx][(size_t)action.slotIds[0] + layer.rtInstantOffset].RVHeapIndex);
 			break;
 		}
+
+
+		if (layer.compositeTexId == 0)
+			continue;
+
+		const D3D12_GPU_DESCRIPTOR_HANDLE targetSrcHandle = layerResultHandles[l];
+		layerResultHandles[l] = transparentSRHandle;
+
+		if (layer.compositeTexId == LAYER_COMPOSITE_NONE)
+			continue;
+
+		ID3D12Resource* targetTex = textureList[layer.compositeTexId].Tex.Get();
+		const D3D12_RESOURCE_DESC targetDesc = targetTex->GetDesc();
+		const D3D12_CPU_DESCRIPTOR_HANDLE targetRTV = rtvHeap->GetCPUHandle(writableTextureList[texRefList_WTex[layer.compositeTexId].idx].VHeapIndex);
+		const D3D12_VIEWPORT targetViewport = { 0.0f, 0.0f, (float)targetDesc.Width, (float)targetDesc.Height, 0.0f, 1.0f };
+		const D3D12_RECT targetScissor = { 0, 0, (LONG)targetDesc.Width, (LONG)targetDesc.Height };
+
+		auto targetBeginBar = CD3DX12_RESOURCE_BARRIER::Transition(targetTex, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+		cmd->ResourceBarrier(1, &targetBeginBar);
+
+		cmd->OMSetRenderTargets(1, &targetRTV, FALSE, nullptr);
+		cmd->RSSetViewports(1, &targetViewport);
+		cmd->RSSetScissorRects(1, &targetScissor);
+
+		if (boundTopology != D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST)
+		{
+			cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			boundTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		}
+		cmd->SetPipelineState(compositePSO.Get());
+
+		if (targetSrcHandle.ptr != boundSRs[0].ptr)
+		{
+			cmd->SetGraphicsRootDescriptorTable(RootParam_InstantSR0, targetSrcHandle);
+			boundSRs[0] = targetSrcHandle;
+		}
+
+		const float targetConstants[4] = { 1.0f, 0.0f, 0.0f, 0.0f };
+		cmd->SetGraphicsRoot32BitConstants(RootParam_Constants, 4, targetConstants, 0);
+
+		cmd->DrawInstanced(3, 1, 0, 0);
+
+		auto targetEndBar = CD3DX12_RESOURCE_BARRIER::Transition(targetTex, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+		cmd->ResourceBarrier(1, &targetEndBar);
+
+		boundRTVCount = UINT_MAX;
+		boundViewport = targetViewport;
+		boundScissor = targetScissor;
 	}
 
 	#pragma endregion

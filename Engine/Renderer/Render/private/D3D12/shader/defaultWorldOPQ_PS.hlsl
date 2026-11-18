@@ -21,14 +21,14 @@ void SampleSurface(PSInput input, out float4 albedo, out float3 worldNormal, out
     const float4 texColor = g_Tex[0].Sample(g_SamplerAnisoWrap, input.uv);
     const float4 normalVal = g_Tex[1].Sample(g_SamplerAnisoWrap, input.uv);
     const float4 orm = g_Tex[2].Sample(g_SamplerAnisoWrap, input.uv);
-    emission = g_Tex[3].Sample(g_SamplerAnisoWrap, input.uv).rgb;
+    emission = g_Tex[3].Sample(g_SamplerAnisoWrap, input.uv).rgb * obj_Emission;
 
     albedo = texColor * obj_Col;
 
     worldNormal = NormalMapToWorld(normalVal.xyz, input.normal, input.tangent);
 
     ao = orm.r;
-    rough = orm.g * obj_Rough;
+    rough = SpecularAA(worldNormal, orm.g * obj_Rough);
     metal = orm.b * obj_Metal;
 }
 

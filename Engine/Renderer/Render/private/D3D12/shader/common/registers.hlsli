@@ -16,6 +16,7 @@ cbuffer ConditionCB : register(b0, space0)
     float4 g_LAmb;
     float4 g_LCol;
     float3 g_LDir;      // 빛이 진행하는 방향 (빛 -> 표면). 셰이더에서 뒤집어서 L = -g_LDir 로 씀
+    float  g_EnvIntensity;  // 환경광 (IBL) 배율
     matrix g_LVP[4];    // 전역조명 캐스케이드별 뷰프로젝션 (RENDER_BUILTIN_CSM_MAX, 하나만 쓰면 [0])
     float4 g_LSplit;    // 캐스케이드 i 가 덮는 뷰 깊이의 끝
     float4 g_LTile[4];  // 섀도우 아틀라스 타일 (xy = uv 스케일, zw = uv 오프셋)
@@ -23,12 +24,15 @@ cbuffer ConditionCB : register(b0, space0)
 
 struct Light
 {
-    uint   l_Type;      // 0: None, 1: Directional, 2: Point, 3: Spot
+    uint   l_Type;      // 아래 8비트 = 종류 (0: None, 1: Directional, 2: Point, 3: Spot), 그 위 8비트 = 거리 감쇠 방식 (0: 범위 창, 1: 거리 제곱 반비례)
     float3 l_Pos;
     float  l_Range;
     float3 l_Col;
     float3 l_Dir;
     float  l_Angle;
+    float  l_InnerAngle;    // 안쪽 원뿔 각도 (Spot), 0 = 가장자리만 좁게 번짐
+    float  l_Falloff;       // 범위 창의 지수
+    float2 l_Pad;
 };
 
 cbuffer LightCB : register(b1, space0)
@@ -62,7 +66,7 @@ cbuffer ObjectCB : OBJECT_CB(0)        // DataBox_Render3DGeneral
     float  obj_Rough;
     float  obj_Metal;
     float  obj_AlphaCutoff; // ALPHA_CLIP 변형에서 알파가 이 값 미만이면 clip
-    float  obj_Pad;
+    float  obj_Emission;    // 이미션 텍스처에 곱하는 배율
     uint4  obj_Light[2];    // C++ uint32[8] 연속 32B -> ObjLightId(i) 로 읽기
     uint   obj_ShadowPreset;    // 레이어의 그림자 프리셋 칸 번호, 0 = 레이어 기본 프리셋
 };
@@ -102,13 +106,15 @@ Texture2D g_SR8 : register(t8, space0);
 Texture2D g_Tex[] : register(t0, space1);
 
 // =====================================================================
-// t, space4 : 레이어 전역 텍스처 (환경맵 큐브 / 섀도우맵 2장, 레이어당 한번 바인딩) + 그림자 프리셋 버퍼
-// 레이어에 환경맵이 없으면 기본 2D 텍스처가 묶여 있으니 샘플링은 환경맵 있을 때만
-// 섀도우맵 칸은 비어 있으면 깊이 1 짜리 텍스처 (= 그림자 없음), 그 텍스처에 쓰는 액션 안에서도 같은 걸로 바뀌어 묶임
+// t, space4 : 레이어 전역 텍스처 5칸 (환경맵 큐브 2장 / 섀도우맵 2장 / BRDF LUT, 레이어당 한번 바인딩) + 그림자 프리셋 버퍼
+// 빈 칸은 칸별 기본 텍스처: 환경맵 칸은 검은 큐브, 섀도우맵 칸은 깊이 1 (= 그림자 없음), BRDF LUT 칸은 기본 LUT
+// 그 텍스처에 쓰는 액션 안에서도 칸 기본 텍스처로 바뀌어 묶임
 // =====================================================================
-TextureCube g_EnvMap       : register(t0, space4);
+TextureCube g_EnvSpecular  : register(t0, space4);  // 레이어 ibl.specularTexId (프리필터 큐브, 밉 = 거칠기)
 Texture2D   g_ShadowGlobal : register(t1, space4);  // 레이어 globalShadowTexId (전역조명 캐스케이드 아틀라스)
 Texture2D   g_ShadowLocal  : register(t2, space4);  // 레이어 localShadowTexId (그림자 프리셋의 타일이 놓이는 아틀라스)
+TextureCube g_EnvDiffuse   : register(t4, space4);  // 레이어 ibl.diffuseTexId (이래디언스 큐브)
+Texture2D   g_EnvBRDF      : register(t5, space4);  // 레이어 ibl.brdfLutTexId (BRDF LUT)
 
 // 레이어 그림자 프리셋 (DataBox_RenderShadowPreset x SHADOW_PRESET_MAX): 프리셋 p 의 칸 k = g_ShadowPresets[p * SHADOW_PRESET_ENTRY_MAX + k]
 // 칸 0 ~ 7: 조명칸 lightSlot 의 그림자 (lightSlot 0 = 안 쓰는 칸) / 칸 SHADOW_PRESET_GLOBAL: 전역조명용 (lightSlot 이 0 이 아니면 캐스케이드 대신)

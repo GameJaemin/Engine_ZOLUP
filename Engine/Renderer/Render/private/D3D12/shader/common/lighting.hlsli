@@ -4,6 +4,7 @@
 #include "registers.hlsli"
 
 static const float PI = 3.14159265f;
+static const float ENV_DIFFUSE_LOD = 16.0f;
 
 float3 FresnelSchlick(float cosTheta, float3 F0)
 {
@@ -25,7 +26,28 @@ float GeometrySmith(float NdotV, float NdotL, float rough)
     return gv * gl;
 }
 
-float3 BRDF(float3 N, float3 V, float3 L, float3 albedo, float rough, float metal)
+float SpecularAA(float3 N, float rough)
+{
+    const float3 dx = ddx(N);
+    const float3 dy = ddy(N);
+
+    const float variance = 0.25f * (dot(dx, dx) + dot(dy, dy));
+    const float kernel = min(2.0f * variance, 0.18f);
+
+    const float alpha = saturate(rough) * saturate(rough);
+
+    return sqrt(sqrt(saturate(alpha * alpha + kernel)));
+}
+
+float3 SpecularEnergy(float3 N, float3 V, float3 albedo, float rough, float metal)
+{
+    const float3 F0 = lerp(0.04f.xxx, albedo, metal);
+    const float2 envBRDF = g_EnvBRDF.SampleLevel(g_SamplerLinearClamp, float2(saturate(dot(N, V)), rough), 0.0f).rg;
+
+    return 1.0f + F0 * (1.0f / max(envBRDF.x + envBRDF.y, 1e-3f) - 1.0f);
+}
+
+float3 BRDF(float3 N, float3 V, float3 L, float3 albedo, float rough, float metal, float3 energy)
 {
     const float3 H = normalize(V + L);
     const float NdotL = saturate(dot(N, L));
@@ -38,10 +60,15 @@ float3 BRDF(float3 N, float3 V, float3 L, float3 albedo, float rough, float meta
     const float D = DistributionGGX(NdotH, rough * rough);
     const float G = GeometrySmith(NdotV, NdotL, rough);
 
-    const float3 spec = (D * G * F) / max(4.0f * NdotV * NdotL, 1e-4f);
+    const float3 spec = (D * G * F) / max(4.0f * NdotV * NdotL, 1e-4f) * energy;
     const float3 kd = (1.0f - F) * (1.0f - metal);
 
     return (kd * albedo / PI + spec) * NdotL;
+}
+
+float3 BRDF(float3 N, float3 V, float3 L, float3 albedo, float rough, float metal)
+{
+    return BRDF(N, V, L, albedo, rough, metal, 1.0f.xxx);
 }
 
 float SampleShadowTile(Texture2D atlas, float3 P, matrix lightVP, float4 tile)
@@ -179,16 +206,19 @@ float ScreenAO(float2 pixel)
     return value.r;
 }
 
-float3 LocalLightColor(uint lightId, float3 P, float3 N, float3 V, float3 albedo, float rough, float metal)
+float3 LocalLightColor(uint lightId, float3 P, float3 N, float3 V, float3 albedo, float rough, float metal, float3 energy)
 {
     const Light light = g_Lights[lightId];
-    if (light.l_Type == 0)
+    const uint type = light.l_Type & 0xFF;
+    const uint falloffType = (light.l_Type >> 8) & 0xFF;
+
+    if (type == 0)
         return 0.0f.xxx;
 
     float3 L;
     float atten = 1.0f;
 
-    if (light.l_Type == 1)
+    if (type == 1)
     {
         L = normalize(-light.l_Dir);
     }
@@ -199,31 +229,75 @@ float3 LocalLightColor(uint lightId, float3 P, float3 N, float3 V, float3 albedo
         L = d / max(dist, 1e-4f);
 
         const float r = max(light.l_Range, 1e-4f);
-        const float x = saturate(1.0f - (dist * dist) / (r * r));
-        atten = x * x;
+        const float ratio2 = (dist * dist) / (r * r);
 
-        if (light.l_Type == 3)
+        if (ratio2 >= 1.0f)
+            return 0.0f.xxx;
+
+        if (falloffType == 1)
         {
-            const float cosCone = cos(light.l_Angle * 0.5f);
+            const float window = 1.0f - ratio2 * ratio2;
+            atten = window * window / max(dist * dist, 1e-4f);
+        }
+        else
+            atten = pow(1.0f - ratio2, light.l_Falloff);
+
+        if (type == 3)
+        {
+            const float cosOuter = cos(light.l_Angle * 0.5f);
+            const float cosInner = light.l_InnerAngle > 0.0f ? cos(min(light.l_InnerAngle, light.l_Angle) * 0.5f) : cosOuter + 0.05f;
             const float cd = dot(-L, normalize(light.l_Dir));
-            atten *= smoothstep(cosCone, cosCone + 0.05f, cd);
+            atten *= smoothstep(cosOuter, max(cosInner, cosOuter + 1e-4f), cd);
         }
 
         if (atten <= 0.0f)
             return 0.0f.xxx;
     }
 
-    return BRDF(N, V, L, albedo, rough, metal) * light.l_Col * atten * PI;
+    return BRDF(N, V, L, albedo, rough, metal, energy) * light.l_Col * atten * PI;
 }
 
-float3 ShadeLocalLight(uint lightId, float3 P, float3 N, float3 V, float3 albedo, float rough, float metal, uint preset, uint2 presetMask)
+float3 LocalLightColor(uint lightId, float3 P, float3 N, float3 V, float3 albedo, float rough, float metal)
 {
-    const float3 lightColor = LocalLightColor(lightId, P, N, V, albedo, rough, metal);
+    return LocalLightColor(lightId, P, N, V, albedo, rough, metal, 1.0f.xxx);
+}
+
+float3 ShadeLocalLight(uint lightId, float3 P, float3 N, float3 V, float3 albedo, float rough, float metal, uint preset, uint2 presetMask, float3 energy)
+{
+    const float3 lightColor = LocalLightColor(lightId, P, N, V, albedo, rough, metal, energy);
 
     if (!any(lightColor))
         return lightColor;
 
     return lightColor * LocalShadow(lightId, P, preset, presetMask);
+}
+
+float3 ShadeLocalLight(uint lightId, float3 P, float3 N, float3 V, float3 albedo, float rough, float metal, uint preset, uint2 presetMask)
+{
+    return ShadeLocalLight(lightId, P, N, V, albedo, rough, metal, preset, presetMask, 1.0f.xxx);
+}
+
+float3 AmbientIBL(float3 N, float3 V, float3 albedo, float rough, float metal, float ao)
+{
+    const float NdotV = saturate(dot(N, V));
+    const float3 F0 = lerp(0.04f.xxx, albedo, metal);
+
+    const float3 F = F0 + (max((1.0f - rough).xxx, F0) - F0) * pow(1.0f - NdotV, 5.0f);
+    const float3 kd = (1.0f - F) * (1.0f - metal);
+    const float3 diffuse = kd * albedo * g_EnvDiffuse.SampleLevel(g_SamplerLinearClamp, N, ENV_DIFFUSE_LOD).rgb;
+
+    float width, height, mipCount;
+    g_EnvSpecular.GetDimensions(0, width, height, mipCount);
+
+    const float3 R = reflect(-V, N);
+    const float3 prefiltered = g_EnvSpecular.SampleLevel(g_SamplerLinearClamp, R, rough * (mipCount - 1.0f)).rgb;
+    const float2 envBRDF = g_EnvBRDF.SampleLevel(g_SamplerLinearClamp, float2(NdotV, rough), 0.0f).rg;
+
+    const float3 energy = 1.0f + F0 * (1.0f / max(envBRDF.x + envBRDF.y, 1e-3f) - 1.0f);
+    const float specularAO = saturate(pow(NdotV + ao, exp2(-16.0f * rough * rough - 1.0f)) - 1.0f + ao);
+    const float3 specular = prefiltered * (F0 * envBRDF.x + envBRDF.y) * energy * specularAO;
+
+    return (diffuse * ao + specular) * g_EnvIntensity;
 }
 
 #ifndef REGISTERS_NO_BUILTIN_OBJECT
@@ -234,15 +308,17 @@ float3 ShadeSurface(float3 P, float3 N, float3 V, float3 albedo, float rough, fl
 
     const uint preset = min(obj_ShadowPreset, SHADOW_PRESET_MAX - 1);
 
-    float3 color = BRDF(N, V, normalize(-g_LDir), albedo, rough, metal) * g_LCol.rgb * PI * GlobalShadowPreset(P, preset);
+    const float3 energy = SpecularEnergy(N, V, albedo, rough, metal);
+
+    float3 color = BRDF(N, V, normalize(-g_LDir), albedo, rough, metal, energy) * g_LCol.rgb * PI * GlobalShadowPreset(P, preset);
 
     const uint2 presetMask = PresetLightMask(preset);
 
     [unroll]
     for (uint i = 0; i < 8; i++)
-        color += ShadeLocalLight(ObjLightId(i), P, N, V, albedo, rough, metal, preset, presetMask);
+        color += ShadeLocalLight(ObjLightId(i), P, N, V, albedo, rough, metal, preset, presetMask, energy);
 
-    color += g_LAmb.rgb * albedo * ao;
+    color += g_LAmb.rgb * albedo * ao + AmbientIBL(N, V, albedo, rough, metal, ao);
 
     return color;
 }
@@ -255,15 +331,17 @@ float3 ShadeSurfaceAllLights(float3 P, float3 N, float3 V, float3 albedo, float 
 
     const uint preset = min(shadowPreset, SHADOW_PRESET_MAX - 1);
 
-    float3 color = BRDF(N, V, normalize(-g_LDir), albedo, rough, metal) * g_LCol.rgb * PI * GlobalShadowPreset(P, preset);
+    const float3 energy = SpecularEnergy(N, V, albedo, rough, metal);
+
+    float3 color = BRDF(N, V, normalize(-g_LDir), albedo, rough, metal, energy) * g_LCol.rgb * PI * GlobalShadowPreset(P, preset);
 
     const uint2 presetMask = PresetLightMask(preset);
 
     [loop]
     for (uint i = 0; i < 64; i++)
-        color += ShadeLocalLight(i, P, N, V, albedo, rough, metal, preset, presetMask);
+        color += ShadeLocalLight(i, P, N, V, albedo, rough, metal, preset, presetMask, energy);
 
-    color += g_LAmb.rgb * albedo * ao;
+    color += g_LAmb.rgb * albedo * ao + AmbientIBL(N, V, albedo, rough, metal, ao);
 
     return color;
 }

@@ -400,6 +400,13 @@ namespace Hakko::DataHub
         float color[4];
     };
 
+    struct Layer_IBL
+    {
+        TexID specularTexId = 0;
+        TexID diffuseTexId = 0;
+        TexID brdfLutTexId = 0;
+    };
+
     struct Layer_Viewport
     {
         float originX;
@@ -428,9 +435,9 @@ namespace Hakko::DataHub
         Layer_PipelineType pipelineType;
 
         Layer_BackGround backGround;
-        TexID envTexId;
+        Layer_IBL ibl;
         Layer_Viewport viewport;
-        
+
 
         RenderCondition condition;
         std::array<DataBoxID, RENDER_LIGHT_MAX> lights;
@@ -438,6 +445,8 @@ namespace Hakko::DataHub
 
         TexID globalShadowTexId;    // 아래 섀도우 액션에서 그린거 여기다 끼우세요
         TexID localShadowTexId;
+
+        TexID compositeTexId;       // 레이어 결과를 합성할 텍스처, 0 이면 백버퍼 (RGBA8_SRGB RT 텍스처 2D 한 장, 텍스처 하나에 레이어 하나)
 
         DataBoxTID layerDataBoxTid;
         DataBoxID layerDataBoxId;
@@ -473,7 +482,7 @@ namespace Hakko::DataHub
     typedef RenderTransferBox_LayerBuiltIn RenderTransferBox_Layer;
 
     inline RenderTransferBox_LayerBuiltIn::RenderTransferBox_LayerBuiltIn() : 
-            backGround({0, {1.0f, 1.0f, 1.0f, 1.0f}}), envTexId(0), viewport(), 
+            backGround({0, {1.0f, 1.0f, 1.0f, 1.0f}}), ibl({0, 0, 0}), viewport(),
             condition(), lights(), shadowPresets(),
             layerDataBoxTid(0), layerDataBoxId(0),
             actionLocalSDWs({}), actionPPs({})
@@ -485,6 +494,8 @@ namespace Hakko::DataHub
 
         globalShadowTexId = 0;
         localShadowTexId = 0;
+
+        compositeTexId = 0;
 
         // 컴퓨트 선계산 (스키닝 / 파티클 시뮬)
         // csId 를 넣어야 노드가 생김
@@ -643,15 +654,17 @@ namespace Hakko::DataHub
     struct RenderTransferBox_LayerCustom : public RTB
     {
         Layer_BackGround backGround;
-        TexID envTexId;
+        Layer_IBL ibl;
         Layer_Viewport viewport;
-        
+
         RenderCondition condition;
         std::array<DataBoxID, RENDER_LIGHT_MAX> lights;
         std::array<DataBoxID, RENDER_SHADOW_PRESET_MAX> shadowPresets;
 
         TexID globalShadowTexId;
         TexID localShadowTexId;
+
+        TexID compositeTexId;
 
         DataBoxTID layerDataBoxTid;
         DataBoxID layerDataBoxId;
@@ -661,8 +674,8 @@ namespace Hakko::DataHub
         std::vector<std::variant<RTB_ActionDraw, RTB_ActionEdit, RTB_ActionCompute, RTB_ActionBuiltin>> actionList;    // 0번 빈칸 (Base)
 
         RenderTransferBox_LayerCustom() : 
-            backGround({0, {1.0f, 1.0f, 1.0f, 1.0f}}), envTexId(0), viewport(), 
-            condition(), lights(), shadowPresets(),
+            backGround({0, {1.0f, 1.0f, 1.0f, 1.0f}}), ibl({0, 0, 0}), viewport(),
+            condition(), lights(), shadowPresets(), compositeTexId(0),
             layerDataBoxTid(0), layerDataBoxId(0), actionNodeList(1), actionList(1) {}
     };
     typedef RenderTransferBox_LayerCustom RenderTransferBox_Layer;

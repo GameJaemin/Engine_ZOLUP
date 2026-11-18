@@ -143,6 +143,67 @@ static void FillTextureSRVDesc(const DX12_Texture& texInfo, D3D12_SHADER_RESOURC
 }
 
 
+static const UINT DEFAULT_BRDF_LUT_SIZE = 64;
+static const UINT DEFAULT_BRDF_LUT_SAMPLE_COUNT = 256;
+
+static void IntegrateEnvBRDF(float NdotV, float rough, float& scale, float& bias)
+{
+	const float alpha = rough * rough;
+	const float a2 = alpha * alpha;
+	const float k = alpha * 0.5f;
+
+	const float Vx = sqrtf(1.0f - NdotV * NdotV);
+	const float Vz = NdotV;
+
+	float scaleSum = 0.0f;
+	float biasSum = 0.0f;
+
+	for (UINT i = 0; i < DEFAULT_BRDF_LUT_SAMPLE_COUNT; i++)
+	{
+		uint32_t bits = i;
+		bits = (bits << 16) | (bits >> 16);
+		bits = ((bits & 0x55555555u) << 1) | ((bits & 0xAAAAAAAAu) >> 1);
+		bits = ((bits & 0x33333333u) << 2) | ((bits & 0xCCCCCCCCu) >> 2);
+		bits = ((bits & 0x0F0F0F0Fu) << 4) | ((bits & 0xF0F0F0F0u) >> 4);
+		bits = ((bits & 0x00FF00FFu) << 8) | ((bits & 0xFF00FF00u) >> 8);
+
+		const float u1 = (float)i / (float)DEFAULT_BRDF_LUT_SAMPLE_COUNT;
+		const float u2 = (float)bits * 2.3283064365386963e-10f;
+
+		const float phi = 6.28318530718f * u1;
+		const float cosTheta = sqrtf((1.0f - u2) / (1.0f + (a2 - 1.0f) * u2));
+		const float sinTheta = sqrtf(1.0f - cosTheta * cosTheta);
+
+		const float Hx = sinTheta * cosf(phi);
+		const float Hz = cosTheta;
+
+		const float VdotH = Vx * Hx + Vz * Hz;
+		const float NdotL = 2.0f * VdotH * Hz - Vz;
+
+		if (NdotL <= 0.0f || VdotH <= 0.0f || Hz <= 0.0f)
+			continue;
+
+		const float gv = NdotV / (NdotV * (1.0f - k) + k);
+		const float gl = NdotL / (NdotL * (1.0f - k) + k);
+		const float gVis = gv * gl * VdotH / (Hz * NdotV);
+
+		const float f1 = 1.0f - VdotH;
+		const float fc = f1 * f1 * f1 * f1 * f1;
+
+		scaleSum += (1.0f - fc) * gVis;
+		biasSum += fc * gVis;
+	}
+
+	scale = scaleSum / (float)DEFAULT_BRDF_LUT_SAMPLE_COUNT;
+	bias = biasSum / (float)DEFAULT_BRDF_LUT_SAMPLE_COUNT;
+
+	if (scale > 1.0f)
+		scale = 1.0f;
+	if (bias > 1.0f)
+		bias = 1.0f;
+}
+
+
 static uint8_t ShaderVariantVS(DataHub::VertexType vertexType)
 {
 	return (uint8_t)vertexType + 1;
@@ -316,7 +377,7 @@ bool D3D12Renderer::InitResource()
 
 	// --- 칸 다뚫어놓는 디폴트 시그니처 (그래픽스 공용, 인덱스는 DX12_RootParam) ---
 	// t space0 : 선행 출력 인스턴트 t0~t8 (RT 8 + DS), 1칸 테이블 x 9 -> 9개 하나씩 바인딩 (STex)
-	// t space1 : CTex / STex (언바운드)	t space2 : 구조버퍼 (루트 SRV, 드로우 칸 tid CSBuffer)	t space4 : 레이어 전역 텍스처 (t0 환경맵 / t1 전역 섀도우맵 / t2 로컬 섀도우맵, 1칸 테이블씩) + t3 그림자 프리셋 구조버퍼 (루트 SRV)
+	// t space1 : CTex / STex (언바운드)	t space2 : 구조버퍼 (루트 SRV, 드로우 칸 tid CSBuffer)	t space4 : 레이어 전역 텍스처 (t0 스페큘러 환경맵 / t1 전역 섀도우맵 / t2 로컬 섀도우맵 / t4 디퓨즈 환경맵 / t5 BRDF LUT, 1칸 테이블씩) + t3 그림자 프리셋 구조버퍼 (루트 SRV)
 	// b space0 : 레이어 고정칸 (b0 카메라, b1 조명, b4 루트상수)
 	// b space1 : 레이어 데이터		b space2 : 액션 데이터		b space3 : 물체 칸 b0~b4 (= DRAWREQ_DATABOX_MAX)
 	CD3DX12_ROOT_PARAMETER1 defaultRenderRootParams[RootParam_Count];
@@ -344,17 +405,12 @@ bool D3D12Renderer::InitResource()
 	defaultRenderRootParams[RootParam_ConditionCB].InitAsConstantBufferView(0, 0U);
 	defaultRenderRootParams[RootParam_LightCB].InitAsConstantBufferView(1, 0U);
 
-	CD3DX12_DESCRIPTOR_RANGE1 layerTextureRange;
-	layerTextureRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 4U,
-		D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE | D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
-	defaultRenderRootParams[RootParam_LayerTexTable].InitAsDescriptorTable(1, &layerTextureRange, D3D12_SHADER_VISIBILITY_PIXEL);
-
-	CD3DX12_DESCRIPTOR_RANGE1 layerShadowRanges[LAYER_SHADOW_SLOT_MAX];
-	for (UINT s = 0; s < LAYER_SHADOW_SLOT_MAX; s++)
+	CD3DX12_DESCRIPTOR_RANGE1 layerTextureRanges[LAYER_TEX_SLOT_MAX];
+	for (UINT s = 0; s < LAYER_TEX_SLOT_MAX; s++)
 	{
-		layerShadowRanges[s].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1 + s, 4U,
+		layerTextureRanges[s].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, LAYER_TEX_SLOT_INFOS[s].shaderRegister, 4U,
 			D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE | D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
-		defaultRenderRootParams[RootParam_LayerShadowTex0 + s].InitAsDescriptorTable(1, &layerShadowRanges[s], D3D12_SHADER_VISIBILITY_PIXEL);
+		defaultRenderRootParams[RootParam_LayerTex0 + s].InitAsDescriptorTable(1, &layerTextureRanges[s], D3D12_SHADER_VISIBILITY_PIXEL);
 	}
 
 	defaultRenderRootParams[RootParam_ShadowPresetSB].InitAsShaderResourceView(3, 4U, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_PIXEL);
@@ -1094,6 +1150,149 @@ bool D3D12Renderer::InitGraphicResource()
 	);
 
 	uploadBufferList.push_back(std::move(uploadTexture5));
+
+
+
+	const uint32_t None_CubeRaw = 0xFF000000;
+
+	D3D12_SUBRESOURCE_DATA None_CubeDatas[6] = {};
+	for (UINT f = 0; f < 6; f++)
+	{
+		None_CubeDatas[f].pData = &None_CubeRaw;
+		None_CubeDatas[f].RowPitch = texWidth;
+		None_CubeDatas[f].SlicePitch = None_CubeDatas[f].RowPitch;
+	}
+
+	D3D12_RESOURCE_DESC cubeTextureDesc = textureDesc;
+	cubeTextureDesc.DepthOrArraySize = 6;
+
+	ComPtr<ID3D12Resource> None_CubeTexture;
+
+	if (FAILED(device->CreateCommittedResource(
+		&DEFAULT_HEAP_PROPS,
+		D3D12_HEAP_FLAG_NONE,
+		&cubeTextureDesc,
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		nullptr,
+		IID_PPV_ARGS(&None_CubeTexture))))
+		return false;
+
+
+	const UINT64 uploadTextureSize6 = GetRequiredIntermediateSize(None_CubeTexture.Get(), 0, 6);
+	ComPtr<ID3D12Resource> uploadTexture6;
+
+	auto cubeUploadResDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadTextureSize6);
+
+	if (FAILED(device->CreateCommittedResource(
+		&UPLOAD_HEAP_PROPS,
+		D3D12_HEAP_FLAG_NONE,
+		&cubeUploadResDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&uploadTexture6))))
+		return false;
+
+
+	UpdateSubresources(renderCMDList_Master.Get(), None_CubeTexture.Get(), uploadTexture6.Get(), 0, 0, 6, None_CubeDatas);
+
+	auto cubeResBar = CD3DX12_RESOURCE_BARRIER::Transition(
+		None_CubeTexture.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
+	);
+
+	renderCMDList_Master->ResourceBarrier(1, &cubeResBar);
+
+	textureList.emplace_back(
+		DX12_Texture{
+			std::move(None_CubeTexture),
+			6,
+			1,
+			cubeTextureDesc.Format,
+			D3D12_RESOURCE_DIMENSION_TEXTURE2D,
+			true
+		}
+	);
+
+	uploadBufferList.push_back(std::move(uploadTexture6));
+
+
+
+	vector<uint16_t> Default_BRDFLutRaw((size_t)DEFAULT_BRDF_LUT_SIZE * DEFAULT_BRDF_LUT_SIZE * 2);
+
+	for (UINT y = 0; y < DEFAULT_BRDF_LUT_SIZE; y++)
+	{
+		for (UINT x = 0; x < DEFAULT_BRDF_LUT_SIZE; x++)
+		{
+			float scale = 0.0f;
+			float bias = 0.0f;
+			IntegrateEnvBRDF(((float)x + 0.5f) / (float)DEFAULT_BRDF_LUT_SIZE, ((float)y + 0.5f) / (float)DEFAULT_BRDF_LUT_SIZE, scale, bias);
+
+			const size_t texel = ((size_t)y * DEFAULT_BRDF_LUT_SIZE + x) * 2;
+			Default_BRDFLutRaw[texel] = (uint16_t)(scale * 65535.0f + 0.5f);
+			Default_BRDFLutRaw[texel + 1] = (uint16_t)(bias * 65535.0f + 0.5f);
+		}
+	}
+
+	D3D12_SUBRESOURCE_DATA Default_BRDFLutData = {};
+	Default_BRDFLutData.pData = Default_BRDFLutRaw.data();
+	Default_BRDFLutData.RowPitch = (LONG_PTR)DEFAULT_BRDF_LUT_SIZE * 2 * sizeof(uint16_t);
+	Default_BRDFLutData.SlicePitch = Default_BRDFLutData.RowPitch * DEFAULT_BRDF_LUT_SIZE;
+
+	D3D12_RESOURCE_DESC lutTextureDesc = textureDesc;
+	lutTextureDesc.Width = DEFAULT_BRDF_LUT_SIZE;
+	lutTextureDesc.Height = DEFAULT_BRDF_LUT_SIZE;
+	lutTextureDesc.Format = DXGI_FORMAT_R16G16_UNORM;
+
+	ComPtr<ID3D12Resource> Default_BRDFLutTexture;
+
+	if (FAILED(device->CreateCommittedResource(
+		&DEFAULT_HEAP_PROPS,
+		D3D12_HEAP_FLAG_NONE,
+		&lutTextureDesc,
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		nullptr,
+		IID_PPV_ARGS(&Default_BRDFLutTexture))))
+		return false;
+
+
+	const UINT64 uploadTextureSize7 = GetRequiredIntermediateSize(Default_BRDFLutTexture.Get(), 0, 1);
+	ComPtr<ID3D12Resource> uploadTexture7;
+
+	auto lutUploadResDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadTextureSize7);
+
+	if (FAILED(device->CreateCommittedResource(
+		&UPLOAD_HEAP_PROPS,
+		D3D12_HEAP_FLAG_NONE,
+		&lutUploadResDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&uploadTexture7))))
+		return false;
+
+
+	UpdateSubresources(renderCMDList_Master.Get(), Default_BRDFLutTexture.Get(), uploadTexture7.Get(), 0, 0, 1, &Default_BRDFLutData);
+
+	auto lutResBar = CD3DX12_RESOURCE_BARRIER::Transition(
+		Default_BRDFLutTexture.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
+	);
+
+	renderCMDList_Master->ResourceBarrier(1, &lutResBar);
+
+	textureList.emplace_back(
+		DX12_Texture{
+			std::move(Default_BRDFLutTexture),
+			1,
+			1,
+			lutTextureDesc.Format,
+			D3D12_RESOURCE_DIMENSION_TEXTURE2D,
+			false
+		}
+	);
+
+	uploadBufferList.push_back(std::move(uploadTexture7));
 
 
 	texRefList_CTex.assign(DEFAULT_RES_TEX_COUNT, {});

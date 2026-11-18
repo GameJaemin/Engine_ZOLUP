@@ -88,9 +88,27 @@ namespace Hakko::DataHub
 
     void SetLayerBackgroundColor(float r, float g, float b, float a, uint8_t layer = 0U);
 
-    void SetLayerEnvMap(TexID texId, uint8_t layer = 0U);           // 큐브맵만, 0 이면 없음
+    void SetLayerIBL(const Layer_IBL& ibl, uint8_t layer = 0U);     // 스페큘러 / 디퓨즈는 큐브맵만, LUT 는 2D, 0 이면 없음 (기본값으로 묶임)
+
+    void SetLayerEnvIntensity(float intensity, uint8_t layer = 0U);     // 환경광 (IBL) 배율, 기본 1
 
     void SetLayerViewport(const Layer_Viewport& viewport, uint8_t layer = 0U);
+
+
+    // 레이어 합성 대상: 레이어 결과를 백버퍼 대신 받는 텍스처 (ImGui::Image 등으로 직접 그릴 때)
+    // 결과는 텍스처 전체에 늘려서 들어감 (그림의 비율은 화면 비율), 텍스처 하나에 레이어 하나
+    struct ViewTarget
+    {
+        std::wstring_view name;
+        uint32_t width = 0;
+        uint32_t height = 0;
+    };
+
+    // RGBA8_SRGB RT 텍스처를 만들어 등록 (업로드 RTB 는 서비스가 같은 프레임에), 실패하면 width 0
+    ViewTarget CreateViewTarget(const wchar_t* name, uint32_t width, uint32_t height);
+
+    // 이름으로 id 를 찾아 레이어 합성 대상에 꽂음 (id 는 밀릴 수 있으니 매 프레임), 빈 타깃이면 백버퍼로
+    void SetLayerCompositeTarget(const ViewTarget& target, uint8_t layer = 0U);
 
 
     // 포워드 / 디퍼드 전환 (디퍼드면 기본 제공 라이팅 셰이더도 세팅)

@@ -21,14 +21,16 @@ float4 PSMain(PSInput input) : SV_TARGET
     const float4 texColor = g_Tex[0].Sample(g_SamplerAnisoWrap, input.uv);
     const float4 normalVal = g_Tex[1].Sample(g_SamplerAnisoWrap, input.uv);
     const float4 orm = g_Tex[2].Sample(g_SamplerAnisoWrap, input.uv);
-    const float3 emission = g_Tex[3].Sample(g_SamplerAnisoWrap, input.uv).rgb;
+    const float3 emission = g_Tex[3].Sample(g_SamplerAnisoWrap, input.uv).rgb * obj_Emission;
 
     const float4 albedo = texColor * obj_Col;
 
     const float3 worldNormal = NormalMapToWorld(normalVal.xyz, input.normal, input.tangent);
 
+    const float rough = SpecularAA(worldNormal, orm.g * obj_Rough);
+
     const float3 V = normalize(g_EyePos - input.worldPos);
-    const float3 color = ShadeSurface(input.worldPos, worldNormal, V, albedo.rgb, orm.g * obj_Rough, orm.b * obj_Metal, orm.r) + emission;
+    const float3 color = ShadeSurface(input.worldPos, worldNormal, V, albedo.rgb, rough, orm.b * obj_Metal, orm.r) + emission;
 
     return float4(color, albedo.a);
 }

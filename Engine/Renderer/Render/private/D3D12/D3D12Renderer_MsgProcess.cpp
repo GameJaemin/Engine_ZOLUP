@@ -698,68 +698,87 @@ void D3D12Renderer::ReadLayerOption()
 		renderFrame.layerList[i].bgTexId = bgTexIdNew;
 
 
-		auto envTexIdNew = LayerList[i].envTexId;
-
-		if (envTexIdNew >= textureList.size())
+		const TexID layerTexIdSrcs[LAYER_TEX_SLOT_MAX] =
 		{
-			DebugReport(RenderReport_Contract, L"[Layer] 환경맵 texId 범위 밖 (무시됨)");
-			envTexIdNew = 0;
-		}
-		else if (envTexIdNew < releaseTexIdMask.size() && releaseTexIdMask[envTexIdNew])
+			LayerList[i].ibl.specularTexId,
+			LayerList[i].globalShadowTexId,
+			LayerList[i].localShadowTexId,
+			LayerList[i].ibl.diffuseTexId,
+			LayerList[i].ibl.brdfLutTexId,
+		};
+
+		for (size_t s = 0; s < LAYER_TEX_SLOT_MAX; s++)
 		{
-			DebugReport(RenderReport_Contract, L"[Layer] 삭제된 텍스처를 환경맵으로 지정 (무시됨)");
-			envTexIdNew = 0;
+			TexID layerTexIdNew = layerTexIdSrcs[s];
+
+			if (layerTexIdNew >= textureList.size())
+			{
+				DebugReport(RenderReport_Contract, L"[Layer] 레이어 텍스처 칸 texId 범위 밖 (무시됨)");
+				layerTexIdNew = 0;
+			}
+			else if (layerTexIdNew < releaseTexIdMask.size() && releaseTexIdMask[layerTexIdNew])
+			{
+				DebugReport(RenderReport_Contract, L"[Layer] 삭제된 텍스처를 레이어 텍스처 칸에 지정 (무시됨)");
+				layerTexIdNew = 0;
+			}
+			else if (layerTexIdNew != 0 && LAYER_TEX_SLOT_INFOS[s].isCube
+				&& (!textureList[layerTexIdNew].IsCube || textureList[layerTexIdNew].ArraySize != 6))
+			{
+				DebugReport(RenderReport_Contract, L"[Layer] 큐브 칸에 넣은 레이어 텍스처가 큐브맵 한 장이 아님 (무시됨)");
+				layerTexIdNew = 0;
+			}
+			else if (layerTexIdNew != 0 && !LAYER_TEX_SLOT_INFOS[s].isCube
+				&& (textureList[layerTexIdNew].Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D || textureList[layerTexIdNew].IsCube || textureList[layerTexIdNew].ArraySize > 1))
+			{
+				DebugReport(RenderReport_Contract, L"[Layer] 2D 칸에 넣은 레이어 텍스처가 2D 한 장이 아님 (무시됨)");
+				layerTexIdNew = 0;
+			}
+			else if (layerTexIdNew != 0 && !MarkOrBuildSingleTexture(layerTexIdNew))
+			{
+				DebugReport(RenderReport_Limit, L"[Layer] 레이어 텍스처 뷰 자리 없음 (무시됨)");
+				layerTexIdNew = 0;
+			}
+
+			if (layerTexIdNew == 0)
+				layerTexIdNew = LAYER_TEX_SLOT_INFOS[s].defaultTexId;
+
+			renderFrame.layerList[i].layerTexIds[s] = layerTexIdNew;
 		}
-		else if (envTexIdNew != 0)
+
+
+		TexID compositeTexIdNew = LayerList[i].compositeTexId;
+
+		if (compositeTexIdNew >= textureList.size() || (compositeTexIdNew < releaseTexIdMask.size() && releaseTexIdMask[compositeTexIdNew]))
 		{
-			if (!textureList[envTexIdNew].IsCube)
-			{
-				DebugReport(RenderReport_Contract, L"[Layer] 환경맵이 큐브맵이 아님 (무시됨)");
-				envTexIdNew = 0;
-			}
-			else if (!MarkOrBuildSingleTexture(envTexIdNew))
-			{
-				DebugReport(RenderReport_Limit, L"[Layer] 환경맵 뷰 자리 없음 (무시됨)");
-				envTexIdNew = 0;
-			}
+			DebugReport(RenderReport_Contract, L"[Layer] 합성 대상 텍스처 없음 / 해제 예정 (레이어 합성 안 함)");
+			compositeTexIdNew = LAYER_COMPOSITE_NONE;
 		}
-
-		renderFrame.layerList[i].envTexId = envTexIdNew;
-
-
-		const TexID shadowTexIdSrcs[LAYER_SHADOW_SLOT_MAX] = { LayerList[i].globalShadowTexId, LayerList[i].localShadowTexId };
-
-		for (size_t s = 0; s < LAYER_SHADOW_SLOT_MAX; s++)
+		else if (compositeTexIdNew != 0 && texRefList_WTex[compositeTexIdNew].usage != DX12_TextureUsage_RTV)
 		{
-			TexID shadowTexIdNew = shadowTexIdSrcs[s];
-
-			if (shadowTexIdNew >= textureList.size())
-			{
-				DebugReport(RenderReport_Contract, L"[Layer] 섀도우맵 texId 범위 밖 (무시됨)");
-				shadowTexIdNew = 0;
-			}
-			else if (shadowTexIdNew < releaseTexIdMask.size() && releaseTexIdMask[shadowTexIdNew])
-			{
-				DebugReport(RenderReport_Contract, L"[Layer] 삭제된 텍스처를 섀도우맵으로 지정 (무시됨)");
-				shadowTexIdNew = 0;
-			}
-			else if (shadowTexIdNew != 0
-				&& (textureList[shadowTexIdNew].Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D || textureList[shadowTexIdNew].IsCube))
-			{
-				DebugReport(RenderReport_Contract, L"[Layer] 섀도우맵이 2D 텍스처가 아님 (무시됨)");
-				shadowTexIdNew = 0;
-			}
-			else if (shadowTexIdNew != 0 && !MarkOrBuildSingleTexture(shadowTexIdNew))
-			{
-				DebugReport(RenderReport_Limit, L"[Layer] 섀도우맵 뷰 자리 없음 (무시됨)");
-				shadowTexIdNew = 0;
-			}
-
-			if (shadowTexIdNew == 0)
-				shadowTexIdNew = DEFAULT_TEX_NONE_SHADOW;
-
-			renderFrame.layerList[i].shadowTexIds[s] = shadowTexIdNew;
+			DebugReport(RenderReport_Contract, L"[Layer] 합성 대상 텍스처 usage 불일치 (레이어 합성 안 함)");
+			compositeTexIdNew = LAYER_COMPOSITE_NONE;
 		}
+		else if (compositeTexIdNew != 0
+			&& (textureList[compositeTexIdNew].Format != DXGI_FORMAT_R8G8B8A8_UNORM_SRGB || textureList[compositeTexIdNew].Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D
+				|| textureList[compositeTexIdNew].IsCube || textureList[compositeTexIdNew].ArraySize > 1))
+		{
+			DebugReport(RenderReport_Contract, L"[Layer] 합성 대상 텍스처가 RGBA8_SRGB 2D 한 장이 아님 (레이어 합성 안 함)");
+			compositeTexIdNew = LAYER_COMPOSITE_NONE;
+		}
+
+		for (size_t j = 0; j < i; j++)
+		{
+			if (compositeTexIdNew == 0 || compositeTexIdNew == LAYER_COMPOSITE_NONE)
+				break;
+
+			if (renderFrame.layerList[j].compositeTexId == compositeTexIdNew)
+			{
+				DebugReport(RenderReport_Contract, L"[Layer] 같은 합성 대상 텍스처를 앞 레이어가 이미 씀 (레이어 합성 안 함)");
+				compositeTexIdNew = LAYER_COMPOSITE_NONE;
+			}
+		}
+
+		renderFrame.layerList[i].compositeTexId = compositeTexIdNew;
 
 
 		renderFrame.layerList[i].layerDataTid = LayerList[i].layerDataBoxTid;
@@ -1583,7 +1602,7 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 
 		BuildActionBarriers(actionList[i], rtInstantSimStateList, dsInstantSimStateList, layer.depthBarrierLists[depthGroup]);
 
-		actionList[i].layerShadowHideMask = 0;
+		actionList[i].layerTexHideMask = 0;
 
 		for (uint8_t s = 0; s < INSTANT_SLOT_MAX; s++)
 		{
@@ -1594,10 +1613,10 @@ void D3D12Renderer::BuildActionGraph(DX12_RenderLayer& layer, const DataHub::RTB
 			if (outTexId == 0)
 				continue;
 
-			for (size_t k = 0; k < LAYER_SHADOW_SLOT_MAX; k++)
+			for (size_t k = 0; k < LAYER_TEX_SLOT_MAX; k++)
 			{
-				if (outTexId == layer.shadowTexIds[k])
-					actionList[i].layerShadowHideMask |= (uint8_t)(1 << k);
+				if (outTexId == layer.layerTexIds[k])
+					actionList[i].layerTexHideMask |= (uint8_t)(1 << k);
 			}
 
 			const Action_Output_LoadOption loadOpt = s == INSTANT_SLOT_DS ? output.dsLoadOpt : output.loadOpt[s];

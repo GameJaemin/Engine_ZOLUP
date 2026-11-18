@@ -41,15 +41,26 @@ namespace Hakko::DataHub
         color[0] = r;   color[1] = g;   color[2] = b;   color[3] = a;
     }
 
-    void SetLayerEnvMap(TexID texId, uint8_t layer)
+    void SetLayerIBL(const Layer_IBL& ibl, uint8_t layer)
     {
-        if (layer >= LayerList.size() || texId >= textureIdLUT.size())
+        if (layer >= LayerList.size() || ibl.specularTexId >= textureIdLUT.size() || ibl.diffuseTexId >= textureIdLUT.size() || ibl.brdfLutTexId >= textureIdLUT.size())
         {
-            Internal::PushHubReport(HubReport_Contract, L"[Hub] SetLayerEnvMap: 레이어 / 텍스처 id 범위 밖 (무시됨)");
+            Internal::PushHubReport(HubReport_Contract, L"[Hub] SetLayerIBL: 레이어 / 텍스처 id 범위 밖 (무시됨)");
             return;
         }
 
-        LayerList[layer].envTexId = texId;
+        LayerList[layer].ibl = ibl;
+    }
+
+    void SetLayerEnvIntensity(float intensity, uint8_t layer)
+    {
+        if (layer >= LayerList.size())
+        {
+            Internal::PushHubReport(HubReport_Contract, L"[Hub] SetLayerEnvIntensity: 레이어 범위 밖 (무시됨)");
+            return;
+        }
+
+        LayerList[layer].condition.global_EnvIntensity = intensity;
     }
 
     void SetLayerViewport(const Layer_Viewport& viewport, uint8_t layer)
@@ -61,6 +72,57 @@ namespace Hakko::DataHub
         }
 
         LayerList[layer].viewport = viewport;
+    }
+
+    ViewTarget CreateViewTarget(const wchar_t* name, uint32_t width, uint32_t height)
+    {
+        ViewTarget target;
+
+        if (name == nullptr || width == 0 || height == 0)
+        {
+            Internal::PushHubReport(HubReport_Contract, L"[Hub] CreateViewTarget: 이름 / 크기가 잘못됨");
+            return target;
+        }
+
+        Texture tex = {};
+        tex.data.format = TextureReadFormat::RGBA8_SRGB;
+        tex.data.textureType = TextureType_2D;
+        tex.data.width = width;
+        tex.data.height = height;
+        tex.usage = TextureUsage_RT;
+
+        if (CreateTexture(name, std::move(tex)) == 0)
+            return target;
+
+        target.name = name;
+        target.width = width;
+        target.height = height;
+
+        return target;
+    }
+
+    void SetLayerCompositeTarget(const ViewTarget& target, uint8_t layer)
+    {
+        if (layer >= LayerList.size())
+        {
+            Internal::PushHubReport(HubReport_Contract, L"[Hub] SetLayerCompositeTarget: 레이어 범위 밖 (무시됨)");
+            return;
+        }
+
+        if (target.name.empty())
+        {
+            LayerList[layer].compositeTexId = 0;
+            return;
+        }
+
+        const TexID texId = GetTexId(target.name);
+        if (texId == 0)
+        {
+            Internal::PushHubReport(HubReport_Contract, L"[Hub] SetLayerCompositeTarget: 타깃 텍스처가 없음 (무시됨)");
+            return;
+        }
+
+        LayerList[layer].compositeTexId = texId;
     }
 
     void SetLayerPipelineType(Layer_PipelineType type, uint8_t layer)

@@ -26,6 +26,8 @@ namespace Hakko::DataHub
         textureIdLUT.emplace(HashString(std::wstring_view(RESERVED_TEX_NONE_ORM_NAME)), RESERVED_TEX_NONE_ORM_ID);
         textureIdLUT.emplace(HashString(std::wstring_view(RESERVED_TEX_NONE_EMISSION_NAME)), RESERVED_TEX_NONE_EMISSION_ID);
         textureIdLUT.emplace(HashString(std::wstring_view(RESERVED_TEX_NONE_SHADOW_NAME)), RESERVED_TEX_NONE_SHADOW_ID);
+        textureIdLUT.emplace(HashString(std::wstring_view(RESERVED_TEX_NONE_CUBE_NAME)), RESERVED_TEX_NONE_CUBE_ID);
+        textureIdLUT.emplace(HashString(std::wstring_view(RESERVED_TEX_BRDF_LUT_NAME)), RESERVED_TEX_BRDF_LUT_ID);
 
         csBufferIdLUT.emplace(HashString(std::wstring_view(L"__CSBUFFERDEFAULT")), 0);
 

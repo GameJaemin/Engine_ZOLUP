@@ -14,6 +14,15 @@
 
 
 // 레이어 간 데이터 인터페이스 / 프로토콜 을 정의합니다
+
+// ------
+// v0.2.1-alpha: IBL (스페큘러 / 디퓨즈 / BRDF LUT) / 조명 감쇠, 스팟 안쪽 각도 옵션 / 이미션 배율 / 레이어 합성 대상 텍스처
+
+// 큰 변경점, 유의사항:
+// 레이어의 envTexId, SetLayerEnvMap 삭제 -> Layer_IBL, SetLayerIBL 로 변경
+// DataBox_RenderLight 크기 변경: type 이 8비트로 줄고 falloffType / spotInnerAngle / falloff 추가
+// 예약 텍스처 추가 (None_Cube, Default_BRDF_LUT)
+
 // ------
 // v0.2.0-alpha: 디폴트 셰이더 추가 / 그림자, 포스트 프로세싱, 컴퓨트 빌트인 동작 구현 / ImGui 모듈 추가
 

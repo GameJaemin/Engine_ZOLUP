@@ -11,7 +11,7 @@ namespace Hakko::DataHub
     #pragma region ReservedResource
 
     #define RESERVED_MESH_COUNT 2
-    #define RESERVED_TEXTURE_COUNT 7
+    #define RESERVED_TEXTURE_COUNT 9
     #define RESERVED_CSBUFFER_COUNT 1
     #define RESERVED_SHADER_COUNT 23
     #define RESERVED_DRAWPROP_COUNT 23
@@ -27,12 +27,16 @@ namespace Hakko::DataHub
     #define RESERVED_TEX_NONE_ORM_ID 4
     #define RESERVED_TEX_NONE_EMISSION_ID 5
     #define RESERVED_TEX_NONE_SHADOW_ID 6
+    #define RESERVED_TEX_NONE_CUBE_ID 7
+    #define RESERVED_TEX_BRDF_LUT_ID 8
 
     #define RESERVED_TEX_NONE_DIFFUSE_NAME L"None_Diffuse"
     #define RESERVED_TEX_NONE_NORMAL_NAME L"None_Normal"
     #define RESERVED_TEX_NONE_ORM_NAME L"None_ORM"
     #define RESERVED_TEX_NONE_EMISSION_NAME L"None_Emission"
     #define RESERVED_TEX_NONE_SHADOW_NAME L"None_Shadow"
+    #define RESERVED_TEX_NONE_CUBE_NAME L"None_Cube"
+    #define RESERVED_TEX_BRDF_LUT_NAME L"Default_BRDF_LUT"
 
 
     #define RESERVED_SHADER_WORLD_VS_ID 5

@@ -478,6 +478,7 @@ namespace Hakko::DataHub
         DirectX::XMFLOAT4 global_LightAmbient;
         DirectX::XMFLOAT4 global_LightColor;
         DirectX::XMFLOAT3 global_LightDirection;
+        float global_EnvIntensity = 1.0f;       // 환경광 (IBL) 배율
         DirectX::XMMATRIX global_LightViewProj[RENDER_BUILTIN_CSM_MAX];     // 전역조명 캐스케이드별 뷰프로젝션 (하나만 쓰면 [0])
         DirectX::XMFLOAT4 global_LightCascadeSplit;                         // 캐스케이드 i 가 덮는 뷰 깊이의 끝 (안 쓰는 칸 0)
         DirectX::XMFLOAT4 global_LightCascadeTile[RENDER_BUILTIN_CSM_MAX];  // 섀도우 아틀라스 타일 (xy = uv 스케일, zw = uv 오프셋)
@@ -487,7 +488,9 @@ namespace Hakko::DataHub
 
     struct DataBox_RenderLight : DataBox
     {
-        uint32_t type;                  // 0: None / 1: Directional / 2: Point / 3: Spot
+        uint8_t type;                   // 0: None / 1: Directional / 2: Point / 3: Spot
+        uint8_t falloffType;            // 거리 감쇠 방식 (Point, Spot) 0: 범위 창 (falloff 지수) / 1: 거리 제곱 반비례 (범위 끝은 창으로 마무리)
+        uint8_t _[2];                   // 셰이더에선 위 넷이 uint 하나 (아래 8비트 = type, 그 위 8비트 = falloffType)
         DirectX::XMFLOAT3 position;     // 위치 (Point, Spot)
         
         float range;                    // 최대 거리 (Point, Spot)
@@ -495,6 +498,10 @@ namespace Hakko::DataHub
         
         DirectX::XMFLOAT3 direction;    // 빛이 향하는 방향 (Directional, Spot)
         float spotAngle;                // 원뿔 각도 (Spot)
+
+        float spotInnerAngle = 0.0f;    // 안쪽 원뿔 각도 (Spot), 이 안은 최대 밝기. 0 = 가장자리만 좁게 번짐
+        float falloff = 2.0f;           // 범위 창의 지수 (falloffType 0), 클수록 빛이 조명 근처에 몰림
+        float _1[2];
     };
     typedef DataBox_RenderLight DtB_Light;
 
@@ -540,7 +547,7 @@ namespace Hakko::DataHub
         float roughness;
         float metalic;
         float alphaCutoff = 0.5f;
-        float _;
+        float emissionScale = 1.0f;     // 이미션 텍스처에 곱하는 배율
         uint32_t affectLights[8];
         uint32_t shadowPreset;      // 레이어의 그림자 프리셋 칸 번호, 0 = 레이어 기본 프리셋
     };

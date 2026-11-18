@@ -76,7 +76,9 @@ static_assert(DEFAULT_SHADER_PARTICLE_CS + 1 == DEFAULT_RES_SHADER_COUNT, "빌�
 
 constexpr uint16_t DEFAULT_TEX_TRANSPARENT = RESERVED_TEX_TRANSPARENT_ID;
 constexpr uint16_t DEFAULT_TEX_NONE_SHADOW = RESERVED_TEX_NONE_SHADOW_ID;
-static_assert(DEFAULT_TEX_NONE_SHADOW + 1 == DEFAULT_RES_TEX_COUNT, "빌트인 텍스처 수가 허브 예약 (RESERVED_TEXTURE_COUNT) 과 다름");
+constexpr uint16_t DEFAULT_TEX_NONE_CUBE = RESERVED_TEX_NONE_CUBE_ID;
+constexpr uint16_t DEFAULT_TEX_BRDF_LUT = RESERVED_TEX_BRDF_LUT_ID;
+static_assert(DEFAULT_TEX_BRDF_LUT + 1 == DEFAULT_RES_TEX_COUNT, "빌트인 텍스처 수가 허브 예약 (RESERVED_TEXTURE_COUNT) 과 다름");
 
 
 #pragma region RenderResource
@@ -262,7 +264,24 @@ struct DX12_ComputePSO{
 
 #pragma region RootSignature
 
-constexpr size_t LAYER_SHADOW_SLOT_MAX = 2;
+struct DX12_LayerTexSlotInfo
+{
+	UINT shaderRegister;
+	bool isCube;
+	uint16_t defaultTexId;
+};
+
+constexpr size_t LAYER_TEX_SLOT_MAX = 5;
+
+constexpr DX12_LayerTexSlotInfo LAYER_TEX_SLOT_INFOS[LAYER_TEX_SLOT_MAX] =
+{
+	{ 0, true,	DEFAULT_TEX_NONE_CUBE },
+	{ 1, false,	DEFAULT_TEX_NONE_SHADOW },
+	{ 2, false,	DEFAULT_TEX_NONE_SHADOW },
+	{ 4, true,	DEFAULT_TEX_NONE_CUBE },
+	{ 5, false,	DEFAULT_TEX_BRDF_LUT },
+};
+static_assert(LAYER_TEX_SLOT_MAX <= 8, "레이어 텍스처 칸 수가 가림 마스크 (layerTexHideMask, 8 비트) 를 넘음");
 
 static_assert(sizeof(DataHub::ShadowPreset_Entry) == 96 && sizeof(DataHub::DataBox_RenderShadowPreset) == 96 * (RENDER_SHADOW_PRESET_LOCAL_MAX + 1),
 	"그림자 프리셋 배치가 셰이더 (registers.hlsli 의 ShadowPresetEntry / SHADOW_PRESET_ENTRY_MAX) 와 다름");
@@ -279,9 +298,8 @@ enum DX12_RootParam
 	RootParam_LayerDataCB,											// b0 space1 : 레이어 데이터 (2)
 	RootParam_ConditionCB,											// b0 space0 : 카메라 등 (2)
 	RootParam_LightCB,												// b1 space0 : 조명 64 (2)
-	RootParam_LayerTexTable,										// t0 space4 : 레이어 전역 텍스처 (환경맵 큐브) 1칸 테이블 (1)
-	RootParam_LayerShadowTex0,										// t1~t2 space4 : 레이어 섀도우맵 (전역 / 로컬), 1칸 테이블 x 2 (칸 s = LayerShadowTex0 + s)
-	RootParam_ShadowPresetSB	= RootParam_LayerShadowTex0 + LAYER_SHADOW_SLOT_MAX,	// t3 space4 : 레이어 그림자 프리셋 묶음 (루트 SRV 2 DWORD)
+	RootParam_LayerTex0,											// t0~t2, t4~t5 space4 : 레이어 전역 텍스처, 1칸 테이블 x 5 (칸 s = LayerTex0 + s, 레지스터 / 차원 / 기본값은 LAYER_TEX_SLOT_INFOS)
+	RootParam_ShadowPresetSB	= RootParam_LayerTex0 + LAYER_TEX_SLOT_MAX,	// t3 space4 : 레이어 그림자 프리셋 묶음 (루트 SRV 2 DWORD)
 	RootParam_Constants,											// b4 space0 : 루트 상수 4 DWORD (배경 틴트 등)
 	RootParam_Count,
 };
@@ -410,7 +428,7 @@ struct DX12_RenderAction
 	bool dsReadOnly;
 
 	uint16_t clearMask;
-	uint8_t layerShadowHideMask;
+	uint8_t layerTexHideMask;
 
 	std::vector<DX12_ActionBarrier> beginBarriers;
 	std::vector<DX12_ActionBarrier> endBarriers;
@@ -429,14 +447,16 @@ struct DX12_RenderAction
 
 #pragma region RenderLayer
 
+#define LAYER_COMPOSITE_NONE UINT16_MAX
+
 struct DX12_RenderLayer
 {
 	// --- Layer Header ---
 	TexID bgTexId;
 	bool bgIsCube;
 	float bgColor[4];
-	TexID envTexId;
-	TexID shadowTexIds[LAYER_SHADOW_SLOT_MAX];
+	TexID layerTexIds[LAYER_TEX_SLOT_MAX];
+	TexID compositeTexId;
 
 	// --- Layer Data ---
 	DX12_RenderData conditionRenderData;
