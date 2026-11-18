@@ -1,6 +1,9 @@
 #include "EditorApplication.h"
 
 #include "Core/Log.h"
+#include "Engine.h"
+#include "Input/InputState.h"
+#include "Input/Key.h"
 #include "Paths.h"
 #include "World.h"
 
@@ -10,6 +13,7 @@
 #include <filesystem>
 #include <optional>
 #include <string_view>
+#include <vector>
 
 namespace
 {
@@ -54,6 +58,15 @@ namespace
 		return ViewportRect{ centralNode->Pos.x - viewport.Pos.x, centralNode->Pos.y - viewport.Pos.y, centralNode->Size.x, centralNode->Size.y };
 	}
 
+	/** 마우스 위치가 영역 안에 있으면 true다. 위치를 모르면 false다. */
+	bool IsMouseInside(const std::optional<ViewportRect>& rect, const std::optional<MouseCoordinates>& mousePosition)
+	{
+		if (!rect.has_value() || !mousePosition.has_value()) { return false; }
+
+		const float x = static_cast<float>(mousePosition->x);
+		const float y = static_cast<float>(mousePosition->y);
+		return x >= rect->x && x < rect->x + rect->width && y >= rect->y && y < rect->y + rect->height;
+	}
 }
 
 bool EditorApplication::OnInitialize(Engine& inEngine)
@@ -97,7 +110,31 @@ bool EditorApplication::OnInitialize(Engine& inEngine)
 
 void EditorApplication::OnUpdate(const InputState& input, float deltaTime)
 {
-	cameraController.Update(editorCamera, input, deltaTime, true);
+	const bool wasViewportCameraActive = isViewportCameraActive;
+
+	// 오른쪽 버튼을 누른 순간에만 뷰포트 위인지 판단하고, 뗄 때까지 그 결과를 유지한다.
+	// 장면 영역은 지난 프레임 OnGui에서 계산한 값이다. 떠 있는 패널이 뷰포트를 덮은 곳은 ImGui가 마우스를 잡는다.
+	for (const KeyEvent& event : input.GetFrameEvents())
+	{
+		if (event.key != Key::MouseRight) { continue; }
+
+		if (event.type == KeyEventType::Pressed)
+		{
+			isViewportCameraActive = IsMouseInside(sceneViewport, input.GetMousePosition()) && !ImGui::GetIO().WantCaptureMouse;
+		}
+		else
+		{
+			isViewportCameraActive = false;
+		}
+	}
+
+	// 카메라를 조작하는 동안 커서를 숨긴다. 상태가 바뀔 때만 엔진에 알린다.
+	if (isViewportCameraActive != wasViewportCameraActive)
+	{
+		engine->SetCursorVisible(!isViewportCameraActive);
+	}
+
+	cameraController.Update(editorCamera, input, deltaTime, isViewportCameraActive);
 	worldSession.GetEditWorld()->DestroyPendingGameObjects();
 }
 
@@ -142,6 +179,13 @@ std::optional<SceneView> EditorApplication::GetSceneView()
 
 void EditorApplication::OnShutdown() noexcept
 {
+	// 조작 중에 종료되면 숨긴 커서가 남지 않도록 되돌린다.
+	if (isViewportCameraActive)
+	{
+		engine->SetCursorVisible(true);
+		isViewportCameraActive = false;
+	}
+
 	selection.SetWorld(nullptr);
 	worldSession.Close();
 

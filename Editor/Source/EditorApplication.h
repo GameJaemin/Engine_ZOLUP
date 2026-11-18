@@ -42,4 +42,6 @@ private:
 	// OnGui가 매 프레임 계산하는 도킹 가운데 칸의 클라이언트 영역이다. 같은 프레임의 GetSceneView에서 사용한다.
 	// 칸을 찾지 못했거나 크기가 없으면 nullopt이다.
 	std::optional<ViewportRect> sceneViewport;
+	// 장면 뷰포트 위에서 오른쪽 버튼을 누른 뒤 뗄 때까지 true다. 이 동안만 에디터 카메라가 입력을 받는다.
+	bool isViewportCameraActive = false;
 };
