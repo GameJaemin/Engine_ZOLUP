@@ -33,6 +33,7 @@
     <ClCompile Include="Engine\Source\Texture\ORMImageBuilder.cpp" />
     <ClCompile Include="Engine\Source\AssetManager.cpp" />
     <ClCompile Include="Engine\Source\Engine.cpp" />
+    <ClCompile Include="Engine\Source\ImGuiSystem.cpp" />
     <ClCompile Include="Engine\Source\Core\FileHelper.cpp" />
     <ClCompile Include="Engine\Source\Core\FrameTimer.cpp" />
     <ClCompile Include="Engine\Source\Core\Log.cpp" />
@@ -71,6 +72,8 @@
     <ClInclude Include="Engine\Source\AssetManager.h" />
     <ClInclude Include="Engine\Source\Engine.h" />
     <ClInclude Include="Engine\Source\IApplication.h" />
+    <ClInclude Include="Engine\Source\CursorShape.h" />
+    <ClInclude Include="Engine\Source\ImGuiSystem.h" />
     <ClInclude Include="Engine\Source\Core\FileHelper.h" />
     <ClInclude Include="Engine\Source\Core\FrameTimer.h" />
     <ClInclude Include="Engine\Source\Core\Log.h" />

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AssetManager.h"
+#include "ImGuiSystem.h"
 #include "WindowsApplication.h"
 
 #include <memory>
@@ -30,6 +31,7 @@ public:
 	/**
 	 * application을 호출 중에만 빌려 서비스 초기화, 프레임 실행 및 정리를 수행한다.
 	 * Engine 인스턴스당 한 번 호출한다. 실패 반환은 정리 후 1로 처리한다.
+	 * application이 GUI를 요구했는데 GUI 준비에 실패한 경우도 실패로 처리한다.
 	 * 정상 종료에서는 창 메시지의 종료 코드를 반환한다. C++ 예외는 호출자에게 전파된다.
 	 */
 	int Run(IApplication& application);
@@ -50,14 +52,20 @@ public:
 	void SetCursorVisible(bool visible);
 
 private:
-	/** 창, DataHub와 렌더러를 순서대로 준비하고 기본 배경을 설정한다. */
-	bool Initialize();
+	/**
+	 * 창, (enableGui면 ImGui), DataHub와 렌더러를 순서대로 준비하고 기본 배경을 설정한다.
+	 * enableGui면 렌더러가 ImGui 출력 백엔드를 등록했는지까지 확인한다.
+	 */
+	bool Initialize(bool enableGui);
 	int RunFrameLoop(IApplication& application);
 	bool Shutdown();
 
 private:
 	// Shutdown에서 렌더러를 먼저 해제한다. 멤버 자동 소멸에서도 창 객체가 가장 오래 살아 있도록 둔다.
 	WindowsApplication windowsApplication;
+
+	// 렌더러가 Init부터 Finalize까지 ImGui Context를 사용하므로 렌더러보다 먼저 선언해 나중에 소멸한다.
+	ImGuiSystem imguiSystem;
 
 	AssetManager assetManager;
 

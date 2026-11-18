@@ -193,6 +193,26 @@ namespace
 			break;
 		}
 	}
+
+	/** 엔진 커서 모양을 Windows 시스템 커서 이름으로 바꾼다. */
+	LPCWSTR ToSystemCursorName(CursorShape shape)
+	{
+		switch (shape)
+		{
+		case CursorShape::TextInput:  return IDC_IBEAM;
+		case CursorShape::ResizeAll:  return IDC_SIZEALL;
+		case CursorShape::ResizeNS:   return IDC_SIZENS;
+		case CursorShape::ResizeEW:   return IDC_SIZEWE;
+		case CursorShape::ResizeNESW: return IDC_SIZENESW;
+		case CursorShape::ResizeNWSE: return IDC_SIZENWSE;
+		case CursorShape::Hand:       return IDC_HAND;
+		case CursorShape::Wait:       return IDC_WAIT;
+		case CursorShape::Progress:   return IDC_APPSTARTING;
+		case CursorShape::NotAllowed: return IDC_NO;
+		case CursorShape::Arrow:
+		default:                      return IDC_ARROW;
+		}
+	}
 }
 
 WindowsApplication::~WindowsApplication()
@@ -362,10 +382,21 @@ bool WindowsApplication::IsMinimized() const
 	return window != nullptr && IsIconic(window) != FALSE;
 }
 
+void WindowsApplication::SetMessageHook(WindowMessageHook hook)
+{
+	messageHook = hook;
+}
+
 LRESULT WindowsApplication::WindowProc(HWND windowHandle, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	// 창 생성 중 객체 주소를 연결하기 전과 연결을 해제한 뒤의 메시지는 기록할 대상이 없다.
 	WindowsApplication* windowsApplication = reinterpret_cast<WindowsApplication*>(GetWindowLongPtrW(windowHandle, GWLP_USERDATA));
+
+	if (windowsApplication != nullptr && windowsApplication->messageHook != nullptr)
+	{
+		windowsApplication->messageHook(windowHandle, message, wParam, lParam);
+	}
+
 	if (windowsApplication != nullptr)
 	{
 		switch (message)
@@ -469,6 +500,15 @@ void WindowsApplication::SetCursorConfined(bool confined)
 void WindowsApplication::SetCursorVisible(bool visible)
 {
 	cursorVisibleRequested = visible;
+	UpdateCursorVisibility();
+}
+
+void WindowsApplication::SetCursorShape(CursorShape shape)
+{
+	// 매 프레임 같은 모양으로 불려도 SetCursor를 반복하지 않는다.
+	if (cursorShape == shape) { return; }
+
+	cursorShape = shape;
 	UpdateCursorVisibility();
 }
 
@@ -602,7 +642,7 @@ void WindowsApplication::UpdateCursorVisibility(bool forceVisible)
 	HCURSOR cursor = nullptr;
 	if (shouldShow)
 	{
-		cursor = LoadCursorW(nullptr, IDC_ARROW);
+		cursor = LoadCursorW(nullptr, ToSystemCursorName(cursorShape));
 		if (cursor == nullptr)
 		{
 			LogWindowsError("LoadCursorW", GetLastError());

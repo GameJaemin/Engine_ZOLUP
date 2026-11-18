@@ -111,6 +111,9 @@
     <ClCompile Include="Engine\Source\Engine.cpp">
       <Filter>Engine\Source</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Source\ImGuiSystem.cpp">
+      <Filter>Engine\Source</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Source\World.cpp">
       <Filter>Engine\Source</Filter>
     </ClCompile>
@@ -255,6 +258,12 @@
       <Filter>Engine\Source</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\IApplication.h">
+      <Filter>Engine\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\CursorShape.h">
+      <Filter>Engine\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\ImGuiSystem.h">
       <Filter>Engine\Source</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\World.h">

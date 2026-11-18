@@ -24,14 +24,29 @@ public:
 	virtual ~IApplication() = default;
 
 	/**
+	 * Engine::Run이 창과 렌더러를 초기화하기 전에 한 번 읽는다. 실행 중 바뀐 값은 반영하지 않는다.
+	 * true인데 GUI 준비에 실패하면 Run은 1을 반환한다.
+	 */
+	virtual bool UsesGui() const noexcept { return false; }
+
+	/**
 	 * 창, DataHub 및 렌더러 초기화가 끝난 뒤 호출한다.
 	 * engine은 OnShutdown이 끝날 때까지 빌려 사용할 수 있다.
 	 * 보관한 Engine 포인터는 OnShutdown에서 비운다.
 	 */
 	virtual bool OnInitialize(Engine& engine) = 0;
 
-	/** 메시지 처리 뒤 호출한다. input은 호출 중에 빌리며 deltaTime은 초 단위다. */
+	/**
+	 * 메시지 처리 뒤 호출한다. input은 호출 중에 빌리며 deltaTime은 초 단위다.
+	 * GUI를 쓰는 앱은 렌더 가능한 프레임에서 ImGui 프레임이 열린 채 호출되지만, UI 호출은 OnGui에서 한다.
+	 */
 	virtual void OnUpdate(const InputState& input, float deltaTime) = 0;
+
+	/**
+	 * UsesGui가 true이고 GUI 준비에 성공했을 때, 렌더 가능한 프레임마다 OnUpdate 다음에 호출한다.
+	 * ImGui 프레임이 열려 있는 동안 호출하므로 ImGui UI 호출은 이 함수 안에서만 한다.
+	 */
+	virtual void OnGui() {}
 
 	/** 갱신 후 렌더 가능한 프레임에서 호출한다. nullopt면 장면 제출을 건너뛴다. */
 	virtual std::optional<SceneView> GetSceneView() = 0;

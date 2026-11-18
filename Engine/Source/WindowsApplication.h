@@ -1,8 +1,12 @@
 #pragma once
 
+#include "CursorShape.h"
 #include "Input/InputState.h"
 
 #include <Windows.h>
+
+/** 엔진보다 먼저 창 메시지를 보는 함수다. 엔진의 메시지 처리는 바꾸지 않는다. */
+using WindowMessageHook = void (*)(HWND windowHandle, UINT message, WPARAM wParam, LPARAM lParam);
 
 /** 메인 스레드에서 생성, 초기화, 사용, 소멸하며, 자신이 만든 창과 창 클래스를 소유한다. */
 class WindowsApplication
@@ -52,6 +56,12 @@ public:
 	/** 창의 최소화 상태를 조회한다. 창이 없으면 false다. */
 	bool IsMinimized() const;
 
+	/**
+	 * 창 메시지를 엔진보다 먼저 받을 함수를 지정한다. nullptr이면 해제한다. 메인 스레드에서 호출한다.
+	 * 훅은 메시지를 보기만 하며, 엔진은 모든 메시지를 훅과 관계없이 처리한다.
+	 */
+	void SetMessageHook(WindowMessageHook hook);
+
 private:
 	static LRESULT CALLBACK WindowProc(HWND windowHandle, UINT message, WPARAM wParam, LPARAM lParam);
 
@@ -63,6 +73,8 @@ private:
 	bool isWindowClassRegistered = false;
 	// 닫기 요청 또는 명시적 정리를 시작했으면 창 파괴 시 종료 메시지를 다시 올리지 않는다.
 	bool closeRequested = false;
+	// 엔진보다 먼저 메시지를 받을 함수다. nullptr이면 호출하지 않는다.
+	WindowMessageHook messageHook = nullptr;
 
 	// 입력
 public:
@@ -84,10 +96,16 @@ public:
 	/**
 	 * 커서 표시 설정을 저장하고 현재 커서에 반영한다. 메인 스레드에서 호출한다.
 	 * 우리 창의 클라이언트 영역 또는 마우스 캡처 중에만 커서 모양을 변경한다.
-	 * 숨김은 포커스가 있고 최소화되지 않은 창에서 적용하며, 그 외에는 기본 화살표를 사용한다.
+	 * 숨김은 포커스가 있고 최소화되지 않은 창에서 적용하며, 그 외에는 SetCursorShape로 지정한 모양을 사용한다.
 	 * 포커스 상실 또는 최소화 중에도 저장한 설정은 유지한다.
 	 */
 	void SetCursorVisible(bool visible);
+
+	/**
+	 * 클라이언트 영역에서 보일 커서 모양을 지정한다. 메인 스레드에서 호출한다.
+	 * SetCursorVisible로 숨긴 동안에는 모양과 관계없이 숨긴다. 기본값은 Arrow다.
+	 */
+	void SetCursorShape(CursorShape shape);
 
 private:
 	/** 생성된 창을 마우스 Raw Input 수신 대상으로 등록한다. */
@@ -118,5 +136,7 @@ private:
 	bool cursorConfined = false;
 	// 호출자가 요청한 표시 설정이며 포커스 상실 또는 최소화 중에도 유지한다.
 	bool cursorVisibleRequested = true;
+	// 커서를 보일 때 사용할 모양이다.
+	CursorShape cursorShape = CursorShape::Arrow;
 };
 
