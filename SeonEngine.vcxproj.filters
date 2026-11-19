@@ -450,6 +450,9 @@
     <ClInclude Include="Engine\Renderer\Data\public\DataHub_Resource.h">
       <Filter>Engine\Renderer</Filter>
     </ClInclude>
+    <ClInclude Include="Engine\Renderer\Data\public\DataHub_STB.h">
+      <Filter>Engine\Renderer</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\Renderer\Data\public\DataHub_Types.h">
       <Filter>Engine\Renderer</Filter>
     </ClInclude>
@@ -486,25 +489,85 @@
     <ClInclude Include="Engine\Renderer\Render\private\D3D12\D3D12Renderer_Types.h">
       <Filter>Engine\Renderer</Filter>
     </ClInclude>
+    <None Include="Engine\Renderer\Render\private\D3D12\shader\common\bloom.hlsli">
+      <Filter>Engine\Renderer</Filter>
+    </None>
+    <None Include="Engine\Renderer\Render\private\D3D12\shader\common\depth.hlsli">
+      <Filter>Engine\Renderer</Filter>
+    </None>
     <None Include="Engine\Renderer\Render\private\D3D12\shader\common\lighting.hlsli">
+      <Filter>Engine\Renderer</Filter>
+    </None>
+    <None Include="Engine\Renderer\Render\private\D3D12\shader\common\particle.hlsli">
       <Filter>Engine\Renderer</Filter>
     </None>
     <None Include="Engine\Renderer\Render\private\D3D12\shader\common\registers.hlsli">
       <Filter>Engine\Renderer</Filter>
     </None>
+    <None Include="Engine\Renderer\Render\private\D3D12\shader\common\registers_compute.hlsli">
+      <Filter>Engine\Renderer</Filter>
+    </None>
+    <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultAOBlur_PS.hlsl">
+      <Filter>Engine\Renderer</Filter>
+    </None>
     <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultBG_PS.hlsl">
       <Filter>Engine\Renderer</Filter>
     </None>
-    <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultBG_VS.hlsl">
+    <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultBloomCombine_PS.hlsl">
+      <Filter>Engine\Renderer</Filter>
+    </None>
+    <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultBloomDown_PS.hlsl">
+      <Filter>Engine\Renderer</Filter>
+    </None>
+    <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultBloomPrefilter_PS.hlsl">
+      <Filter>Engine\Renderer</Filter>
+    </None>
+    <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultBloomUp_PS.hlsl">
       <Filter>Engine\Renderer</Filter>
     </None>
     <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultComposite_PS.hlsl">
+      <Filter>Engine\Renderer</Filter>
+    </None>
+    <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultDebug_PS.hlsl">
+      <Filter>Engine\Renderer</Filter>
+    </None>
+    <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultDeferredLighting_PS.hlsl">
+      <Filter>Engine\Renderer</Filter>
+    </None>
+    <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultFXAA_PS.hlsl">
+      <Filter>Engine\Renderer</Filter>
+    </None>
+    <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultPP_VS.hlsl">
+      <Filter>Engine\Renderer</Filter>
+    </None>
+    <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultParticle_CS.hlsl">
+      <Filter>Engine\Renderer</Filter>
+    </None>
+    <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultParticle_PS.hlsl">
+      <Filter>Engine\Renderer</Filter>
+    </None>
+    <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultParticle_VS.hlsl">
+      <Filter>Engine\Renderer</Filter>
+    </None>
+    <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultPick_PS.hlsl">
+      <Filter>Engine\Renderer</Filter>
+    </None>
+    <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultSSAO_PS.hlsl">
+      <Filter>Engine\Renderer</Filter>
+    </None>
+    <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultShadow_VS.hlsl">
+      <Filter>Engine\Renderer</Filter>
+    </None>
+    <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultSkinning_CS.hlsl">
       <Filter>Engine\Renderer</Filter>
     </None>
     <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultSkyBox_PS.hlsl">
       <Filter>Engine\Renderer</Filter>
     </None>
     <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultSkyBox_VS.hlsl">
+      <Filter>Engine\Renderer</Filter>
+    </None>
+    <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultTonemap_PS.hlsl">
       <Filter>Engine\Renderer</Filter>
     </None>
     <None Include="Engine\Renderer\Render\private\D3D12\shader\defaultWorldOPQ_PS.hlsl">

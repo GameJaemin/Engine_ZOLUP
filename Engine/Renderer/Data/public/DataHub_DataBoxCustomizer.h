@@ -125,6 +125,18 @@ inline DataBoxTID DataBoxCustomizer::GetTypeId<DataBox_RenderEditCustom>()
     return DataBoxType_DtB_EditCustom;
 }
 
+template <>
+inline DataBoxTID DataBoxCustomizer::GetTypeId<DataBox_RenderPickId>()
+{
+    return DataBoxType_DtB_PickId;
+}
+
+template <>
+inline DataBoxTID DataBoxCustomizer::GetTypeId<DataBox_RenderDebugColor>()
+{
+    return DataBoxType_DtB_DebugColor;
+}
+
 #pragma endregion
 
 

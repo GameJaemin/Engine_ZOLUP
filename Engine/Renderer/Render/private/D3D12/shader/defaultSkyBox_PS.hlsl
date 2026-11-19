@@ -1,4 +1,4 @@
-#if defined(OUTPUT_GBUFFER) || defined(OUTPUT_COLORID) || defined(OUTPUT_DEPTHONLY)
+#if defined(OUTPUT_GBUFFER) || defined(OUTPUT_COLORID) || defined(OUTPUT_DEPTHONLY) || defined(OUTPUT_ID)
 #error "defaultSkyBox_PS: Color 레이아웃만 지원"
 #endif
 

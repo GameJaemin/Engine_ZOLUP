@@ -442,6 +442,10 @@ void D3D12Renderer::Finalize()
 		retiredPSOLists[i].clear();
 		retiredSTexViewLists[i].clear();
 		retiredCTexViewLists[i].clear();
+
+		readbackEntryLists[i].clear();
+		readbackBuffers[i].Reset();
+		readbackBufferSizes[i] = 0;
 	}
 
 	cbArea_Light.clear();
@@ -450,6 +454,7 @@ void D3D12Renderer::Finalize()
 	retiredCBAreaList.clear();
 	dataSlotLUTList.clear();
 	dataSlotStampList.clear();
+	readbackReadList.clear();
 	
 
 	rvHeap.reset();
@@ -553,6 +558,8 @@ void D3D12Renderer::Sketch()
 #if RENDER_REPORT_SEND_MODE == RENDER_REPORT_SEND_ENABLE
 	DataHub::RenderReportList.clear();
 #endif
+	DataHub::ReadbackResultList.clear();
+
 
 	if (!MarkOrBuildSingleTexture(0) || !MarkOrBuildSingleTexture(DEFAULT_TEX_TRANSPARENT) || !MarkOrBuildSingleTexture(DEFAULT_TEX_NONE_SHADOW)
 		|| !MarkOrBuildSingleTexture(DEFAULT_TEX_NONE_CUBE) || !MarkOrBuildSingleTexture(DEFAULT_TEX_BRDF_LUT))
@@ -577,6 +584,8 @@ void D3D12Renderer::Sketch()
 		DebugReport(DataHub::RenderReport_Contract, L"[Frame] 무효 프레임 (이번 프레임 그리기 요청 전부 버림)");
 
 		WaitGPUProcess();
+		SendReadbackResult();
+		readbackReadList.clear();
 		ReleaseRetiredResource();
 		return;
 	}
@@ -589,6 +598,10 @@ void D3D12Renderer::Sketch()
 	GetDataFromSortedId();
 
 	WaitGPUProcess();
+
+	SendReadbackResult();
+
+	PrepareReadback();
 
 	UploadRenderData();
 
@@ -622,6 +635,7 @@ void D3D12Renderer::Render()
 	if (suspended || renderFrame.frameInvalidated)
 	{
 		ClearPassData(renderFrame, layerCount);
+		readbackEntryLists[frameIdx].clear();
 		ReadReleaseRequest();
 		ScheduledReleaseResource();
 
@@ -1198,6 +1212,29 @@ void D3D12Renderer::Render()
 	if (imguiModule)
 		imguiModule->Record(cmd, frameIdx);
 #endif
+
+	#pragma endregion
+
+
+	#pragma region Readback
+
+	const auto& readbackList = readbackEntryLists[frameIdx];
+
+	for (size_t i = 0; i < readbackList.size(); i++)
+	{
+		const DX12_ReadbackEntry& entry = readbackList[i];
+		ID3D12Resource* srcTex = textureList[entry.texId].Tex.Get();
+
+		auto readbackBeginBar = CD3DX12_RESOURCE_BARRIER::Transition(srcTex, entry.homeState, D3D12_RESOURCE_STATE_COPY_SOURCE);
+		cmd->ResourceBarrier(1, &readbackBeginBar);
+
+		const CD3DX12_TEXTURE_COPY_LOCATION copyDst(readbackBuffers[frameIdx].Get(), entry.footprint);
+		const CD3DX12_TEXTURE_COPY_LOCATION copySrc(srcTex, 0);
+		cmd->CopyTextureRegion(&copyDst, 0, 0, 0, &copySrc, nullptr);
+
+		auto readbackEndBar = CD3DX12_RESOURCE_BARRIER::Transition(srcTex, D3D12_RESOURCE_STATE_COPY_SOURCE, entry.homeState);
+		cmd->ResourceBarrier(1, &readbackEndBar);
+	}
 
 	#pragma endregion
 
@@ -1833,6 +1870,73 @@ void D3D12Renderer::UploadRenderData()
 		if (cbAreas[tid].GetCount() > 0)
 			cbAreas[tid].FlushCB();
 	}
+}
+
+
+void D3D12Renderer::SendReadbackResult()
+{
+	auto& entryList = readbackEntryLists[cpuFrameIndex];
+	if (entryList.empty())
+		return;
+
+	void* mapped = nullptr;
+	if (FAILED(readbackBuffers[cpuFrameIndex]->Map(0, nullptr, &mapped)))
+	{
+		DebugReport(DataHub::RenderReport_Limit, L"[Readback] 리드백 버퍼 Map 실패 (결과 버림)");
+		entryList.clear();
+		return;
+	}
+
+	for (size_t i = 0; i < entryList.size(); i++)
+	{
+		const DX12_ReadbackEntry& entry = entryList[i];
+		const size_t rowSize = (size_t)entry.rowSize;
+		const size_t rowPitch = (size_t)entry.footprint.Footprint.RowPitch;
+		const std::byte* src = (const std::byte*)mapped + entry.footprint.Offset;
+
+		DataHub::STB_ReadbackTexture result;
+		result.texId = entry.texId;
+		result.width = entry.footprint.Footprint.Width;
+		result.height = entry.footprint.Footprint.Height;
+		result.rawData.resize(rowSize * entry.rowCount);
+
+		for (UINT y = 0; y < entry.rowCount; y++)
+			memcpy(result.rawData.data() + (size_t)y * rowSize, src + (size_t)y * rowPitch, rowSize);
+
+		DataHub::ReadbackResultList.push_back(std::move(result));
+	}
+
+	const D3D12_RANGE noWrite = { 0, 0 };
+	readbackBuffers[cpuFrameIndex]->Unmap(0, &noWrite);
+
+	entryList.clear();
+}
+
+void D3D12Renderer::PrepareReadback()
+{
+	auto& entryList = readbackEntryLists[cpuFrameIndex];
+	entryList.swap(readbackReadList);
+	readbackReadList.clear();
+
+	if (entryList.empty() || readbackReadSize <= readbackBufferSizes[cpuFrameIndex])
+		return;
+
+	ID3D12Device* device = D3D12Core::getInstance().GetDevice();
+
+	const CD3DX12_HEAP_PROPERTIES READBACK_HEAP_PROPS(D3D12_HEAP_TYPE_READBACK);
+	const auto bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(readbackReadSize);
+
+	readbackBuffers[cpuFrameIndex].Reset();
+	readbackBufferSizes[cpuFrameIndex] = 0;
+
+	if (FAILED(device->CreateCommittedResource(&READBACK_HEAP_PROPS, D3D12_HEAP_FLAG_NONE, &bufferDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&readbackBuffers[cpuFrameIndex]))))
+	{
+		DebugReport(DataHub::RenderReport_Limit, L"[Readback] 리드백 버퍼 할당 실패 (이번 프레임 요청 버림)");
+		entryList.clear();
+		return;
+	}
+
+	readbackBufferSizes[cpuFrameIndex] = readbackReadSize;
 }
 
 #pragma endregion

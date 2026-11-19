@@ -16,6 +16,18 @@ namespace Hakko::DataHub
         flag_updateResources |= RTB.command;
     }
 
+    template <>
+    void DataHub::SendRTB<DataHub::RTB_ReadbackTexture>(const RTB_ReadbackTexture& RTB, uint8_t layer)
+    {
+        if (RTB.texId >= textureIdLUT.size())
+        {
+            Internal::PushHubReport(HubReport_Contract, L"[Hub] SendRTB(Readback): 텍스처 id 범위 밖 (요청 버림)");
+            return;
+        }
+
+        ReadbackRequestList.push_back(RTB);
+    }
+
     #pragma region SetLayerOption
 
     void SetLayerBackground(TexID texId, uint8_t layer)
@@ -684,6 +696,107 @@ namespace Hakko::DataHub
     #pragma endregion
 
 
+    #pragma region SetPickData
+
+    PickTarget CreatePickTarget(const wchar_t* idName, const wchar_t* depthName)
+    {
+        PickTarget target;
+
+        if (idName == nullptr || depthName == nullptr)
+        {
+            Internal::PushHubReport(HubReport_Contract, L"[Hub] CreatePickTarget: 이름이 잘못됨");
+            return target;
+        }
+
+        Texture idTex = {};
+        idTex.data.format = TextureReadFormat::R32_UInt;
+        idTex.data.textureType = TextureType_2D;
+        idTex.usage = TextureUsage_RT;
+
+        Texture depthTex = {};
+        depthTex.data.format = TextureReadFormat::D32_Float;
+        depthTex.data.textureType = TextureType_2D;
+        depthTex.usage = TextureUsage_DS;
+
+        if (CreateTexture(idName, std::move(idTex)) == 0)
+            return target;
+        if (CreateTexture(depthName, std::move(depthTex)) == 0)
+            return target;
+
+        target.idName = idName;
+        target.depthName = depthName;
+
+        return target;
+    }
+
+    template <>
+    void DataHub::SendRTB<DataHub::RTB_SetActionPick>(const RTB_SetActionPick& RTB, uint8_t layer)
+    {
+        if (layer >= LayerList.size())
+        {
+            Internal::PushHubReport(HubReport_Contract, L"[Hub] SendRTB: 레이어 범위 밖");
+            return;
+        }
+
+        RTB_ActionDraw& action = LayerList[layer].actionPick;
+
+        if (!RTB.enable || RTB.pixelX < 0.0f || RTB.pixelY < 0.0f || RTB.pixelX >= RTB.viewWidth || RTB.pixelY >= RTB.viewHeight)
+        {
+            action.output.useRT[0] = false;
+            action.output.useDS = false;
+            return;
+        }
+
+        const TexID idTexId = GetTexId(RTB.target.idName);
+        const TexID depthTexId = GetTexId(RTB.target.depthName);
+
+        if (idTexId == 0 || depthTexId == 0)
+        {
+            Internal::PushHubReport(HubReport_Contract, L"[Hub] SetPick: 타깃 텍스처가 없음 (피킹 안 함)");
+            action.output.useRT[0] = false;
+            action.output.useDS = false;
+            return;
+        }
+
+        Layer_Viewport layerVp = LayerList[layer].viewport;
+        if (layerVp.width <= 0.0f || layerVp.height <= 0.0f)
+            layerVp = Layer_Viewport{ 0.0f, 0.0f, RTB.viewWidth, RTB.viewHeight };
+
+        const float pixelX = (float)(int)RTB.pixelX;
+        const float pixelY = (float)(int)RTB.pixelY;
+
+        action.output.useRT[0] = true;
+        action.output.RTTex[0] = idTexId;
+        action.output.useDS = true;
+        action.output.DSTex = depthTexId;
+        action.viewport = Action_Viewport{ layerVp.originX - pixelX, layerVp.originY - pixelY, layerVp.width, layerVp.height, layerVp.minZ, layerVp.maxZ };
+        action.rect = Action_Rect{ 0, 0, 1, 1 };
+
+        RTB_ReadbackTexture readback;
+        readback.texId = idTexId;
+        ReadbackRequestList.push_back(readback);
+    }
+
+    bool GetPickResult(const PickTarget& target, uint32_t& pickId)
+    {
+        const TexID idTexId = GetTexId(target.idName);
+        bool found = false;
+
+        for (const STB_ReadbackTexture& result : ReadbackResultList)
+        {
+            if (idTexId == 0 || result.texId != idTexId || result.rawData.size() < sizeof(uint32_t))
+                continue;
+
+            memcpy(&pickId, result.rawData.data(), sizeof(uint32_t));
+            found = true;
+        }
+
+        return found;
+    }
+
+    #pragma endregion
+
+
     #pragma region SetParticleData
 
     ParticleBuffer CreateParticleBuffer(const wchar_t* name, uint32_t count)
@@ -1008,6 +1121,40 @@ namespace Hakko::DataHub
         return req;
     }
 
+    RTB_DrawRequest MakeDrawRequest(const RTB_DrawPick& RTB)
+    {
+        RenderIdOpaque idp;
+        idp.alphaClip = RTB.alphaClip;  idp.drawProp = RTB.drawProp;  idp.texProp = RTB.texProp;
+        idp.meshId = RTB.meshId;        idp.depth = RTB.depth;
+
+        RTB_DrawRequest req = {};
+        req.renderId = idp;
+        req.meshId = RTB.meshId;
+        req.subMeshId = RTB.subMeshId;
+        req.dataBoxIds[0] = RTB.generalId;
+        req.dataBoxIds[1] = RTB.optionalId;
+        req.dataBoxIds[2] = RTB.pickDataId;
+
+        return req;
+    }
+
+    RTB_DrawRequest MakeDrawRequest(const RTB_DrawDebug& RTB)
+    {
+        RenderIdOpaque idp;
+        idp.drawProp = RTB.drawProp;    idp.texProp = RTB.texProp;
+        idp.meshId = RTB.meshId;        idp.depth = RTB.depth;
+
+        RTB_DrawRequest req = {};
+        req.renderId = idp;
+        req.meshId = RTB.meshId;
+        req.subMeshId = RTB.subMeshId;
+        req.dataBoxIds[0] = RTB.generalId;
+        req.dataBoxIds[1] = RTB.optionalId;
+        req.dataBoxIds[2] = RTB.colorId;
+
+        return req;
+    }
+
     static DrawPropID ShadowDrawPropOf(DrawPropID drawProp)
     {
         switch (drawProp)
@@ -1058,6 +1205,125 @@ namespace Hakko::DataHub
         sdw.optionalId = RTB.optionalId;
 
         return sdw;
+    }
+
+    static DrawPropID PickDrawPropOf(DrawPropID drawProp)
+    {
+        switch (drawProp)
+        {
+        case RESERVED_DRAWPROP_OPAQUE_ID:               return RESERVED_DRAWPROP_PICK_ID;
+        case RESERVED_DRAWPROP_OPAQUE_SKINNED_ID:       return RESERVED_DRAWPROP_PICK_SKINNED_ID;
+        case RESERVED_DRAWPROP_OPAQUE_CLIP_ID:          return RESERVED_DRAWPROP_PICK_CLIP_ID;
+        case RESERVED_DRAWPROP_OPAQUE_SKINNED_CLIP_ID:  return RESERVED_DRAWPROP_PICK_SKINNED_CLIP_ID;
+        case RESERVED_DRAWPROP_TRANSLUCENT_ID:          return RESERVED_DRAWPROP_PICK_ID;
+        case RESERVED_DRAWPROP_TRANSLUCENT_SKINNED_ID:  return RESERVED_DRAWPROP_PICK_SKINNED_ID;
+        default:                                        return 0;
+        }
+    }
+
+    RTB_DrawPick MakePickRequest(const RTB_DrawOPQ& RTB, DataBoxID pickDataId, DrawPropID pickDrawProp)
+    {
+        if (pickDrawProp == 0)
+            pickDrawProp = PickDrawPropOf(RTB.drawProp);
+        if (pickDrawProp == 0)
+            Internal::PushHubReport(HubReport_Contract, L"[Hub] MakePickRequest: 짝 피킹이 없는 drawProp (피킹 drawProp 을 직접 넘길 것, 요청은 안 그려짐)");
+
+        RTB_DrawPick pick = {};
+        pick.alphaClip = RTB.alphaClip;
+        pick.drawProp = pickDrawProp;
+        pick.texProp = RTB.texProp;
+        pick.meshId = RTB.meshId;
+        pick.depth = RTB.depth;
+        pick.subMeshId = RTB.subMeshId;
+        pick.generalId = RTB.generalId;
+        pick.optionalId = RTB.optionalId;
+        pick.pickDataId = pickDataId;
+
+        return pick;
+    }
+
+    RTB_DrawPick MakePickRequest(const RTB_DrawTP& RTB, DataBoxID pickDataId, DrawPropID pickDrawProp)
+    {
+        if (pickDrawProp == 0)
+            pickDrawProp = PickDrawPropOf(RTB.drawProp);
+        if (pickDrawProp == 0)
+            Internal::PushHubReport(HubReport_Contract, L"[Hub] MakePickRequest: 짝 피킹이 없는 drawProp (피킹 drawProp 을 직접 넘길 것, 요청은 안 그려짐)");
+
+        RTB_DrawPick pick = {};
+        pick.alphaClip = (pickDrawProp == RESERVED_DRAWPROP_PICK_CLIP_ID || pickDrawProp == RESERVED_DRAWPROP_PICK_SKINNED_CLIP_ID);
+        pick.drawProp = pickDrawProp;
+        pick.texProp = RTB.texProp;
+        pick.meshId = RTB.meshId;
+        pick.subMeshId = RTB.subMeshId;
+        pick.generalId = RTB.generalId;
+        pick.optionalId = RTB.optionalId;
+        pick.pickDataId = pickDataId;
+
+        return pick;
+    }
+
+    static DrawPropID DebugDrawPropOf(DrawPropID drawProp)
+    {
+        switch (drawProp)
+        {
+        case RESERVED_DRAWPROP_OPAQUE_ID:               return RESERVED_DRAWPROP_DEBUG_WIRE_ID;
+        case RESERVED_DRAWPROP_OPAQUE_SKINNED_ID:       return RESERVED_DRAWPROP_DEBUG_WIRE_SKINNED_ID;
+        case RESERVED_DRAWPROP_OPAQUE_CLIP_ID:          return RESERVED_DRAWPROP_DEBUG_WIRE_ID;
+        case RESERVED_DRAWPROP_OPAQUE_SKINNED_CLIP_ID:  return RESERVED_DRAWPROP_DEBUG_WIRE_SKINNED_ID;
+        case RESERVED_DRAWPROP_TRANSLUCENT_ID:          return RESERVED_DRAWPROP_DEBUG_WIRE_ID;
+        case RESERVED_DRAWPROP_TRANSLUCENT_SKINNED_ID:  return RESERVED_DRAWPROP_DEBUG_WIRE_SKINNED_ID;
+        default:                                        return 0;
+        }
+    }
+
+    RTB_DrawDebug MakeDebugRequest(const RTB_DrawOPQ& RTB, DataBoxID colorId, DrawPropID debugDrawProp)
+    {
+        if (debugDrawProp == 0)
+            debugDrawProp = DebugDrawPropOf(RTB.drawProp);
+        if (debugDrawProp == 0)
+            Internal::PushHubReport(HubReport_Contract, L"[Hub] MakeDebugRequest: 짝 디버그가 없는 drawProp (디버그 drawProp 을 직접 넘길 것, 요청은 안 그려짐)");
+
+        RTB_DrawDebug debug = {};
+        debug.drawProp = debugDrawProp;
+        debug.texProp = RTB.texProp;
+        debug.meshId = RTB.meshId;
+        debug.depth = RTB.depth;
+        debug.subMeshId = RTB.subMeshId;
+        debug.generalId = RTB.generalId;
+        debug.optionalId = RTB.optionalId;
+        debug.colorId = colorId;
+
+        return debug;
+    }
+
+    RTB_DrawDebug MakeDebugRequest(const RTB_DrawTP& RTB, DataBoxID colorId, DrawPropID debugDrawProp)
+    {
+        if (debugDrawProp == 0)
+            debugDrawProp = DebugDrawPropOf(RTB.drawProp);
+        if (debugDrawProp == 0)
+            Internal::PushHubReport(HubReport_Contract, L"[Hub] MakeDebugRequest: 짝 디버그가 없는 drawProp (디버그 drawProp 을 직접 넘길 것, 요청은 안 그려짐)");
+
+        RTB_DrawDebug debug = {};
+        debug.drawProp = debugDrawProp;
+        debug.texProp = RTB.texProp;
+        debug.meshId = RTB.meshId;
+        debug.subMeshId = RTB.subMeshId;
+        debug.generalId = RTB.generalId;
+        debug.optionalId = RTB.optionalId;
+        debug.colorId = colorId;
+
+        return debug;
+    }
+
+    RTB_DrawDebug MakeDebugBoxRequest(DataBoxID generalId, DataBoxID colorId)
+    {
+        RTB_DrawDebug debug = {};
+        debug.drawProp = RESERVED_DRAWPROP_DEBUG_LINE_ID;
+        debug.meshId = RESERVED_MESH_WIREBOX_ID;
+        debug.generalId = generalId;
+        debug.colorId = colorId;
+
+        return debug;
     }
 
     void SendRTB(const RTB_DrawRequest& RTB, RTB_ActionDraw& action)
@@ -1207,6 +1473,54 @@ namespace Hakko::DataHub
         LayerList[layer].actionSC.drawReqList.push_back(req);
     }
 
+    template <>
+    void DataHub::SendRTB<DataHub::RTB_DrawPick>(const RTB_DrawPick& RTB, uint8_t layer)
+    {
+        if (layer >= LayerList.size())
+        {
+            Internal::PushHubReport(HubReport_Contract, L"[Hub] SendRTB: 레이어 범위 밖");
+            return;
+        }
+
+        if (RTB.meshId >= meshIdLUT.size() || RTB.subMeshId >= meshSubMeshCountList[RTB.meshId])
+        {
+            Internal::PushHubReport(HubReport_Contract, L"[Hub] DrawRequest: 메쉬 / 서브메쉬 id 범위 밖 (요청 버림)");
+            return;
+        }
+        if (RTB.drawProp >= drawPropIdLUT.size() || RTB.texProp >= texPropIdLUT.size())
+        {
+            Internal::PushHubReport(HubReport_Contract, L"[Hub] DrawRequest: drawProp / texProp id 범위 밖 (요청 버림)");
+            return;
+        }
+
+        RTB_DrawRequest req = MakeDrawRequest(RTB);
+        LayerList[layer].actionPick.drawReqList.push_back(req);
+    }
+
+    template <>
+    void DataHub::SendRTB<DataHub::RTB_DrawDebug>(const RTB_DrawDebug& RTB, uint8_t layer)
+    {
+        if (layer >= LayerList.size())
+        {
+            Internal::PushHubReport(HubReport_Contract, L"[Hub] SendRTB: 레이어 범위 밖");
+            return;
+        }
+
+        if (RTB.meshId >= meshIdLUT.size() || RTB.subMeshId >= meshSubMeshCountList[RTB.meshId])
+        {
+            Internal::PushHubReport(HubReport_Contract, L"[Hub] DrawRequest: 메쉬 / 서브메쉬 id 범위 밖 (요청 버림)");
+            return;
+        }
+        if (RTB.drawProp >= drawPropIdLUT.size() || RTB.texProp >= texPropIdLUT.size())
+        {
+            Internal::PushHubReport(HubReport_Contract, L"[Hub] DrawRequest: drawProp / texProp id 범위 밖 (요청 버림)");
+            return;
+        }
+
+        RTB_DrawRequest req = MakeDrawRequest(RTB);
+        LayerList[layer].actionDebug.drawReqList.push_back(req);
+    }
+
     #pragma endregion
 
 
@@ -1267,6 +1581,29 @@ namespace Hakko::DataHub
         sdw.optionalId = optionalId;
     }
 
+    static void FillPickRequest(RTB_DrawPick& pick, const DrawOption& option, bool alphaClip, TexPropID texProp, MeshID meshId, DataBoxID generalId, DataBoxID optionalId)
+    {
+        DrawPropID pickDrawProp = 0;
+
+        if (option.VSId == 0 && option.vertexType == VertexType_Static)
+            pickDrawProp = alphaClip ? RESERVED_DRAWPROP_PICK_CLIP_ID : RESERVED_DRAWPROP_PICK_ID;
+        if (option.VSId == 0 && option.vertexType == VertexType_Skinned)
+            pickDrawProp = alphaClip ? RESERVED_DRAWPROP_PICK_SKINNED_CLIP_ID : RESERVED_DRAWPROP_PICK_SKINNED_ID;
+
+        if (pickDrawProp == 0)
+            Internal::PushHubReport(HubReport_Contract, L"[Hub] MakeDrawRequestAndProps: 이 옵션은 기본 제공 피킹이 없음 (피킹 요청의 drawProp 을 직접 채울 것)");
+
+        pick.alphaClip = alphaClip;
+        pick.drawProp = pickDrawProp;
+        pick.texProp = texProp;
+        pick.meshId = meshId;
+        pick.depth = 0U;
+        pick.subMeshId = 0U;
+        pick.generalId = generalId;
+        pick.optionalId = optionalId;
+        pick.pickDataId = 0U;
+    }
+
     static bool RegisterProps(
         const char* drawPropName, const DrawProp& dp, DrawPropID& dpId,
         const char* texPropName, const TextureProp* tp, TexPropID& tpId)
@@ -1313,7 +1650,7 @@ namespace Hakko::DataHub
         DrawOption option,
         const char* drawPropName, const char* texPropName,
         RTB_DrawOPQ& rtb,
-        MeshID meshId, DataBoxID generalId, DataBoxID optionalId, RTB_DrawSDW* shadowRtb)
+        MeshID meshId, DataBoxID generalId, DataBoxID optionalId, RTB_DrawSDW* shadowRtb, RTB_DrawPick* pickRtb)
     {
         if (option.blendType != DrawProp_BlendType_None && option.blendType != DrawProp_BlendType_AlphaClip)
         {
@@ -1348,6 +1685,9 @@ namespace Hakko::DataHub
         if (shadowRtb != nullptr)
             FillShadowRequest(*shadowRtb, option, alphaClip, tpId, meshId, generalId, optionalId);
 
+        if (pickRtb != nullptr)
+            FillPickRequest(*pickRtb, option, alphaClip, tpId, meshId, generalId, optionalId);
+
 
         return true;
     }
@@ -1356,7 +1696,7 @@ namespace Hakko::DataHub
         DrawOption option,
         const char *drawPropName, const char *texPropName,
         RTB_DrawTP &rtb,
-        MeshID meshId, DataBoxID generalId, DataBoxID optionalId, RTB_DrawSDW* shadowRtb)
+        MeshID meshId, DataBoxID generalId, DataBoxID optionalId, RTB_DrawSDW* shadowRtb, RTB_DrawPick* pickRtb)
     {
         if (option.blendType == DrawProp_BlendType_AlphaClip)
         {
@@ -1388,6 +1728,9 @@ namespace Hakko::DataHub
 
         if (shadowRtb != nullptr)
             FillShadowRequest(*shadowRtb, option, false, tpId, meshId, generalId, optionalId);
+
+        if (pickRtb != nullptr)
+            FillPickRequest(*pickRtb, option, false, tpId, meshId, generalId, optionalId);
 
 
         return true;
@@ -1479,6 +1822,28 @@ namespace Hakko::DataHub
             action.drawReqList.clear();
     }
 
+    void ClearPickDrawRequests(uint8_t layer)
+    {
+        if (layer >= LayerList.size())
+        {
+            Internal::PushHubReport(HubReport_Contract, L"[Hub] ClearDrawRequests: 레이어 범위 밖");
+            return;
+        }
+
+        LayerList[layer].actionPick.drawReqList.clear();
+    }
+
+    void ClearDebugDrawRequests(uint8_t layer)
+    {
+        if (layer >= LayerList.size())
+        {
+            Internal::PushHubReport(HubReport_Contract, L"[Hub] ClearDrawRequests: 레이어 범위 밖");
+            return;
+        }
+
+        LayerList[layer].actionDebug.drawReqList.clear();
+    }
+
     void ClearDrawRequests(RTB_ActionDraw& action)
     {
         action.drawReqList.clear();
@@ -1488,6 +1853,12 @@ namespace Hakko::DataHub
     void ClearDrawRequests(ActionID action, uint8_t layer)
     {
         Internal::PushHubReport(HubReport_Contract, L"[Hub] ClearDrawRequests: 액션 id 지정은 커스텀 파이프라인용 (미구현), 빌트인은 Clear~DrawRequests 사용");
+    }
+
+
+    void ClearReadbackRequests()
+    {
+        ReadbackRequestList.clear();
     }
 
     #pragma endregion

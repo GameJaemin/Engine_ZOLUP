@@ -10,15 +10,16 @@ namespace Hakko::DataHub
 
     #pragma region ReservedResource
 
-    #define RESERVED_MESH_COUNT 2
+    #define RESERVED_MESH_COUNT 3
     #define RESERVED_TEXTURE_COUNT 9
     #define RESERVED_CSBUFFER_COUNT 1
-    #define RESERVED_SHADER_COUNT 23
-    #define RESERVED_DRAWPROP_COUNT 23
+    #define RESERVED_SHADER_COUNT 25
+    #define RESERVED_DRAWPROP_COUNT 30
     #define RESERVED_TEXPROP_COUNT 1
 
 
     #define RESERVED_MESH_QUAD_ID 1
+    #define RESERVED_MESH_WIREBOX_ID 2
 
     #define RESERVED_TEX_ERROR_ID 0
     #define RESERVED_TEX_TRANSPARENT_ID 1
@@ -57,6 +58,8 @@ namespace Hakko::DataHub
     #define RESERVED_SHADER_FXAA_PS_ID 20
     #define RESERVED_SHADER_SKINNING_CS_ID 21
     #define RESERVED_SHADER_PARTICLE_CS_ID 22
+    #define RESERVED_SHADER_PICK_PS_ID 23
+    #define RESERVED_SHADER_DEBUG_PS_ID 24
 
     #define RESERVED_SHADER_WORLD_VS_NAME L"Default_World_VS"
     #define RESERVED_SHADER_WORLD_OPQ_PS_NAME L"Default_World_OPQ_PS"
@@ -76,6 +79,8 @@ namespace Hakko::DataHub
     #define RESERVED_SHADER_FXAA_PS_NAME L"Default_FXAA_PS"
     #define RESERVED_SHADER_SKINNING_CS_NAME L"Default_Skinning_CS"
     #define RESERVED_SHADER_PARTICLE_CS_NAME L"Default_Particle_CS"
+    #define RESERVED_SHADER_PICK_PS_NAME L"Default_Pick_PS"
+    #define RESERVED_SHADER_DEBUG_PS_NAME L"Default_Debug_PS"
 
 
     #define RESERVED_DRAWPROP_SKYBOX_ID 1
@@ -100,6 +105,13 @@ namespace Hakko::DataHub
     #define RESERVED_DRAWPROP_BLOOM_COMBINE_ID 20
     #define RESERVED_DRAWPROP_TONEMAP_ID 21
     #define RESERVED_DRAWPROP_FXAA_ID 22
+    #define RESERVED_DRAWPROP_PICK_ID 23
+    #define RESERVED_DRAWPROP_PICK_SKINNED_ID 24
+    #define RESERVED_DRAWPROP_PICK_CLIP_ID 25
+    #define RESERVED_DRAWPROP_PICK_SKINNED_CLIP_ID 26
+    #define RESERVED_DRAWPROP_DEBUG_LINE_ID 27
+    #define RESERVED_DRAWPROP_DEBUG_WIRE_ID 28
+    #define RESERVED_DRAWPROP_DEBUG_WIRE_SKINNED_ID 29
 
     #define RESERVED_DRAWPROP_OPAQUE_NAME "Default_Opaque"
     #define RESERVED_DRAWPROP_OPAQUE_SKINNED_NAME "Default_Opaque_Skinned"
@@ -121,6 +133,13 @@ namespace Hakko::DataHub
     #define RESERVED_DRAWPROP_BLOOM_COMBINE_NAME "Default_BloomCombine"
     #define RESERVED_DRAWPROP_TONEMAP_NAME "Default_Tonemap"
     #define RESERVED_DRAWPROP_FXAA_NAME "Default_FXAA"
+    #define RESERVED_DRAWPROP_PICK_NAME "Default_Pick"
+    #define RESERVED_DRAWPROP_PICK_SKINNED_NAME "Default_Pick_Skinned"
+    #define RESERVED_DRAWPROP_PICK_CLIP_NAME "Default_Pick_Clip"
+    #define RESERVED_DRAWPROP_PICK_SKINNED_CLIP_NAME "Default_Pick_Skinned_Clip"
+    #define RESERVED_DRAWPROP_DEBUG_LINE_NAME "Default_Debug_Line"
+    #define RESERVED_DRAWPROP_DEBUG_WIRE_NAME "Default_Debug_Wire"
+    #define RESERVED_DRAWPROP_DEBUG_WIRE_SKINNED_NAME "Default_Debug_Wire_Skinned"
 
     #pragma endregion
 

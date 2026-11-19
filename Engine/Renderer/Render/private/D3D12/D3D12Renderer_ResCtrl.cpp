@@ -713,6 +713,84 @@ bool D3D12Renderer::InitGraphicResource()
 
 	uploadBufferList.push_back(std::move(uploadQuadVB));
 	uploadBufferList.push_back(std::move(uploadQuadIB));
+
+
+	VertexStatic boxVertices[8] = {};
+	for (int i = 0; i < 8; i++)
+	{
+		boxVertices[i].Pos = DirectX::XMFLOAT3((i & 1) ? 0.5f : -0.5f, (i & 2) ? 0.5f : -0.5f, (i & 4) ? 0.5f : -0.5f);
+		boxVertices[i].Normal = DirectX::XMFLOAT3(0.0f, 1.0f, 0.0f);
+		boxVertices[i].Tangent = DirectX::XMFLOAT3(1.0f, 0.0f, 0.0f);
+		boxVertices[i].Color = DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+	}
+
+	const VIndex boxIndices[24] = {
+		0, 1,  2, 3,  4, 5,  6, 7,
+		0, 2,  1, 3,  4, 6,  5, 7,
+		0, 4,  1, 5,  2, 6,  3, 7,
+	};
+
+	DX12_Mesh box = {};
+	box.vertexType = VertexType_Static;
+	box.vertexCount = 8;
+	box.indexCount = 24;
+
+	DX12_MeshView boxView = {};
+
+	auto boxVBDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(boxVertices));
+	auto boxIBDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(boxIndices));
+
+
+	ComPtr<ID3D12Resource> uploadBoxVB;
+	ComPtr<ID3D12Resource> uploadBoxIB;
+
+	if (FAILED(device->CreateCommittedResource(&DEFAULT_HEAP_PROPS, D3D12_HEAP_FLAG_NONE, &boxVBDesc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&box.VB))))
+		return false;
+	if (FAILED(device->CreateCommittedResource(&UPLOAD_HEAP_PROPS, D3D12_HEAP_FLAG_NONE, &boxVBDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&uploadBoxVB))))
+		return false;
+	if (FAILED(device->CreateCommittedResource(&DEFAULT_HEAP_PROPS, D3D12_HEAP_FLAG_NONE, &boxIBDesc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&box.IB))))
+		return false;
+	if (FAILED(device->CreateCommittedResource(&UPLOAD_HEAP_PROPS, D3D12_HEAP_FLAG_NONE, &boxIBDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&uploadBoxIB))))
+		return false;
+
+
+	UINT8* pBoxData = nullptr;
+	uploadBoxVB->Map(0, &readRange, (void**)&pBoxData);
+	memcpy(pBoxData, boxVertices, sizeof(boxVertices));
+	uploadBoxVB->Unmap(0, nullptr);
+
+	uploadBoxIB->Map(0, &readRange, (void**)&pBoxData);
+	memcpy(pBoxData, boxIndices, sizeof(boxIndices));
+	uploadBoxIB->Unmap(0, nullptr);
+
+	renderCMDList_Master->CopyBufferRegion(box.VB.Get(), 0, uploadBoxVB.Get(), 0, sizeof(boxVertices));
+	renderCMDList_Master->CopyBufferRegion(box.IB.Get(), 0, uploadBoxIB.Get(), 0, sizeof(boxIndices));
+
+
+	D3D12_RESOURCE_BARRIER boxBarriers[2] = {
+		CD3DX12_RESOURCE_BARRIER::Transition(box.VB.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER),
+		CD3DX12_RESOURCE_BARRIER::Transition(box.IB.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER),
+	};
+
+	renderCMDList_Master->ResourceBarrier(2, boxBarriers);
+
+
+	boxView.VBV.BufferLocation = box.VB->GetGPUVirtualAddress();
+	boxView.VBV.StrideInBytes = sizeof(VertexStatic);
+	boxView.VBV.SizeInBytes = sizeof(boxVertices);
+
+	boxView.IBV.BufferLocation = box.IB->GetGPUVirtualAddress();
+	boxView.IBV.Format = MESH_INDEX_FORMAT;
+	boxView.IBV.SizeInBytes = sizeof(boxIndices);
+
+	boxView.subMeshes.push_back(DX12_SubMesh{ 0, 24, 0 });
+
+
+	meshList.emplace_back(std::move(box));
+	meshViewList.emplace_back(std::move(boxView));
+
+	uploadBufferList.push_back(std::move(uploadBoxVB));
+	uploadBufferList.push_back(std::move(uploadBoxIB));
 		
 	#pragma endregion
 
@@ -1352,6 +1430,8 @@ bool D3D12Renderer::InitGraphicResource()
 	shaderList[DEFAULT_SHADER_FXAA_PS] = std::make_pair(defaultShaderDir + L"/defaultFXAA_PS.hlsl", ShaderType_PS);
 	shaderList[DEFAULT_SHADER_SKINNING_CS] = std::make_pair(defaultShaderDir + L"/defaultSkinning_CS.hlsl", ShaderType_CS);
 	shaderList[DEFAULT_SHADER_PARTICLE_CS] = std::make_pair(defaultShaderDir + L"/defaultParticle_CS.hlsl", ShaderType_CS);
+	shaderList[DEFAULT_SHADER_PICK_PS] = std::make_pair(defaultShaderDir + L"/defaultPick_PS.hlsl", ShaderType_PS);
+	shaderList[DEFAULT_SHADER_DEBUG_PS] = std::make_pair(defaultShaderDir + L"/defaultDebug_PS.hlsl", ShaderType_PS);
 
 
 	ComPtr<IDxcBlob> defaultPP_VSRaw;
@@ -1441,6 +1521,30 @@ bool D3D12Renderer::InitGraphicResource()
 
 	DrawProp& fxaa = psoGeneratorList[RESERVED_DRAWPROP_FXAA_ID].psoBody;
 	fxaa = ssao;	fxaa.PSId = DEFAULT_SHADER_FXAA_PS;
+
+	DrawProp& pick = psoGeneratorList[RESERVED_DRAWPROP_PICK_ID].psoBody;
+	pick.depthUsage = DrawProp_DepthUsage_Opaque;		pick.cullType = DrawProp_CullType_Back;	pick.blendType = DrawProp_BlendType_None;
+	pick.vertexType = VertexType_Static;				pick.VSId = DEFAULT_SHADER_WORLD_VS;	pick.PSId = DEFAULT_SHADER_PICK_PS;
+
+	DrawProp& pickSkin = psoGeneratorList[RESERVED_DRAWPROP_PICK_SKINNED_ID].psoBody;
+	pickSkin = pick;	pickSkin.vertexType = VertexType_Skinned;
+
+	DrawProp& pickClip = psoGeneratorList[RESERVED_DRAWPROP_PICK_CLIP_ID].psoBody;
+	pickClip = pick;	pickClip.blendType = DrawProp_BlendType_AlphaClip;
+
+	DrawProp& pickSkinClip = psoGeneratorList[RESERVED_DRAWPROP_PICK_SKINNED_CLIP_ID].psoBody;
+	pickSkinClip = pickSkin;	pickSkinClip.blendType = DrawProp_BlendType_AlphaClip;
+
+	DrawProp& debugLine = psoGeneratorList[RESERVED_DRAWPROP_DEBUG_LINE_ID].psoBody;
+	debugLine.depthUsage = DrawProp_DepthUsage_Background;	debugLine.cullType = DrawProp_CullType_None;	debugLine.blendType = DrawProp_BlendType_None;
+	debugLine.vertexType = VertexType_Static;				debugLine.VSId = DEFAULT_SHADER_WORLD_VS;	debugLine.PSId = DEFAULT_SHADER_DEBUG_PS;
+	debugLine.topology = DrawProp_Topology_LineList;
+
+	DrawProp& debugWire = psoGeneratorList[RESERVED_DRAWPROP_DEBUG_WIRE_ID].psoBody;
+	debugWire = debugLine;	debugWire.topology = DrawProp_Topology_TriangleList;	debugWire.fillType = DrawProp_FillType_Wireframe;	debugWire.depthBias = DrawProp_DepthBias_Decal;
+
+	DrawProp& debugWireSkin = psoGeneratorList[RESERVED_DRAWPROP_DEBUG_WIRE_SKINNED_ID].psoBody;
+	debugWireSkin = debugWire;	debugWireSkin.vertexType = VertexType_Skinned;
 
 	#pragma endregion
 
@@ -3865,6 +3969,7 @@ bool D3D12Renderer::CompileShader(ShaderID shaderId, uint8_t variant, ComPtr<IDx
 			case OutputLayout_Color:		macro = L"OUTPUT_COLOR=1";		break;
 			case OutputLayout_ColorId:		macro = L"OUTPUT_COLORID=1";	break;
 			case OutputLayout_GBuffer:		macro = L"OUTPUT_GBUFFER=1";	break;
+			case OutputLayout_Id:			macro = L"OUTPUT_ID=1";		break;
 			default: break;
 			}
 

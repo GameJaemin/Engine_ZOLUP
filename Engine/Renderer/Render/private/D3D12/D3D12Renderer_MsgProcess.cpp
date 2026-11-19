@@ -1,5 +1,7 @@
 #include "D3D12Renderer.h"
 
+#include "D3D12Core.h"
+
 
 namespace Hakko
 {
@@ -368,6 +370,7 @@ inline static void BuildBuiltinFrontTables()
 		{
 			table[DX12_BuiltinActionId_EarlyZ][i] = DX12_BuiltinActionId_PreCompute0 + i;
 			table[DX12_BuiltinActionId_GBuffer][i] = DX12_BuiltinActionId_PreCompute0 + i;
+			table[DX12_BuiltinActionId_Pick][i] = DX12_BuiltinActionId_PreCompute0 + i;
 		}
 
 		table[DX12_BuiltinActionId_AO][0] = deferred ? DX12_BuiltinActionId_GBuffer : DX12_BuiltinActionId_EarlyZ;
@@ -648,6 +651,8 @@ void D3D12Renderer::ReadTransferBox()
 
 	uploadBufferList.clear();
 
+	ReadReadbackRequest();
+
 	// --- 그리기 관련 요청 (레이어/패스 별) ---
 	ReadLayerOption();
 
@@ -871,6 +876,15 @@ void D3D12Renderer::ReadActionNode()
 			nodeList[n] = DX12_RenderActionNode{1,deferred ? DX12_BuiltinActionId_GBuffer : DX12_BuiltinActionId_EarlyZ};
 			FillRenderAction(actionList[n], srcEarly, layerVp);
 			ReadActionDrawRequests(srcEarly, layer, n);
+			RegisterActionNode(layer, n, depthTable, nodeOfId);
+			n++;
+		}
+
+		if (!IsEmpty(layerDesc.actionPick.output))
+		{
+			nodeList[n] = DX12_RenderActionNode{1,DX12_BuiltinActionId_Pick};
+			FillRenderAction(actionList[n], layerDesc.actionPick, layerVp);
+			ReadActionDrawRequests(layerDesc.actionPick, layer, n);
 			RegisterActionNode(layer, n, depthTable, nodeOfId);
 			n++;
 		}
@@ -1119,6 +1133,57 @@ void D3D12Renderer::ReadReleaseRequest()
 }
 
 
+void D3D12Renderer::ReadReadbackRequest()
+{
+	using namespace DataHub;
+
+	ID3D12Device* device = D3D12Core::getInstance().GetDevice();
+
+	readbackReadList.clear();
+	UINT64 offset = 0;
+
+	for (size_t i = 0; i < ReadbackRequestList.size(); i++)
+	{
+		if (readbackReadList.size() >= READBACK_REQUEST_MAX)
+		{
+			DebugReport(RenderReport_Limit, L"[Readback] 한 프레임 요청 수가 RENDER_READBACK_MAX 를 넘음 (넘치는 요청 버림)");
+			break;
+		}
+
+		const TexID texId = ReadbackRequestList[i].texId;
+
+		if (texId >= textureList.size() || (texId < releaseTexIdMask.size() && releaseTexIdMask[texId]))
+		{
+			DebugReport(RenderReport_Contract, L"[Readback] 텍스처 없음 / 해제 예정 (요청 버림)");
+			continue;
+		}
+
+		const DX12_Texture& texture = textureList[texId];
+		const DX12_TextureUsage usage = texRefList_WTex[texId].usage;
+
+		if (usage == DX12_TextureUsage_DSV || texture.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D || texture.IsCube || texture.ArraySize > 1)
+		{
+			DebugReport(RenderReport_Contract, L"[Readback] 미구현: DS / 큐브 / 배열 텍스처 (요청 버림)");
+			continue;
+		}
+
+		const D3D12_RESOURCE_DESC desc = texture.Tex->GetDesc();
+
+		DX12_ReadbackEntry entry = {};
+		entry.texId = texId;
+		entry.homeState = GetLoadedHomeState(usage);
+		device->GetCopyableFootprints(&desc, 0, 1, offset, &entry.footprint, &entry.rowCount, &entry.rowSize, nullptr);
+
+		offset = entry.footprint.Offset + (UINT64)entry.footprint.Footprint.RowPitch * entry.rowCount;
+		offset = (offset + D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT - 1) & ~((UINT64)D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT - 1);
+
+		readbackReadList.push_back(entry);
+	}
+
+	readbackReadSize = offset;
+}
+
+
 #pragma region Helper
 
 DX12_OutputSignature D3D12Renderer::MakeOutputSignature(const DX12_RenderAction& action, const DataHub::Action_Output& output)
@@ -1185,6 +1250,7 @@ const DataHub::RTB_Action& D3D12Renderer::GetActionSource(const DataHub::RTB_Lay
 	{
 	case DX12_BuiltinActionId_EarlyZ:		return layerDesc.actionEarlyZ;
 	case DX12_BuiltinActionId_GBuffer:		return layerDesc.actionGBuffer;
+	case DX12_BuiltinActionId_Pick:			return layerDesc.actionPick;
 	case DX12_BuiltinActionId_AO:			return layerDesc.actionAO;
 	case DX12_BuiltinActionId_AOBlur:		return layerDesc.actionAOBlur;
 	case DX12_BuiltinActionId_OPQ:			return layerDesc.actionOPQ;

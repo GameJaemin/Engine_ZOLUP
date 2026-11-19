@@ -78,6 +78,8 @@ uint ObjLightId(uint i)
 }
 // 칸 1 (DataBox_Render3DOptional) 은 스킨 셰이더에서: cbuffer BoneCB : OBJECT_CB(1) { matrix obj_BoneTr[SKIN_BONE_MAX]; };
 #define SKIN_BONE_MAX 512
+// 칸 2 (DataBox_RenderPickId) 는 피킹 셰이더에서: cbuffer PickCB : OBJECT_CB(2) { uint obj_PickId; };
+// 칸 2 (DataBox_RenderDebugColor) 는 디버그 셰이더에서: cbuffer DebugCB : OBJECT_CB(2) { float4 obj_DebugColor; };
 #endif
 
 // =====================================================================

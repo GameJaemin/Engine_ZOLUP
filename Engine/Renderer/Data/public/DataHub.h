@@ -16,6 +16,9 @@
 // 레이어 간 데이터 인터페이스 / 프로토콜 을 정의합니다
 
 // ------
+// v0.2.2-alpha: 텍스처 리드백 (RTB 요청 / STB 결과) / 컬러 피킹 / 디버그 그리기 (박스 선, 와이어프레임)
+
+// ------
 // v0.2.1-alpha: IBL (스페큘러 / 디퓨즈 / BRDF LUT) / 조명 감쇠, 스팟 안쪽 각도 옵션 / 이미션 배율 / 레이어 합성 대상 텍스처
 
 // 큰 변경점, 유의사항:
@@ -36,6 +39,7 @@
 
 #include "DataHub_Types.h"
 #include "DataHub_RTB.h"
+#include "DataHub_STB.h"
 #include "DataHub_Resource.h"
 
 

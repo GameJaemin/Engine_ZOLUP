@@ -71,14 +71,21 @@ constexpr uint32_t DEFAULT_SHADER_TONEMAP_PS = RESERVED_SHADER_TONEMAP_PS_ID;
 constexpr uint32_t DEFAULT_SHADER_FXAA_PS = RESERVED_SHADER_FXAA_PS_ID;
 constexpr uint32_t DEFAULT_SHADER_SKINNING_CS = RESERVED_SHADER_SKINNING_CS_ID;
 constexpr uint32_t DEFAULT_SHADER_PARTICLE_CS = RESERVED_SHADER_PARTICLE_CS_ID;
+constexpr uint32_t DEFAULT_SHADER_PICK_PS = RESERVED_SHADER_PICK_PS_ID;
+constexpr uint32_t DEFAULT_SHADER_DEBUG_PS = RESERVED_SHADER_DEBUG_PS_ID;
 static_assert(DEFAULT_SHADER_BG_PS + 1 == DEFAULT_SHADER_WORLD_VS, "렌더러 내부 셰이더 칸과 허브 기본 제공 셰이더 칸이 안 이어짐");
-static_assert(DEFAULT_SHADER_PARTICLE_CS + 1 == DEFAULT_RES_SHADER_COUNT, "빌트인 셰이더 수가 허브 예약 (RESERVED_SHADER_COUNT) 과 다름");
+static_assert(DEFAULT_SHADER_DEBUG_PS + 1 == DEFAULT_RES_SHADER_COUNT, "빌트인 셰이더 수가 허브 예약 (RESERVED_SHADER_COUNT) 과 다름");
+
+constexpr uint16_t DEFAULT_MESH_WIREBOX = RESERVED_MESH_WIREBOX_ID;
+static_assert(DEFAULT_MESH_WIREBOX + 1 == DEFAULT_RES_MESH_COUNT, "빌트인 메쉬 수가 허브 예약 (RESERVED_MESH_COUNT) 과 다름");
 
 constexpr uint16_t DEFAULT_TEX_TRANSPARENT = RESERVED_TEX_TRANSPARENT_ID;
 constexpr uint16_t DEFAULT_TEX_NONE_SHADOW = RESERVED_TEX_NONE_SHADOW_ID;
 constexpr uint16_t DEFAULT_TEX_NONE_CUBE = RESERVED_TEX_NONE_CUBE_ID;
 constexpr uint16_t DEFAULT_TEX_BRDF_LUT = RESERVED_TEX_BRDF_LUT_ID;
 static_assert(DEFAULT_TEX_BRDF_LUT + 1 == DEFAULT_RES_TEX_COUNT, "빌트인 텍스처 수가 허브 예약 (RESERVED_TEXTURE_COUNT) 과 다름");
+
+constexpr size_t READBACK_REQUEST_MAX = RENDER_READBACK_MAX;
 
 
 #pragma region RenderResource
@@ -387,6 +394,7 @@ enum DX12_BuiltinActionId : uint32_t{
 	DX12_BuiltinActionId_PreCompute0,
 	DX12_BuiltinActionId_EarlyZ = DX12_BuiltinActionId_PreCompute0 + RENDER_BUILTIN_PRECOMPUTE_MAX,
 	DX12_BuiltinActionId_GBuffer,
+	DX12_BuiltinActionId_Pick,
 	DX12_BuiltinActionId_AO,
 	DX12_BuiltinActionId_AOBlur,
 	DX12_BuiltinActionId_GlobalSDW0,
@@ -499,6 +507,20 @@ struct DX12_RenderFrame
 	bool frameInvalidated;
 };
 typedef DX12_RenderFrame DX12_RenderCanvas;
+
+#pragma endregion
+
+
+#pragma region Readback
+
+struct DX12_ReadbackEntry
+{
+	TexID texId;
+	D3D12_RESOURCE_STATES homeState;
+	D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint;
+	UINT rowCount;
+	UINT64 rowSize;
+};
 
 #pragma endregion
 

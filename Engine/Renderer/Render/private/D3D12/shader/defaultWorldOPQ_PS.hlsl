@@ -1,4 +1,4 @@
-#if defined(OUTPUT_COLORID)
+#if defined(OUTPUT_COLORID) || defined(OUTPUT_ID)
 #error "defaultWorldOPQ_PS: Color / GBuffer / DepthOnly 레이아웃만 지원"
 #endif
 

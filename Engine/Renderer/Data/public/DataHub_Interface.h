@@ -263,6 +263,42 @@ namespace Hakko::DataHub
     #pragma endregion
 
 
+    // 피킹: 화면의 한 픽셀에 그려진 물체의 id 를 읽어옴 (1x1 텍스처에 그 픽셀만 그려서 리드백, 결과는 몇 프레임 뒤)
+    // 물체마다 DataBox_RenderPickId 를 하나씩 만들어 두고 (AddDataBox), 피킹할 물체만 MakePickRequest 로 만들어 SendRTB
+    #pragma region PickCommand
+
+    struct PickTarget
+    {
+        std::wstring_view idName;       // id 텍스처 이름 (1x1 R32_UInt RT)
+        std::wstring_view depthName;    // 뎁스 텍스처 이름 (1x1 DS)
+    };
+
+    // 텍스처 두 장을 만들어 등록 (업로드 RTB 는 서비스가 같은 프레임에), 실패하면 이름이 빔
+    PickTarget CreatePickTarget(const wchar_t* idName, const wchar_t* depthName);
+
+
+    // 이번 프레임에 찍을 픽셀: actionPick 의 출력 / 뷰포트 / 시저를 맞추고 id 텍스처 리드백 요청까지 보냄
+    // 매 프레임 다시 보내기 (리드백 요청은 다른 것과 같이 ClearReadbackRequests 로 비움)
+    // 끄거나 픽셀이 창 밖이면 그 프레임은 피킹 안 함
+    struct RenderTransferBox_SetActionPick : public RTB
+    {
+        bool enable = true;
+
+        PickTarget target;
+
+        float pixelX = 0.0f;            // 레이어가 그려지는 창 기준 픽셀 (왼쪽 위 원점)
+        float pixelY = 0.0f;
+        float viewWidth = 0.0f;         // 그 창의 크기 (레이어 뷰포트가 비어 있으면 이 크기 전체에 그린다고 봄)
+        float viewHeight = 0.0f;
+    };
+    typedef RenderTransferBox_SetActionPick RTB_SetActionPick, RTB_SetPick;
+
+    // 이번 프레임에 올라온 결과가 있으면 true (pickId 0 = 아무것도 없음), 요청 하나당 몇 프레임 뒤에 한 번
+    bool GetPickResult(const PickTarget& target, uint32_t& pickId);
+
+    #pragma endregion
+
+
     // 기본 제공 파티클 (가산 블렌드 사각형, 방출 모양 3종): 시뮬은 컴퓨트 선계산 칸, 그리기는 반투명 요청
     #pragma region ParticleCommand
 
@@ -376,6 +412,10 @@ namespace Hakko::DataHub
 
     RTB_DrawRequest MakeDrawRequest(const RTB_DrawSC& RTB);
 
+    RTB_DrawRequest MakeDrawRequest(const RTB_DrawPick& RTB);
+
+    RTB_DrawRequest MakeDrawRequest(const RTB_DrawDebug& RTB);
+
 
     // 드로우 요청에서 그림자 요청 만들기
     // 기본 제공 drawProp 은 알아서 섀도우 drawProp 으로 변환
@@ -383,6 +423,25 @@ namespace Hakko::DataHub
     RTB_DrawSDW MakeShadowRequest(const RTB_DrawOPQ& RTB, DrawPropID shadowDrawProp = 0);
 
     RTB_DrawSDW MakeShadowRequest(const RTB_DrawTP& RTB, DrawPropID shadowDrawProp = 0);
+
+
+    // 드로우 요청에서 피킹 요청 만들기 (pickDataId = 그 물체의 DataBox_RenderPickId)
+    // 기본 제공 drawProp 은 알아서 피킹 drawProp 으로 변환
+    // 직접 만든 drawProp 이면 피킹용 drawProp 을 넘길 것
+    RTB_DrawPick MakePickRequest(const RTB_DrawOPQ& RTB, DataBoxID pickDataId, DrawPropID pickDrawProp = 0);
+
+    RTB_DrawPick MakePickRequest(const RTB_DrawTP& RTB, DataBoxID pickDataId, DrawPropID pickDrawProp = 0);
+
+
+    // 드로우 요청에서 디버그 요청 만들기: 그 물체의 메쉬를 와이어프레임으로 한 번 더 (colorId = 색을 담은 DataBox_RenderDebugColor)
+    // 기본 제공 drawProp 은 알아서 디버그 drawProp 으로 변환
+    // 직접 만든 drawProp 이면 디버그용 drawProp 을 넘길 것 (Default_Debug_Wire / Default_Debug_Wire_Skinned)
+    RTB_DrawDebug MakeDebugRequest(const RTB_DrawOPQ& RTB, DataBoxID colorId, DrawPropID debugDrawProp = 0);
+
+    RTB_DrawDebug MakeDebugRequest(const RTB_DrawTP& RTB, DataBoxID colorId, DrawPropID debugDrawProp = 0);
+
+    // 박스 선 요청: 예약 선 박스 (한 변 1, 중심 원점) 를 generalId 의 월드 행렬로 놓음
+    RTB_DrawDebug MakeDebugBoxRequest(DataBoxID generalId, DataBoxID colorId);
 
 
     void SendRTB(const RTB_DrawRequest& RTB, RTB_ActionDraw& action);
@@ -425,12 +484,13 @@ namespace Hakko::DataHub
 
     // 그림자는 기본 제공 VS 로 그리는 Static / Skinned 정점만 (섀도우는 뒷면 컬링 고정)
     // 그 외 사용은 리포트, 섀도우 요청의 drawProp 을 직접 채울 것
+    // 피킹 요청 (pickRtb) 도 같은 조건, pickDataId 는 받은 뒤 직접 채우기
     bool MakeDrawRequestAndProps(
         DrawOption option, 
         const char* drawPropName, const char* texPropName, 
         RTB_DrawOPQ& rtb,
         MeshID meshId = 0U, DataBoxID generalId = 0U, DataBoxID optionalId = 0U,
-        RTB_DrawSDW* shadowRtb = nullptr
+        RTB_DrawSDW* shadowRtb = nullptr, RTB_DrawPick* pickRtb = nullptr
     );
 
     bool MakeDrawRequestAndProps(
@@ -438,7 +498,7 @@ namespace Hakko::DataHub
         const char* drawPropName, const char* texPropName, 
         RTB_DrawTP& rtb,
         MeshID meshId = 0U, DataBoxID generalId = 0U, DataBoxID optionalId = 0U,
-        RTB_DrawSDW* shadowRtb = nullptr
+        RTB_DrawSDW* shadowRtb = nullptr, RTB_DrawPick* pickRtb = nullptr
     );
 
     bool MakeDrawRequestAndProps(
@@ -463,12 +523,20 @@ namespace Hakko::DataHub
 
     void ClearShadowDrawRequests(uint8_t layer = 0U);       // 섀도우 액션 전부
 
+    void ClearPickDrawRequests(uint8_t layer = 0U);
+
+    void ClearDebugDrawRequests(uint8_t layer = 0U);
+
     // 액션을 직접 지정 (SendRTB(요청, 액션) 으로 넣은 것)
     void ClearDrawRequests(RTB_ActionDraw& action);
 
 
     // (미구현) 커스텀 파이프라인용: 액션 id 로 지정
     void ClearDrawRequests(ActionID action, uint8_t layer = 0U);
+
+
+    // 리드백 요청 비우기 (드로우 요청과 같은 계약, 안 비우면 매 프레임 다시 읽음)
+    void ClearReadbackRequests();
 
     #pragma endregion
 
@@ -497,6 +565,9 @@ namespace Hakko::DataHub
 
 template <>
 void DataHub::SendRTB<DataHub::RTB_UpdateResources>(const RTB_UpdateResources& RTB, uint8_t layer);
+
+template <>
+void DataHub::SendRTB<DataHub::RTB_ReadbackTexture>(const RTB_ReadbackTexture& RTB, uint8_t layer);
 
 
 template <>
@@ -542,6 +613,10 @@ void DataHub::SendRTB<DataHub::RTB_SetShadowLocal>(const RTB_SetShadowLocal& RTB
 
 
 template <>
+void DataHub::SendRTB<DataHub::RTB_SetActionPick>(const RTB_SetActionPick& RTB, uint8_t layer);
+
+
+template <>
 void DataHub::SendRTB<DataHub::RTB_SetParticle>(const RTB_SetParticle& RTB, uint8_t layer);
 
 template <>
@@ -556,6 +631,12 @@ void DataHub::SendRTB<DataHub::RTB_DrawTP>(const RTB_DrawTP& RTB, uint8_t layer)
 
 template <>
 void DataHub::SendRTB<DataHub::RTB_DrawSC>(const RTB_DrawSC& RTB, uint8_t layer);
+
+template <>
+void DataHub::SendRTB<DataHub::RTB_DrawPick>(const RTB_DrawPick& RTB, uint8_t layer);
+
+template <>
+void DataHub::SendRTB<DataHub::RTB_DrawDebug>(const RTB_DrawDebug& RTB, uint8_t layer);
 
 #pragma endregion
 

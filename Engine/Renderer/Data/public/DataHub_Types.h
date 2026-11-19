@@ -434,8 +434,10 @@ namespace Hakko::DataHub
         DataBoxType_DataBox_Render3DGeneral = 7,
         DataBoxType_DataBox_Render3DOptional = 8,
         DataBoxType_DataBox_Render2DScreen = 9,
+        DataBoxType_DataBox_RenderPickId = 10,
+        DataBoxType_DataBox_RenderDebugColor = 11,
 
-        DataBoxType_CustomizableBegin = 10,
+        DataBoxType_CustomizableBegin = 12,
 
         DataBoxType_DtB_Condition = DataBoxType_DataBox_RenderCondition,
         DataBoxType_DtB_Light = DataBoxType_DataBox_RenderLight,
@@ -445,6 +447,8 @@ namespace Hakko::DataHub
         DataBoxType_DtB_3DGeneral = DataBoxType_DataBox_Render3DGeneral,
         DataBoxType_DtB_3DOptional = DataBoxType_DataBox_Render3DOptional,
         DataBoxType_DtB_2DScreen = DataBoxType_DataBox_Render2DScreen,
+        DataBoxType_DtB_PickId = DataBoxType_DataBox_RenderPickId,
+        DataBoxType_DtB_DebugColor = DataBoxType_DataBox_RenderDebugColor,
     };
 
     typedef uint32_t DataBoxTID;
@@ -591,6 +595,24 @@ namespace Hakko::DataHub
         float values[RENDER_EDIT_CUSTOM_VALUE_MAX];
     };
     typedef DataBox_RenderEditCustom DtB_EditCustom;
+
+
+    // 피킹용 물체 id: 피킹 액션이 id 텍스처에 그대로 씀, 0 = 없음 (아무것도 안 그려진 픽셀과 같은 값)
+    // 기본 제공 Default_Pick drawProp (Default_Pick_PS) 이 요청의 데이터 칸 2 에서 읽음
+    struct alignas(256) DataBox_RenderPickId : DataBox_Custom
+    {
+        uint32_t pickId;
+    };
+    typedef DataBox_RenderPickId DtB_PickId;
+
+
+    // 디버그 그리기용 색: 디버그 액션에 보내는 요청의 데이터 칸 2, 박스 하나를 여러 요청이 같이 써도 됨
+    // 기본 제공 Default_Debug_Line / Default_Debug_Wire drawProp (Default_Debug_PS) 이 읽음, 알파는 블렌드 없는 drawProp 이면 1 로
+    struct alignas(256) DataBox_RenderDebugColor : DataBox_Custom
+    {
+        DirectX::XMFLOAT4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
+    };
+    typedef DataBox_RenderDebugColor DtB_DebugColor;
 
     #pragma endregion
 

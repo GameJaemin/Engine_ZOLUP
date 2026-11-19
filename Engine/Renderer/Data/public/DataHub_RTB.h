@@ -3,7 +3,7 @@
 #include "RenderOption.h"
 #include "DataHub_Types.h"
 
-// RenderTransferBox: 렌더러로 전송할 요청 단위 (드로우 리퀘스트 / 액션 / 레이어)
+// RenderTransferBox: 렌더러로 보내는 데이터 전송 규약 입니다 (드로우 리퀘스트 / 액션 / 레이어)
 // Canvas(RT) - Layer(Pipeline) - Action(Pass) - DrawRequest(Data) 순 포함구조
 
 
@@ -101,6 +101,39 @@ namespace Hakko::DataHub
     };
     typedef RenderTransferBox_DrawRequestScreen RTB_DrawRequestScreen, RTB_DrawSC;
 
+
+    struct RenderTransferBox_DrawRequestPick : public RTB
+    {
+        // 알파(1) 레이어(7, 안 씀) psoBody(16) 텍스처조합(16) 메쉬(16) 뎁스(8): 불투명 요청과 같은 배치
+        bool alphaClip;
+        DrawPropID drawProp;    // 피킹용 drawProp (Default_Pick 계열)
+        TexPropID texProp;
+        MeshID meshId;
+        uint8_t depth;
+
+        SubMeshID subMeshId;
+        DataBoxID generalId;
+        DataBoxID optionalId;
+        DataBoxID pickDataId;   // 그 물체의 DataBox_RenderPickId
+    };
+    typedef RenderTransferBox_DrawRequestPick RTB_DrawRequestPick, RTB_DrawPick;
+
+
+    struct RenderTransferBox_DrawRequestDebug : public RTB
+    {
+        // 알파(1, 안 씀) 레이어(7, 안 씀) psoBody(16) 텍스처조합(16) 메쉬(16) 뎁스(8): 불투명 요청과 같은 배치
+        DrawPropID drawProp;    // 디버그용 drawProp (Default_Debug 계열)
+        TexPropID texProp;      // 기본 제공 디버그 셰이더는 안 읽음 (직접 만든 셰이더용)
+        MeshID meshId;
+        uint8_t depth;
+
+        SubMeshID subMeshId;
+        DataBoxID generalId;
+        DataBoxID optionalId;
+        DataBoxID colorId;      // 그 요청의 색 (DataBox_RenderDebugColor)
+    };
+    typedef RenderTransferBox_DrawRequestDebug RTB_DrawRequestDebug, RTB_DrawDebug;
+
     #pragma endregion
 
     #pragma endregion
@@ -132,6 +165,25 @@ namespace Hakko::DataHub
 
 
     extern uint32_t flag_updateResources;
+
+    #pragma endregion
+
+
+
+    #pragma region ReadbackCommand
+
+    #define RENDER_READBACK_MAX 8
+
+    // 텍스처 한 장을 통째로 CPU 로 복사해달라는 요청, 결과는 몇 프레임 뒤 STB_ReadbackTexture 로 (DataHub_STB.h)
+    // 한 프레임에 RENDER_READBACK_MAX 건까지, 2D 한 장의 밉 0 만. DS / 큐브 / 배열 텍스처는 미구현 (리포트 후 무시)
+    struct RenderTransferBox_ReadbackTexture : public RTB
+    {
+        TexID texId;
+    };
+    typedef RenderTransferBox_ReadbackTexture RTB_ReadbackTexture;
+
+
+    extern std::vector<RTB_ReadbackTexture> ReadbackRequestList;
 
     #pragma endregion
 
@@ -221,6 +273,7 @@ namespace Hakko::DataHub
         OutputLayout_Color,         // RT0 = 최종 색 (포워드 / 스크린 / 디버그)
         OutputLayout_ColorId,       // RT0 = 색, RT1 = id (UI / 피킹)
         OutputLayout_GBuffer,       // RT0 알베도, RT1 노멀, RT2 ORM (a = 그림자 프리셋 칸 번호), RT3 이미션 (나머지 a 예약)
+        OutputLayout_Id,            // RT0 = id (정수 포맷 텍스처, 피킹)
 
         OutputLayout_Count,
     };
@@ -232,6 +285,7 @@ namespace Hakko::DataHub
         case OutputLayout_Color:    return 0b0001;
         case OutputLayout_ColorId:  return 0b0011;
         case OutputLayout_GBuffer:  return 0b1111;
+        case OutputLayout_Id:       return 0b0001;
         default:                    return 0;
         }
     }
@@ -476,6 +530,8 @@ namespace Hakko::DataHub
 
         RTB_ActionDraw actionDebug;                     // 미구현 PP 안 먹는 3D 오버레이 (기즈모 / 와이어 등)
 
+        RTB_ActionDraw actionPick;                      // 피킹용 id 그리기 (다른 액션과 주고받는 것 없음)
+
 
         RenderTransferBox_LayerBuiltIn();
     };
@@ -641,11 +697,33 @@ namespace Hakko::DataHub
 
 
         // 디버그 그리기 (PP 안 먹는 3D 오버레이): inputs[0] = SC (RT0 / DS 이어 그리기)
-        // 미구현 renderIdType / 데이터 칸 미정 (Draw 기본값 그대로)
+        // 요청의 데이터 칸 2 = DataBox_RenderDebugColor (그 요청의 색)
         // actionDebug.inputs[0].RTInputType.fill(Action_InputType_NoConvert);  // @public Draw 기본값
         // actionDebug.output.outputLayout = OutputLayout_Color;
         // actionDebug.output.useRT[0] = true;
         // actionDebug.output.useDS = true;
+        actionDebug.renderIdType = RenderIdType_Opaque;
+        actionDebug.dataBoxTypeIds[0] = DataBoxType_DataBox_Render3DGeneral;
+        actionDebug.dataBoxTypeIds[1] = DataBoxType_DataBox_Render3DOptional;
+        actionDebug.dataBoxTypeIds[2] = DataBoxType_DataBox_RenderDebugColor;
+
+
+        // 피킹용 id 그리기: inputs[k] = PreCompute 칸 전부 (순서만 지정, 아무것도 안 받음)
+        // 섀도우처럼 기본 출력 없음! id 텍스처 (정수 포맷 RT) 와 DS 텍스처를 직접 넣고, useRT[0] / useDS 를 켜세요
+        // 요청의 데이터 칸 2 = DataBox_RenderPickId (그 물체의 id)
+        for (size_t k = 0; k < RENDER_BUILTIN_PRECOMPUTE_MAX; k++)
+        {
+            actionPick.inputs[k].RTInputType.fill(Action_Input_OrderOnly);
+            actionPick.inputs[k].DSInputType = Action_Input_OrderOnly;
+        }
+        actionPick.output.outputLayout = OutputLayout_Id;
+        actionPick.output.useRT[0] = false;
+        actionPick.output.useDS = false;
+        actionPick.output.blendOpt[0] = Action_Output_BlendOption_ForceNone;
+        actionPick.renderIdType = RenderIdType_Opaque;
+        actionPick.dataBoxTypeIds[0] = DataBoxType_DataBox_Render3DGeneral;
+        actionPick.dataBoxTypeIds[1] = DataBoxType_DataBox_Render3DOptional;
+        actionPick.dataBoxTypeIds[2] = DataBoxType_DataBox_RenderPickId;
     }
     
 

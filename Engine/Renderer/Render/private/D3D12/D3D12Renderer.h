@@ -136,6 +136,13 @@ private:
 	DX12_RenderFrame 					renderFrames[FRAME_COUNT];
 	UINT8								layerCount;
 
+
+	ComPtr<ID3D12Resource> 				readbackBuffers[FRAME_COUNT];
+	UINT64								readbackBufferSizes[FRAME_COUNT] = {};
+	vector<DX12_ReadbackEntry>			readbackEntryLists[FRAME_COUNT];
+	vector<DX12_ReadbackEntry>			readbackReadList;
+	UINT64								readbackReadSize = 0;
+
 	#pragma endregion
 
 
@@ -268,6 +275,8 @@ private:
 	void GetConditionData();
 	void GetDataFromSortedId();
 	void UploadRenderData();
+	void SendReadbackResult();
+	void PrepareReadback();
 
 	// Render 하위 동작
 	void RecordActionBarriers(ID3D12GraphicsCommandList* cmdList, const DX12_RenderLayer& layer, const vector<DX12_ActionBarrier>& barriers, UINT frameIdx,
@@ -374,6 +383,7 @@ private:
 	void ReadUploadRequest(vector<ComPtr<ID3D12Resource>>& uploadBufferList);
 	void ReadUpdateRequest(vector<ComPtr<ID3D12Resource>>& uploadBufferList);
 	void ReadReleaseRequest();
+	void ReadReadbackRequest();
 
 
 	DX12_OutputSignature MakeOutputSignature(const DX12_RenderAction& action, const DataHub::Action_Output& output);

@@ -17,6 +17,7 @@ namespace Hakko::DataHub
 
         meshIdLUT.emplace(HashString(std::wstring_view(L"__MESHDEFAULT")), 0);
         meshIdLUT.emplace(HashString(std::wstring_view(L"__MESHQUAD")), RESERVED_MESH_QUAD_ID);
+        meshIdLUT.emplace(HashString(std::wstring_view(L"__MESHWIREBOX")), RESERVED_MESH_WIREBOX_ID);
         meshSubMeshCountList.assign(meshIdLUT.size(), 1);
 
         textureIdLUT.emplace(HashString(std::wstring_view(L"__TEXTUREDEFAULT")), RESERVED_TEX_ERROR_ID);
@@ -57,6 +58,8 @@ namespace Hakko::DataHub
         shaderIdLUT.emplace(HashString(std::wstring_view(RESERVED_SHADER_FXAA_PS_NAME)), RESERVED_SHADER_FXAA_PS_ID);
         shaderIdLUT.emplace(HashString(std::wstring_view(RESERVED_SHADER_SKINNING_CS_NAME)), RESERVED_SHADER_SKINNING_CS_ID);
         shaderIdLUT.emplace(HashString(std::wstring_view(RESERVED_SHADER_PARTICLE_CS_NAME)), RESERVED_SHADER_PARTICLE_CS_ID);
+        shaderIdLUT.emplace(HashString(std::wstring_view(RESERVED_SHADER_PICK_PS_NAME)), RESERVED_SHADER_PICK_PS_ID);
+        shaderIdLUT.emplace(HashString(std::wstring_view(RESERVED_SHADER_DEBUG_PS_NAME)), RESERVED_SHADER_DEBUG_PS_ID);
 
         drawPropIdLUT.emplace(HashString(std::string_view("__DRAWPROPDEFAULT")), 0U);
         drawPropIdLUT.emplace(HashString(std::string_view("__DRAWPROPSKYBOX")), RESERVED_DRAWPROP_SKYBOX_ID);
@@ -81,6 +84,13 @@ namespace Hakko::DataHub
         drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_BLOOM_COMBINE_NAME)), RESERVED_DRAWPROP_BLOOM_COMBINE_ID);
         drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_TONEMAP_NAME)), RESERVED_DRAWPROP_TONEMAP_ID);
         drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_FXAA_NAME)), RESERVED_DRAWPROP_FXAA_ID);
+        drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_PICK_NAME)), RESERVED_DRAWPROP_PICK_ID);
+        drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_PICK_SKINNED_NAME)), RESERVED_DRAWPROP_PICK_SKINNED_ID);
+        drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_PICK_CLIP_NAME)), RESERVED_DRAWPROP_PICK_CLIP_ID);
+        drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_PICK_SKINNED_CLIP_NAME)), RESERVED_DRAWPROP_PICK_SKINNED_CLIP_ID);
+        drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_DEBUG_LINE_NAME)), RESERVED_DRAWPROP_DEBUG_LINE_ID);
+        drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_DEBUG_WIRE_NAME)), RESERVED_DRAWPROP_DEBUG_WIRE_ID);
+        drawPropIdLUT.emplace(HashString(std::string_view(RESERVED_DRAWPROP_DEBUG_WIRE_SKINNED_NAME)), RESERVED_DRAWPROP_DEBUG_WIRE_SKINNED_ID);
 
         texPropIdLUT.emplace(HashString(std::string_view("__TEXPROPDEFAULT")), 0U);
 
@@ -94,6 +104,8 @@ namespace Hakko::DataHub
         DataBoxCustomizer::RegisterCustomDataBox<DataBox_Render2DScreen>();
         DataBoxCustomizer::RegisterCustomDataBox<DataBox_RenderShadowView>();
         DataBoxCustomizer::RegisterCustomDataBox<DataBox_RenderEditCustom>();
+        DataBoxCustomizer::RegisterCustomDataBox<DataBox_RenderPickId>();
+        DataBoxCustomizer::RegisterCustomDataBox<DataBox_RenderDebugColor>();
         
 
         LayerList.emplace_back();
@@ -106,6 +118,8 @@ namespace Hakko::DataHub
     void Finalize()
     {
         flag_updateResources = 0;
+        ReadbackRequestList = {};
+        ReadbackResultList = {};
         
         blankedShadowPresetIdList = {};
         blankedLightIdList = {};
@@ -287,6 +301,9 @@ namespace Hakko::DataHub
 
 
     uint32_t flag_updateResources;
+
+    std::vector<RTB_ReadbackTexture> ReadbackRequestList;
+    std::vector<STB_ReadbackTexture> ReadbackResultList;
 
 
     std::vector<RTB_Layer> LayerList;
