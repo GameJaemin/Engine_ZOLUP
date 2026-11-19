@@ -62,6 +62,7 @@
     <ClCompile Include="Engine\Source\World.cpp" />
     <ClCompile Include="Engine\Source\Renderer\RenderScene.cpp" />
     <ClCompile Include="Engine\Source\Renderer\HakkoResources.cpp" />
+    <ClCompile Include="Engine\Source\Renderer\TextureRenderTarget2D.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Engine\Source\CameraViewInfo.h" />
@@ -122,6 +123,7 @@
     <ClInclude Include="Engine\Source\Renderer\RenderScene.h" />
     <ClInclude Include="Engine\Source\Renderer\ViewportRect.h" />
     <ClInclude Include="Engine\Source\Renderer\HakkoResources.h" />
+    <ClInclude Include="Engine\Source\Renderer\TextureRenderTarget2D.h" />
     <ClInclude Include="Engine\Source\Animation\AnimationClip.h" />
     <ClInclude Include="Engine\Source\Mesh\MeshVertex.h" />
     <ClInclude Include="Engine\Source\Mesh\Skin.h" />

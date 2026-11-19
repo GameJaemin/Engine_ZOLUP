@@ -129,6 +129,9 @@
     <ClCompile Include="Engine\Source\Renderer\HakkoResources.cpp">
       <Filter>Engine\Source\Renderer</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Source\Renderer\TextureRenderTarget2D.cpp">
+      <Filter>Engine\Source\Renderer</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Source\Component\AnimationComponent.cpp">
       <Filter>Engine\Source\Component</Filter>
     </ClCompile>
@@ -279,6 +282,9 @@
       <Filter>Engine\Source\Renderer</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Renderer\HakkoResources.h">
+      <Filter>Engine\Source\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Renderer\TextureRenderTarget2D.h">
       <Filter>Engine\Source\Renderer</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\WindowsApplication.h">
