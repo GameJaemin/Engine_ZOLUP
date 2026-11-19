@@ -249,7 +249,7 @@ void GameApplication::OnUpdate(const InputState& input, float deltaTime)
 	gameWorld->DestroyPendingGameObjects();
 }
 
-std::optional<SceneView> GameApplication::GetSceneView()
+std::optional<SceneRenderRequest> GameApplication::GetRenderRequest()
 {
 	const CameraComponent* camera = gameWorld->GetActiveCamera();
 	if (camera == nullptr) { return std::nullopt; }
@@ -257,7 +257,7 @@ std::optional<SceneView> GameApplication::GetSceneView()
 	CameraViewInfo cameraViewInfo;
 	if (!camera->GetCameraViewInfo(cameraViewInfo)) { return std::nullopt; }
 
-	return SceneView{ gameWorld->GetRenderScene(), cameraViewInfo };
+	return SceneRenderRequest{ gameWorld->GetRenderScene(), cameraViewInfo, nullptr };
 }
 
 void GameApplication::OnShutdown() noexcept

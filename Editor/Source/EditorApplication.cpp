@@ -21,7 +21,7 @@ namespace
 	constexpr std::string_view DefaultLevelPath = "Game/Content/Maps/DevMap.json";
 
 	/**
-	 * 도킹 공간을 오른쪽 Inspector, 아래 Content Browser, 왼쪽 Hierarchy와 가운데 빈 칸으로 나눈다.
+	 * 도킹 공간을 오른쪽 Inspector, 아래 Content Browser, 왼쪽 Hierarchy와 가운데 Viewport로 나눈다.
 	 * 비율은 viewport 작업 영역 기준이다.
 	 */
 	void BuildDefaultDockLayout(ImGuiID dockSpaceID, const ImGuiViewport& viewport)
@@ -30,7 +30,7 @@ namespace
 		// 나누기 전에 크기를 정해야 나눈 비율이 정확하다.
 		ImGui::DockBuilderSetNodeSize(dockSpaceID, viewport.WorkSize);
 
-		// 나눌 때마다 centerID는 남은 칸으로 바뀌고, 마지막에 남은 칸이 가운데 빈 칸이 된다.
+		// 나눌 때마다 centerID는 남은 칸으로 바뀌고, 마지막에 남은 칸에 Viewport를 배치한다.
 		ImGuiID centerID = dockSpaceID;
 		const ImGuiID rightID = ImGui::DockBuilderSplitNode(centerID, ImGuiDir_Right, 0.25f, nullptr, &centerID);
 		const ImGuiID bottomID = ImGui::DockBuilderSplitNode(centerID, ImGuiDir_Down, 0.3f, nullptr, &centerID);
@@ -40,32 +40,8 @@ namespace
 		ImGui::DockBuilderDockWindow(InspectorPanel::WindowName, rightID);
 		ImGui::DockBuilderDockWindow(ContentBrowserPanel::WindowName, bottomID);
 		ImGui::DockBuilderDockWindow(HierarchyPanel::WindowName, leftID);
+		ImGui::DockBuilderDockWindow(ViewportPanel::WindowName, centerID);
 		ImGui::DockBuilderFinish(dockSpaceID);
-	}
-
-	/**
-	 * 도킹 공간의 가운데 칸 영역을 클라이언트 픽셀 좌표로 돌려준다.
-	 * 칸이 없거나 크기가 0 이하이면 nullopt다. DockSpaceOverViewport 다음에 호출한다.
-	 */
-	std::optional<ViewportRect> FindCentralNodeRect(ImGuiID dockSpaceID, const ImGuiViewport& viewport)
-	{
-		const ImGuiDockNode* centralNode = ImGui::DockBuilderGetCentralNode(dockSpaceID);
-		if (centralNode == nullptr) { return std::nullopt; }
-
-		if (!(centralNode->Size.x > 0.0f) || !(centralNode->Size.y > 0.0f)) { return std::nullopt; }
-
-		// ImGui 위치는 뷰포트 기준 좌표이므로 뷰포트 시작 위치를 빼서 클라이언트 좌표로 바꾼다.
-		return ViewportRect{ centralNode->Pos.x - viewport.Pos.x, centralNode->Pos.y - viewport.Pos.y, centralNode->Size.x, centralNode->Size.y };
-	}
-
-	/** 마우스 위치가 영역 안에 있으면 true다. 위치를 모르면 false다. */
-	bool IsMouseInside(const std::optional<ViewportRect>& rect, const std::optional<MouseCoordinates>& mousePosition)
-	{
-		if (!rect.has_value() || !mousePosition.has_value()) { return false; }
-
-		const float x = static_cast<float>(mousePosition->x);
-		const float y = static_cast<float>(mousePosition->y);
-		return x >= rect->x && x < rect->x + rect->width && y >= rect->y && y < rect->y + rect->height;
 	}
 }
 
@@ -111,22 +87,19 @@ bool EditorApplication::OnInitialize(Engine& inEngine)
 void EditorApplication::OnUpdate(const InputState& input, float deltaTime)
 {
 	const bool wasViewportCameraActive = isViewportCameraActive;
+	hasViewportCameraPress = false;
 
-	// 오른쪽 버튼을 누른 순간에만 뷰포트 위인지 판단하고, 뗄 때까지 그 결과를 유지한다.
-	// 장면 영역은 지난 프레임 OnGui에서 계산한 값이다. 떠 있는 패널이 뷰포트를 덮은 곳은 ImGui가 마우스를 잡는다.
 	for (const KeyEvent& event : input.GetFrameEvents())
 	{
 		if (event.key != Key::MouseRight) { continue; }
 
-		if (event.type == KeyEventType::Pressed)
-		{
-			isViewportCameraActive = IsMouseInside(sceneViewport, input.GetMousePosition()) && !ImGui::GetIO().WantCaptureMouse;
-		}
-		else
-		{
-			isViewportCameraActive = false;
-		}
+		hasViewportCameraPress = event.type == KeyEventType::Pressed;
+		isViewportCameraActive = false;
 	}
+
+	const bool isRightButtonDown = input.IsKeyDown(Key::MouseRight);
+	hasViewportCameraPress = hasViewportCameraPress && isRightButtonDown;
+	isViewportCameraActive = isViewportCameraActive && isRightButtonDown;
 
 	// 카메라를 조작하는 동안 커서를 숨긴다. 상태가 바뀔 때만 엔진에 알린다.
 	if (isViewportCameraActive != wasViewportCameraActive)
@@ -151,11 +124,16 @@ void EditorApplication::OnGui()
 	}
 
 	// 엔진 창 전체를 패널을 붙일 수 있는 도킹 공간으로 만든다. 패널보다 먼저 매 프레임 호출한다.
-	// 가운데 빈 칸은 투명하게 두어 뒤의 화면이 보이고 입력도 통과하게 한다.
+	// 가운데 도킹 창이 없을 때는 뒤의 화면이 보이고 입력도 통과하게 한다.
 	ImGui::DockSpaceOverViewport(dockSpaceID, viewport, ImGuiDockNodeFlags_PassthruCentralNode);
 
-	// 장면은 패널이 없는 가운데 칸에만 그린다.
-	sceneViewport = FindCentralNodeRect(dockSpaceID, *viewport);
+	viewportPanel.Draw();
+
+	if (hasViewportCameraPress && viewportPanel.WasImageRightClicked())
+	{
+		isViewportCameraActive = true;
+		engine->SetCursorVisible(false);
+	}
 
 	World* world = worldSession.GetEditWorld();
 	if (world == nullptr) { return; }
@@ -169,12 +147,15 @@ void EditorApplication::OnGui()
 	contentBrowserPanel.Draw();
 }
 
-std::optional<SceneView> EditorApplication::GetSceneView()
+std::optional<SceneRenderRequest> EditorApplication::GetRenderRequest()
 {
 	World* world = worldSession.GetEditWorld();
-	if (world == nullptr || !sceneViewport.has_value()) { return std::nullopt; }
 
-	return SceneView{ world->GetRenderScene(), editorCamera.GetCameraViewInfo(), sceneViewport };
+	if (world == nullptr || !viewportPanel.ShouldRenderScene()) { return std::nullopt; }
+
+	const TextureRenderTarget2D& target = viewportPanel.GetRenderTarget();
+
+	return SceneRenderRequest{ world->GetRenderScene(), editorCamera.GetCameraViewInfo(), &target };
 }
 
 void EditorApplication::OnShutdown() noexcept
@@ -184,6 +165,11 @@ void EditorApplication::OnShutdown() noexcept
 	{
 		engine->SetCursorVisible(true);
 		isViewportCameraActive = false;
+	}
+
+	if (!viewportPanel.Shutdown())
+	{
+		Log::Write(LogLevel::Error, "Editor", "Failed to request viewport render target release");
 	}
 
 	selection.SetWorld(nullptr);

@@ -4,11 +4,15 @@
 #include "Core/Log.h"
 #include "IApplication.h"
 #include "Renderer/RenderScene.h"
+#include "Renderer/SceneRenderRequest.h"
+#include "Renderer/TextureRenderTarget2D.h"
 #include "Renderer/ViewportRect.h"
 
 #include "D3D12Renderer.h"
 #include "DataHub.h"
+#include "DataHub_Interface.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -177,23 +181,54 @@ int Engine::RunFrameLoop(IApplication& application)
 		// ----------
 		// 장면 준비와 렌더링
 		// ----------
-		// 장면이 없거나 이번 프레임에 장면을 준비하지 못해도 GUI 프레임이 있으면 그린다.
-		bool hasScene = false;
-		const std::optional<SceneView> sceneView = application.GetSceneView();
-		if (sceneView.has_value())
-		{
-			RenderScene& scene = sceneView->scene.get();
-			// 앱이 영역을 지정하지 않으면 클라이언트 영역 전체에 그린다.
-			const ViewportRect fullClientRect{ 0.0f, 0.0f, static_cast<float>(clientWidth), static_cast<float>(clientHeight) };
-			const ViewportRect viewport = sceneView->viewport.value_or(fullClientRect);
-			const FramePreparationResult preparationResult = scene.PrepareFrame(sceneView->camera, viewport);
-			if (preparationResult == FramePreparationResult::Failed) { return 1; }
+		const ViewportRect renderArea{ 0.0f, 0.0f, static_cast<float>(clientWidth), static_cast<float>(clientHeight) };
 
-			hasScene = preparationResult == FramePreparationResult::Ready;
+		// 요청이 없거나 장면 준비를 건너뛰면 이전 장면이 남지 않도록 초기화한다.
+		Hakko::DataHub::ClearOpaqueDrawRequests();
+		Hakko::DataHub::ClearTranslucentDrawRequests();
+		Hakko::DataHub::ClearScreenDrawRequests();
+		Hakko::DataHub::ClearShadowDrawRequests();
+		Hakko::DataHub::SetLayerBackground(0);
+		Hakko::DataHub::SetLayerCompositeTarget({});
+		Hakko::DataHub::SetLayerViewport(Hakko::DataHub::Layer_Viewport{ renderArea.x, renderArea.y, renderArea.width, renderArea.height });
+
+		const std::optional<SceneRenderRequest> request = application.GetRenderRequest();
+		if (request.has_value())
+		{
+			std::uint32_t outputWidth = static_cast<std::uint32_t>(clientWidth);
+			std::uint32_t outputHeight = static_cast<std::uint32_t>(clientHeight);
+			Hakko::DataHub::ViewTarget output{};
+
+			if (request->target != nullptr)
+			{
+				const TextureRenderTarget2D& target = *request->target;
+				const bool hasValidSize = target.GetWidth() > 0 && target.GetHeight() > 0;
+				const bool isRegistered = !target.GetName().empty() && target.FindTextureID() != 0;
+
+				if (!hasValidSize || !isRegistered)
+				{
+					Log::Write(LogLevel::Error, "Engine", "Invalid scene render target");
+					return 1;
+				}
+
+				outputWidth = target.GetWidth();
+				outputHeight = target.GetHeight();
+				output = Hakko::DataHub::ViewTarget{ target.GetName(), outputWidth, outputHeight };
+			}
+
+			const float projectionAspectRatio = static_cast<float>(outputWidth) / static_cast<float>(outputHeight);
+			RenderScene& scene = request->scene.get();
+			const FramePreparationResult result = scene.PrepareFrame(request->camera, renderArea, projectionAspectRatio);
+
+			if (result == FramePreparationResult::Failed) { return 1; }
+
+			if (result == FramePreparationResult::Ready)
+			{
+				Hakko::DataHub::SetLayerCompositeTarget(output);
+			}
 		}
 
-		if (!hasScene && !runsGuiFrame) { continue; }
-
+		// 장면이 없어도 같은 프레임의 자원 요청과 GUI를 처리한다.
 		renderer->Sketch();
 		renderer->Render();
 	}

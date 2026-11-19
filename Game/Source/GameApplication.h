@@ -1,6 +1,7 @@
 #pragma once
 
 #include "IApplication.h"
+#include "Renderer/SceneRenderRequest.h"
 
 #include <memory>
 #include <optional>
@@ -16,7 +17,7 @@ public:
 
 	bool OnInitialize(Engine& inEngine) override;
 	void OnUpdate(const InputState& input, float deltaTime) override;
-	std::optional<SceneView> GetSceneView() override;
+	std::optional<SceneRenderRequest> GetRenderRequest() override;
 	void OnShutdown() noexcept override;
 
 private:

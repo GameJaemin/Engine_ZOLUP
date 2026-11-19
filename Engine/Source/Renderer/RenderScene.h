@@ -83,12 +83,14 @@ private:
 	// Hakko 프레임 준비
 public:
 	/**
-	 * DataHub 초기화 후 호출한다. viewport는 장면을 그릴 클라이언트 영역의 픽셀 사각형이다.
-	 * viewport의 너비나 높이가 0 이하이거나 카메라 투영 계산에 실패하면 SkipFrame을,
+	 * DataHub 초기화 후 호출한다. viewport는 중간 렌더 타깃 안에서 그릴 픽셀 영역이다.
+	 * projectionAspectRatio는 최종 출력 대상의 너비를 높이로 나눈 값이다.
+	 * 영역 크기가 양수가 아니거나, 투영 비율이 유한한 양수가 아니거나,
+	 * 카메라 투영 계산에 실패하면 SkipFrame을 반환한다.
 	 * 조명이나 리소스 및 그리기 요청 준비에 실패하면 Failed를 반환한다.
 	 * Ready를 반환한 프레임은 Sketch에서 준비한 요청을 소비해야 한다.
 	 */
-	FramePreparationResult PrepareFrame(const CameraViewInfo& cameraViewInfo, const ViewportRect& viewport);
+	FramePreparationResult PrepareFrame(const CameraViewInfo& cameraViewInfo, const ViewportRect& viewport, float projectionAspectRatio);
 
 	// Hakko 메시 등록
 private:
@@ -104,7 +106,8 @@ private:
 	/**
 	 * DataHub 초기화 후 Sketch 전에 호출해 기본 레이어의 카메라 행렬과 월드 위치를 갱신한다.
 	 * 행렬은 현재 Hakko 셰이더의 열 단위 저장에 맞춰 전치해 전달한다.
-	 * aspectRatio는 그릴 영역의 가로를 세로로 나눈 값이다. 투영 계산에 실패하면 기존 값을 유지하고 false를 반환한다.
+	 * aspectRatio는 최종 출력 대상의 너비를 높이로 나눈 값이다.
+	 * 투영 계산에 실패하면 기존 값을 유지하고 false를 반환한다.
 	 */
 	bool PrepareCamera(const CameraViewInfo& cameraViewInfo, const Matrix4x4& viewMatrix, float aspectRatio);
 

@@ -1,24 +1,11 @@
 #pragma once
 
-#include "CameraViewInfo.h"
-#include "Renderer/ViewportRect.h"
+#include "Renderer/SceneRenderRequest.h"
 
-#include <functional>
 #include <optional>
 
 class Engine;
 class InputState;
-class RenderScene;
-
-/** 현재 단일 백버퍼 경로에 제출할 장면과 카메라 값이다. */
-struct SceneView
-{
-	// 장면은 같은 프레임의 렌더 제출이 끝날 때까지 살아 있어야 한다.
-	std::reference_wrapper<RenderScene> scene;
-	CameraViewInfo camera;
-	// 장면을 그릴 클라이언트 영역이다. nullopt면 클라이언트 영역 전체에 그린다.
-	std::optional<ViewportRect> viewport;
-};
 
 /** Engine::Run이 메인 스레드에서 빌려 쓰는 애플리케이션 실행 정책이다. */
 class IApplication
@@ -51,8 +38,11 @@ public:
 	 */
 	virtual void OnGui() {}
 
-	/** 갱신 후 렌더 가능한 프레임에서 호출한다. nullopt면 장면 제출을 건너뛴다. */
-	virtual std::optional<SceneView> GetSceneView() = 0;
+	/**
+	 * 렌더 가능한 프레임에서 OnGui 이후 호출한다.
+	 * nullopt면 장면을 그리지 않는다. 반환한 참조와 포인터는 같은 프레임에 소비한다.
+	 */
+	virtual std::optional<SceneRenderRequest> GetRenderRequest() = 0;
 
 	/**
 	 * OnInitialize가 반환했다면 정상 종료 또는 실패 반환 경로에서 한 번 호출한다.

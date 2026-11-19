@@ -87,6 +87,9 @@
     <ClCompile Include="Editor\Source\Panels\InspectorPanel.cpp">
       <Filter>Editor\Source\Panels</Filter>
     </ClCompile>
+    <ClCompile Include="Editor\Source\Panels\ViewportPanel.cpp">
+      <Filter>Editor\Source\Panels</Filter>
+    </ClCompile>
     <ClCompile Include="Game\Source\PlayerObject.cpp">
       <Filter>Game\Source</Filter>
     </ClCompile>
@@ -245,6 +248,9 @@
     <ClInclude Include="Editor\Source\Panels\InspectorPanel.h">
       <Filter>Editor\Source\Panels</Filter>
     </ClInclude>
+    <ClInclude Include="Editor\Source\Panels\ViewportPanel.h">
+      <Filter>Editor\Source\Panels</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\Source\Asset.h">
       <Filter>Engine\Source</Filter>
     </ClInclude>
@@ -278,13 +284,16 @@
     <ClInclude Include="Engine\Source\Renderer\RenderScene.h">
       <Filter>Engine\Source\Renderer</Filter>
     </ClInclude>
+    <ClInclude Include="Engine\Source\Renderer\SceneRenderRequest.h">
+      <Filter>Engine\Source\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Renderer\TextureRenderTarget2D.h">
+      <Filter>Engine\Source\Renderer</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\Source\Renderer\ViewportRect.h">
       <Filter>Engine\Source\Renderer</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Renderer\HakkoResources.h">
-      <Filter>Engine\Source\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="Engine\Source\Renderer\TextureRenderTarget2D.h">
       <Filter>Engine\Source\Renderer</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\WindowsApplication.h">
