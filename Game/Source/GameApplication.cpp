@@ -1,16 +1,11 @@
 #include "GameApplication.h"
 
 #include "AssetManager.h"
-#include "Component/AmbientLightComponent.h"
 #include "Component/AnimationComponent.h"
 #include "Component/CameraComponent.h"
-#include "Component/DirectionalLightComponent.h"
-#include "Component/PointLightComponent.h"
-#include "Component/SpotLightComponent.h"
 #include "Component/StaticMeshComponent.h"
 #include "Component/TransformComponent.h"
 #include "Core/Log.h"
-#include "Core/Math/EulerAngles.h"
 #include "Core/Math/Quaternion.h"
 #include "Core/Math/Transform.h"
 #include "Core/Math/Vector3.h"
@@ -36,66 +31,6 @@
 
 namespace
 {
-	/** 위에서 아래로 비스듬히 빛을 보내는 방향광을 World에 추가한다. */
-	void AddDirectionalLight(World& world)
-	{
-		std::unique_ptr<GameObject> lightObject = std::make_unique<GameObject>(world);
-
-		TransformComponent* transform = lightObject->GetComponent<TransformComponent>();
-		transform->SetRotation(EulerAngles{ .pitch = 45.0f, .yaw = -80.0f, .roll = 0.0f });
-
-		std::unique_ptr<DirectionalLightComponent> light = std::make_unique<DirectionalLightComponent>();
-		light->SetColor(Vector3{ 1.0f, 1.0f, 1.0f });
-		light->SetIntensity(1.0f);
-
-		lightObject->AddComponent(std::move(light));
-		world.AddGameObject(std::move(lightObject));
-	}
-
-	/** DevMap 주전자 앞에 주황색 점광원을 배치한다. */
-	void AddPointLight(World& world)
-	{
-		std::unique_ptr<GameObject> lightObject = std::make_unique<GameObject>(world);
-		TransformComponent* transform = lightObject->GetComponent<TransformComponent>();
-		transform->SetPosition({ 940.0f, 580.0f, 2880.0f });
-
-		std::unique_ptr<PointLightComponent> light = std::make_unique<PointLightComponent>();
-		light->SetColor({ 1.0f, 0.35f, 0.1f });
-		light->SetIntensity(2.0f);
-		light->SetRange(300.0f);
-
-		lightObject->AddComponent(std::move(light));
-		world.AddGameObject(std::move(lightObject));
-	}
-
-	/** DevMap 주전자 앞에서 +Z 방향으로 청록색 스포트라이트를 비춘다. */
-	void AddSpotLight(World& world)
-	{
-		auto lightObject = std::make_unique<GameObject>(world);
-		auto* transform = lightObject->GetComponent<TransformComponent>();
-		transform->SetPosition({ 1000.0f, 640.0f, 2450.0f });
-
-		auto light = std::make_unique<SpotLightComponent>();
-		light->SetColor({ 0.1f, 0.8f, 1.0f });
-		light->SetIntensity(3.0f);
-		light->SetRange(850.0f);
-		light->SetOuterConeAngleDegrees(16.0f);
-
-		lightObject->AddComponent(std::move(light));
-		world.AddGameObject(std::move(lightObject));
-	}
-
-	/** DevMap에 약한 흰색 환경광을 추가한다. */
-	void AddAmbientLight(World& world)
-	{
-		std::unique_ptr<GameObject> lightObject = std::make_unique<GameObject>(world);
-		std::unique_ptr<AmbientLightComponent> light = std::make_unique<AmbientLightComponent>();
-		light->SetIntensity(0.1f);
-
-		lightObject->AddComponent(std::move(light));
-		world.AddGameObject(std::move(lightObject));
-	}
-
 	/**
 	 * model의 배치표대로 객체들을 만들어, position(cm)에 놓은 빈 루트 객체 아래에 붙인다.
 	 * 메시가 있는 노드에는 overrideMaterial을 쓰고, nullptr면 모델의 메시별 기본 재질을 쓴다. 루트 객체를 반환한다.
@@ -183,9 +118,47 @@ namespace
 		}
 		Log::Write(LogLevel::Warning, "Animation", std::format("{} with AnimationComponent was not found in the level", objectName));
 	}
+
+	bool ActivateMapCamera(World& world, const std::vector<GameObject*>& levelObjects, std::string_view name)
+	{
+		CameraComponent* selectedCamera = nullptr;
+		for (GameObject* object : levelObjects)
+		{
+			if (object->GetName() != name) { continue; }
+
+			for (const std::unique_ptr<Component>& component : object->GetComponents())
+			{
+				CameraComponent* camera = dynamic_cast<CameraComponent*>(component.get());
+				if (camera == nullptr) { continue; }
+				if (selectedCamera != nullptr)
+				{
+					Log::Write(LogLevel::Error, "Camera", std::format("Multiple map cameras match {}", name));
+					return false;
+				}
+				selectedCamera = camera;
+			}
+		}
+
+		if (selectedCamera == nullptr)
+		{
+			Log::Write(LogLevel::Error, "Camera", std::format("Map camera {} was not found", name));
+			return false;
+		}
+		if (!world.SetActiveCamera(selectedCamera))
+		{
+			Log::Write(LogLevel::Error, "Camera", std::format("Could not activate map camera {}", name));
+			return false;
+		}
+
+		Log::Write(LogLevel::Info, "Camera", std::format("Active map camera: {}", name));
+		return true;
+	}
 }
 
-GameApplication::GameApplication() = default;
+GameApplication::GameApplication(std::string_view initialMapCameraName)
+	: mapCameraName(initialMapCameraName)
+{
+}
 
 GameApplication::~GameApplication() = default;
 
@@ -219,14 +192,11 @@ bool GameApplication::OnInitialize(Engine& inEngine)
 	PlayFirstClip(*loadedObjects, "AnimatedBox", "Game/Content/Prefabs/BoxAnimated.prefab.json");
 	PlayFirstClip(*loadedObjects, "RiggedSimple", "Game/Content/Prefabs/RiggedSimple.prefab.json");
 
+	if (!mapCameraName.empty()) { return ActivateMapCamera(world, *loadedObjects, mapCameraName); }
+
 	GameObject* player = world.AddGameObject(std::make_unique<PlayerObject>(world));
 	// World에 등록된 객체의 카메라만 지정할 수 있으므로 AddGameObject 뒤에 지정한다.
 	if (player != nullptr) { world.SetActiveCamera(player->GetComponent<CameraComponent>()); }
-
-	AddDirectionalLight(world);
-	AddPointLight(world);
-	AddSpotLight(world);
-	AddAmbientLight(world);
 
 	engine->SetCursorConfined(true);
 	engine->SetCursorVisible(false);

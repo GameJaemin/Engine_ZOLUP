@@ -1,16 +1,22 @@
 #include "LevelLoader.h"
 
 #include "AssetManager.h"
+#include "Component/AmbientLightComponent.h"
+#include "Component/CameraComponent.h"
+#include "Component/DirectionalLightComponent.h"
+#include "Component/PointLightComponent.h"
+#include "Component/SpotLightComponent.h"
 #include "Core/FileHelper.h"
 #include "Core/Log.h"
 #include "Core/Math/Transform.h"
+#include "Core/Math/Vector3.h"
+#include "GameObject.h"
 #include "Prefab.h"
 #include "World.h"
 
 #include "rapidjson/document.h"
 #include "rapidjson/error/en.h"
 
-#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <filesystem>
@@ -20,22 +26,28 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace
 {
+	bool IsFiniteFloat(const rapidjson::Value& value)
+	{
+		if (!value.IsNumber()) { return false; }
+
+		// float로 변환하기 전에 double로 읽어 범위를 확인한다.
+		constexpr double MaxFloat = (std::numeric_limits<float>::max)();
+		const double number = value.GetDouble();
+		return std::isfinite(number) && std::abs(number) <= MaxFloat;
+	}
+
 	bool IsFloatArray(const rapidjson::Value& value, rapidjson::SizeType size)
 	{
 		if (!value.IsArray() || value.Size() != size) { return false; }
 
-		// Transform은 float를 사용하므로 변환 전에 double로 읽어 범위를 확인한다.
-		constexpr double MaxFloat = (std::numeric_limits<float>::max)();
 		for (const rapidjson::Value& entry : value.GetArray())
 		{
-			if (!entry.IsNumber()) { return false; }
-
-			const double number = entry.GetDouble();
-			if (!std::isfinite(number) || std::abs(number) > MaxFloat) { return false; }
+			if (!IsFiniteFloat(entry)) { return false; }
 		}
 
 		return true;
@@ -86,6 +98,13 @@ namespace
 			if (!error.empty()) { return error; }
 		}
 
+		const auto components = object.FindMember("components");
+		if (components != object.MemberEnd())
+		{
+			if (hasPrefab) { return ".components cannot be used with prefab"; }
+			if (!components->value.IsArray()) { return ".components must be an array"; }
+		}
+
 		if (hasPrefab)
 		{
 			if (!prefab->value.IsString()) { return ".prefab must be a string"; }
@@ -103,6 +122,160 @@ namespace
 		}
 
 		return {};
+	}
+
+	std::string_view ReadLightSettings(const rapidjson::Value& fields, LightComponent& light)
+	{
+		const auto color = fields.FindMember("color");
+		if (color != fields.MemberEnd())
+		{
+			if (!IsFloatArray(color->value, 3)) { return ".color must contain three non-negative finite floats"; }
+
+			const rapidjson::Value::ConstArray rgb = color->value.GetArray();
+			if (rgb[0].GetDouble() < 0.0 || rgb[1].GetDouble() < 0.0 || rgb[2].GetDouble() < 0.0) { return ".color must contain three non-negative finite floats"; }
+			if (!light.SetColor(Vector3{ rgb[0].GetFloat(), rgb[1].GetFloat(), rgb[2].GetFloat() })) { return ".color must contain three non-negative finite floats"; }
+		}
+
+		const auto intensity = fields.FindMember("intensity");
+		if (intensity != fields.MemberEnd())
+		{
+			if (!IsFiniteFloat(intensity->value) || intensity->value.GetDouble() < 0.0 || !light.SetIntensity(intensity->value.GetFloat())) { return ".intensity must be a non-negative finite float"; }
+		}
+
+		const auto enabled = fields.FindMember("enabled");
+		if (enabled != fields.MemberEnd())
+		{
+			if (!enabled->value.IsBool()) { return ".enabled must be a boolean"; }
+			light.SetEnabled(enabled->value.GetBool());
+		}
+
+		return {};
+	}
+
+	// 검증 중에는 조명을 객체에 붙이지 않아 RenderScene에 등록되지 않는다.
+	std::string ReadLightComponent(const rapidjson::Value& fields, std::string_view typeName, std::unique_ptr<Component>& outComponent)
+	{
+		const bool isPointLight = typeName == "pointLight";
+		const bool isSpotLight = typeName == "spotLight";
+		const bool hasRange = isPointLight || isSpotLight;
+		if (!hasRange && typeName != "directionalLight" && typeName != "ambientLight") { return std::format(".type: unsupported component type {}", typeName); }
+
+		for (auto member = fields.MemberBegin(); member != fields.MemberEnd(); ++member)
+		{
+			const std::string_view name(member->name.GetString(), member->name.GetStringLength());
+			if (name == "type" || name == "color" || name == "intensity" || name == "enabled") { continue; }
+			if (hasRange && name == "rangeCm") { continue; }
+			if (isSpotLight && name == "outerConeDegrees") { continue; }
+			return std::format(".{}: unsupported {} field", name, typeName);
+		}
+
+		constexpr const char* RangeError = ".rangeCm must be a positive finite float";
+		float rangeCm = 0.0f;
+		if (hasRange)
+		{
+			const auto range = fields.FindMember("rangeCm");
+			if (range == fields.MemberEnd() || !IsFiniteFloat(range->value)) { return RangeError; }
+			rangeCm = range->value.GetFloat();
+		}
+
+		std::unique_ptr<LightComponent> light;
+		if (isPointLight)
+		{
+			std::unique_ptr<PointLightComponent> pointLight = std::make_unique<PointLightComponent>();
+			if (!pointLight->SetRange(rangeCm)) { return RangeError; }
+			light = std::move(pointLight);
+		}
+		else if (isSpotLight)
+		{
+			const auto outerCone = fields.FindMember("outerConeDegrees");
+			constexpr const char* ConeError = ".outerConeDegrees must be greater than 0 and at most 180";
+			if (outerCone == fields.MemberEnd() || !IsFiniteFloat(outerCone->value)) { return ConeError; }
+			const double outerConeDegrees = outerCone->value.GetDouble();
+			if (outerConeDegrees <= 0.0 || outerConeDegrees > 180.0) { return ConeError; }
+
+			std::unique_ptr<SpotLightComponent> spotLight = std::make_unique<SpotLightComponent>();
+			if (!spotLight->SetRange(rangeCm)) { return RangeError; }
+			// 맵의 전체 원뿔 각도를 컴포넌트가 받는 반각으로 바꾼다.
+			if (!spotLight->SetOuterConeAngleDegrees(static_cast<float>(outerConeDegrees * 0.5))) { return ConeError; }
+			light = std::move(spotLight);
+		}
+		else if (typeName == "ambientLight")
+		{
+			light = std::make_unique<AmbientLightComponent>();
+		}
+		else
+		{
+			light = std::make_unique<DirectionalLightComponent>();
+		}
+
+		const std::string_view error = ReadLightSettings(fields, *light);
+		if (!error.empty()) { return std::string(error); }
+
+		outComponent = std::move(light);
+		return {};
+	}
+
+	std::string ReadCameraComponent(const rapidjson::Value& fields, std::unique_ptr<Component>& outComponent)
+	{
+		const auto projection = fields.FindMember("projection");
+		constexpr const char* ProjectionError = ".projection must be perspective or orthographic";
+		if (projection == fields.MemberEnd() || !projection->value.IsString()) { return ProjectionError; }
+
+		const std::string_view projectionName(projection->value.GetString(), projection->value.GetStringLength());
+		const bool isPerspective = projectionName == "perspective";
+		if (!isPerspective && projectionName != "orthographic") { return ProjectionError; }
+		const char* projectionField = isPerspective ? "verticalFovDegrees" : "orthographicHeightCm";
+		for (auto member = fields.MemberBegin(); member != fields.MemberEnd(); ++member)
+		{
+			const std::string_view name(member->name.GetString(), member->name.GetStringLength());
+			if (name == "type" || name == "projection" || name == projectionField || name == "nearClipCm" || name == "farClipCm") { continue; }
+			return std::format(".{}: unsupported camera field for {} projection", name, projectionName);
+		}
+
+		std::unique_ptr<CameraComponent> camera = std::make_unique<CameraComponent>();
+		const auto projectionValue = fields.FindMember(projectionField);
+		if (projectionValue == fields.MemberEnd() || !IsFiniteFloat(projectionValue->value)) { return std::format(".{} must be a finite float", projectionField); }
+		if (isPerspective)
+		{
+			if (!camera->SetVerticalFovDegrees(projectionValue->value.GetFloat())) { return ".verticalFovDegrees must be greater than 0 and less than 180"; }
+		}
+		else
+		{
+			camera->SetProjectionMode(CameraProjectionMode::Orthographic);
+			if (!camera->SetOrthographicHeight(projectionValue->value.GetFloat())) { return ".orthographicHeightCm must be positive"; }
+		}
+
+		float nearClipCm = camera->GetNearClipDistance();
+		const auto nearClip = fields.FindMember("nearClipCm");
+		if (nearClip != fields.MemberEnd())
+		{
+			if (!IsFiniteFloat(nearClip->value) || nearClip->value.GetFloat() <= 0.0f) { return ".nearClipCm must be a positive finite float"; }
+			nearClipCm = nearClip->value.GetFloat();
+		}
+
+		float farClipCm = camera->GetFarClipDistance();
+		const auto farClip = fields.FindMember("farClipCm");
+		if (farClip != fields.MemberEnd())
+		{
+			if (!IsFiniteFloat(farClip->value)) { return ".farClipCm must be a finite float"; }
+			farClipCm = farClip->value.GetFloat();
+		}
+		if (!camera->SetClipDistances(nearClipCm, farClipCm)) { return ".farClipCm must be greater than nearClipCm"; }
+
+		outComponent = std::move(camera);
+		return {};
+	}
+
+	std::string ReadLevelComponent(const rapidjson::Value& fields, std::unique_ptr<Component>& outComponent)
+	{
+		if (!fields.IsObject()) { return " must be an object"; }
+
+		const auto type = fields.FindMember("type");
+		if (type == fields.MemberEnd() || !type->value.IsString()) { return ".type must be a string"; }
+
+		const std::string_view typeName(type->value.GetString(), type->value.GetStringLength());
+		if (typeName == "camera") { return ReadCameraComponent(fields, outComponent); }
+		return ReadLightComponent(fields, typeName, outComponent);
 	}
 
 	// 검증된 맵 항목에서 루트 인스턴스의 배치 값을 읽는다.
@@ -180,13 +353,32 @@ std::optional<std::vector<GameObject*>> LoadLevel(const std::filesystem::path& p
 
 	// 뒤쪽 항목의 검증 실패로 일부 객체만 등록되는 일을 막기 위해 배열 전체를 먼저 검증한다.
 	const rapidjson::Value::Array entries = objects->value.GetArray();
+	std::vector<std::vector<std::unique_ptr<Component>>> componentsByObject(entries.Size());
 	for (rapidjson::SizeType i = 0; i < entries.Size(); ++i)
 	{
-		const std::string_view error = ValidateObject(entries[i]);
+		const rapidjson::Value& entry = entries[i];
+		const std::string_view error = ValidateObject(entry);
 		if (!error.empty())
 		{
 			Log::Write(LogLevel::Error, "Level", std::format("{}: objects[{}]{}", pathText, i, error));
 			return std::nullopt;
+		}
+
+		const auto components = entry.FindMember("components");
+		if (components == entry.MemberEnd()) { continue; }
+
+		const rapidjson::Value::ConstArray componentEntries = components->value.GetArray();
+		for (rapidjson::SizeType j = 0; j < componentEntries.Size(); ++j)
+		{
+			std::unique_ptr<Component> component;
+			const std::string componentError = ReadLevelComponent(componentEntries[j], component);
+			if (!componentError.empty())
+			{
+				Log::Write(LogLevel::Error, "Level", std::format("{}: objects[{}].components[{}]{}", pathText, i, j, componentError));
+				return std::nullopt;
+			}
+
+			componentsByObject[i].push_back(std::move(component));
 		}
 	}
 
@@ -224,7 +416,12 @@ std::optional<std::vector<GameObject*>> LoadLevel(const std::filesystem::path& p
 		}
 
 		// 프리팹이 없는 항목은 검증 단계에서 이름과 배치 Transform을 요구한다.
-		loadedObjects.push_back(world.CreateGameObject(placement.name, *placement.transform));
+		GameObject* object = world.CreateGameObject(placement.name, *placement.transform);
+		for (std::unique_ptr<Component>& component : componentsByObject[i])
+		{
+			object->AddComponent(std::move(component));
+		}
+		loadedObjects.push_back(object);
 	}
 	return loadedObjects;
 }

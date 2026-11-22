@@ -53,6 +53,67 @@
 				"rotation": [0.0, 0.0, 0.0, 1.0],
 				"scale": [1.0, 1.0, 1.0]
 			}
+		},
+		{
+			"name": "DevDirectionalLight",
+			"transform": {
+				"position": [0, 0, 0],
+				"rotation": [0.29315252, -0.59385832, 0.24598417, 0.70773278],
+				"scale": [1, 1, 1]
+			},
+			"components": [
+				{ "type": "directionalLight", "color": [1, 1, 1], "intensity": 1 }
+			]
+		},
+		{
+			"name": "DevPointLight",
+			"transform": {
+				"position": [940, 580, 2880],
+				"rotation": [0, 0, 0, 1],
+				"scale": [1, 1, 1]
+			},
+			"components": [
+				{ "type": "pointLight", "color": [1, 0.35, 0.1], "intensity": 2, "rangeCm": 300 }
+			]
+		},
+		{
+			"name": "DevSpotLight",
+			"transform": {
+				"position": [1000, 640, 2450],
+				"rotation": [0, 0, 0, 1],
+				"scale": [1, 1, 1]
+			},
+			"components": [
+				{ "type": "spotLight", "color": [0.1, 0.8, 1], "intensity": 3, "rangeCm": 850, "outerConeDegrees": 32 }
+			]
+		},
+		{
+			"name": "DevAmbientLight",
+			"transform": {
+				"position": [0, 0, 0],
+				"rotation": [0, 0, 0, 1],
+				"scale": [1, 1, 1]
+			},
+			"components": [
+				{ "type": "ambientLight", "color": [1, 1, 1], "intensity": 0.1 }
+			]
+		},
+		{
+			"name": "DevOverviewCamera",
+			"transform": {
+				"position": [0, 500, -500],
+				"rotation": [0, 0, 0, 1],
+				"scale": [1, 1, 1]
+			},
+			"components": [
+				{
+					"type": "camera",
+					"projection": "perspective",
+					"verticalFovDegrees": 60,
+					"nearClipCm": 10,
+					"farClipCm": 100000
+				}
+			]
 		}
 	]
 }
