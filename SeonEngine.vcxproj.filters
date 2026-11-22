@@ -78,6 +78,9 @@
     <ClCompile Include="Editor\Source\EditorSelection.cpp">
       <Filter>Editor\Source</Filter>
     </ClCompile>
+    <ClCompile Include="Editor\Source\EditorViewport.cpp">
+      <Filter>Editor\Source</Filter>
+    </ClCompile>
     <ClCompile Include="Editor\Source\EditorWorldSession.cpp">
       <Filter>Editor\Source</Filter>
     </ClCompile>
@@ -252,6 +255,9 @@
       <Filter>Editor\Source</Filter>
     </ClInclude>
     <ClInclude Include="Editor\Source\EditorSelection.h">
+      <Filter>Editor\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Editor\Source\EditorViewport.h">
       <Filter>Editor\Source</Filter>
     </ClInclude>
     <ClInclude Include="Editor\Source\EditorWorldSession.h">

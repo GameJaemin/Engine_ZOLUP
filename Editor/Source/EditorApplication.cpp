@@ -2,8 +2,6 @@
 
 #include "Core/Log.h"
 #include "Engine.h"
-#include "Input/InputState.h"
-#include "Input/Key.h"
 #include "Paths.h"
 #include "World.h"
 
@@ -86,28 +84,11 @@ bool EditorApplication::OnInitialize(Engine& inEngine)
 
 void EditorApplication::OnUpdate(const InputState& input, float deltaTime)
 {
-	const bool wasViewportCameraActive = isViewportCameraActive;
-	hasViewportCameraPress = false;
-
-	for (const KeyEvent& event : input.GetFrameEvents())
+	if (editorViewport.UpdateCamera(input, deltaTime))
 	{
-		if (event.key != Key::MouseRight) { continue; }
-
-		hasViewportCameraPress = event.type == KeyEventType::Pressed;
-		isViewportCameraActive = false;
+		engine->SetCursorVisible(true);
 	}
 
-	const bool isRightButtonDown = input.IsKeyDown(Key::MouseRight);
-	hasViewportCameraPress = hasViewportCameraPress && isRightButtonDown;
-	isViewportCameraActive = isViewportCameraActive && isRightButtonDown;
-
-	// 카메라를 조작하는 동안 커서를 숨긴다. 상태가 바뀔 때만 엔진에 알린다.
-	if (isViewportCameraActive != wasViewportCameraActive)
-	{
-		engine->SetCursorVisible(!isViewportCameraActive);
-	}
-
-	cameraController.Update(editorCamera, input, deltaTime, isViewportCameraActive);
 	worldSession.GetEditWorld()->DestroyPendingGameObjects();
 }
 
@@ -127,18 +108,18 @@ void EditorApplication::OnGui()
 	// 가운데 도킹 창이 없을 때는 뒤의 화면이 보이고 입력도 통과하게 한다.
 	ImGui::DockSpaceOverViewport(dockSpaceID, viewport, ImGuiDockNodeFlags_PassthruCentralNode);
 
-	viewportPanel.Draw();
+	editorViewport.ResetRenderRequestState();
+	viewportPanel.Draw(editorViewport);
 
-	if (hasViewportCameraPress && viewportPanel.WasImageRightClicked())
+	if (editorViewport.TryBeginCameraControl(viewportPanel.WasImageRightClicked()))
 	{
-		isViewportCameraActive = true;
 		engine->SetCursorVisible(false);
 	}
 
 	World* world = worldSession.GetEditWorld();
 	if (world == nullptr) { return; }
 
-	// 삭제 대기 객체는 OnUpdate에서 이미 처리했으므로 패널을 그리는 동안 World의 객체 목록은 바뀌지 않는다.
+	// 생성과 삭제 처리를 마친 뒤 World의 객체 목록을 순회한다.
 	// Hierarchy에서 바뀐 선택을 같은 프레임의 Inspector가 읽도록 먼저 그린다.
 	hierarchyPanel.Draw(*world, selection);
 	inspectorPanel.Draw(selection);
@@ -151,23 +132,19 @@ std::optional<SceneRenderRequest> EditorApplication::GetRenderRequest()
 {
 	World* world = worldSession.GetEditWorld();
 
-	if (world == nullptr || !viewportPanel.ShouldRenderScene()) { return std::nullopt; }
-
-	const TextureRenderTarget2D& target = viewportPanel.GetRenderTarget();
-
-	return SceneRenderRequest{ world->GetRenderScene(), editorCamera.GetCameraViewInfo(), &target };
+	if (world == nullptr) { return std::nullopt; }
+	return editorViewport.BuildRenderRequest(world->GetRenderScene());
 }
 
 void EditorApplication::OnShutdown() noexcept
 {
 	// 조작 중에 종료되면 숨긴 커서가 남지 않도록 되돌린다.
-	if (isViewportCameraActive)
+	if (editorViewport.StopCameraControl())
 	{
 		engine->SetCursorVisible(true);
-		isViewportCameraActive = false;
 	}
 
-	if (!viewportPanel.Shutdown())
+	if (!editorViewport.ShutdownRenderTarget())
 	{
 		Log::Write(LogLevel::Error, "Editor", "Failed to request viewport render target release");
 	}

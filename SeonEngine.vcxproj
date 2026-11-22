@@ -21,6 +21,7 @@
     <ClCompile Include="Editor\Source\EditorCamera.cpp" />
     <ClCompile Include="Editor\Source\EditorCameraController.cpp" />
     <ClCompile Include="Editor\Source\EditorSelection.cpp" />
+    <ClCompile Include="Editor\Source\EditorViewport.cpp" />
     <ClCompile Include="Editor\Source\EditorWorldSession.cpp" />
     <ClCompile Include="Editor\Source\Panels\ContentBrowserPanel.cpp" />
     <ClCompile Include="Editor\Source\Panels\HierarchyPanel.cpp" />
@@ -91,6 +92,7 @@
     <ClInclude Include="Editor\Source\EditorCamera.h" />
     <ClInclude Include="Editor\Source\EditorCameraController.h" />
     <ClInclude Include="Editor\Source\EditorSelection.h" />
+    <ClInclude Include="Editor\Source\EditorViewport.h" />
     <ClInclude Include="Editor\Source\EditorWorldSession.h" />
     <ClInclude Include="Editor\Source\Panels\ContentBrowserPanel.h" />
     <ClInclude Include="Editor\Source\Panels\HierarchyPanel.h" />

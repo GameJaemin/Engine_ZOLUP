@@ -1,12 +1,15 @@
 #include "ViewportPanel.h"
 
+#include "DataHub_Resource.h"
+#include "EditorViewport.h"
+#include "Renderer/TextureRenderTarget2D.h"
+
 #include <imgui.h>
 
 #include <cstdint>
 
-void ViewportPanel::Draw()
+void ViewportPanel::Draw(EditorViewport& viewport)
 {
-	shouldRenderScene = false;
 	wasImageRightClicked = false;
 
 	if (!ImGui::Begin(WindowName))
@@ -23,26 +26,13 @@ void ViewportPanel::Draw()
 		const std::uint32_t width = static_cast<std::uint32_t>(availableSize.x);
 		const std::uint32_t height = static_cast<std::uint32_t>(availableSize.y);
 
-		bool isRequestAccepted = false;
-
-		if (renderTarget.GetName().empty())
-		{
-			isRequestAccepted = renderTarget.Initialize(RenderTargetName, width, height);
-		}
-		else
-		{
-			isRequestAccepted = renderTarget.Resize(width, height);
-		}
-
-		shouldRenderScene = isRequestAccepted;
-
-		if (!isRequestAccepted)
+		if (!viewport.PrepareRenderTarget(width, height))
 		{
 			ImGui::TextUnformatted("Could not prepare the viewport render target.");
 		}
 		else
 		{
-			const Hakko::DataHub::TexID textureID = renderTarget.FindTextureID();
+			const Hakko::DataHub::TexID textureID = viewport.GetRenderTarget().FindTextureID();
 
 			if (textureID != 0)
 			{
@@ -59,17 +49,10 @@ void ViewportPanel::Draw()
 					const bool isInsideY = clickPosition.y >= imageMin.y && clickPosition.y < imageMax.y;
 					wasImageRightClicked = isInsideX && isInsideY;
 				}
+
 			}
 		}
 	}
 
 	ImGui::End();
-}
-
-bool ViewportPanel::Shutdown()
-{
-	shouldRenderScene = false;
-	wasImageRightClicked = false;
-
-	return renderTarget.Shutdown();
 }

@@ -1,8 +1,7 @@
 #pragma once
 
-#include "EditorCamera.h"
-#include "EditorCameraController.h"
 #include "EditorSelection.h"
+#include "EditorViewport.h"
 #include "EditorWorldSession.h"
 #include "IApplication.h"
 #include "Panels/ContentBrowserPanel.h"
@@ -33,16 +32,10 @@ private:
 
 	EditorWorldSession worldSession;
 	EditorSelection selection;
-	EditorCamera editorCamera;
-	EditorCameraController cameraController;
+	EditorViewport editorViewport;
 	HierarchyPanel hierarchyPanel;
 	InspectorPanel inspectorPanel;
 	// 콘텐츠 파일 선택은 GameObject 전용 EditorSelection과 별도로 관리한다.
 	ContentBrowserPanel contentBrowserPanel;
 	ViewportPanel viewportPanel;
-
-	// 이번 OnUpdate에서 받은 우클릭 시작을 같은 프레임의 OnGui에서 확인한다.
-	bool hasViewportCameraPress = false;
-	// 장면 뷰포트 위에서 오른쪽 버튼을 누른 뒤 뗄 때까지 true다. 이 동안만 에디터 카메라가 입력을 받는다.
-	bool isViewportCameraActive = false;
 };
