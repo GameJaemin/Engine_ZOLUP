@@ -2,6 +2,7 @@
 
 #include "Core/FileHelper.h"
 #include "Core/Log.h"
+#include "Prefab/PrefabComponents.h"
 
 #include "rapidjson/document.h"
 #include "rapidjson/error/en.h"
@@ -13,196 +14,44 @@
 #include <filesystem>
 #include <format>
 #include <limits>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
+std::string_view ValidatePrefabAssetPath(const rapidjson::Value& value)
+{
+	if (!value.IsString()) { return "must be a string"; }
+
+	const std::string_view pathText(value.GetString(), value.GetStringLength());
+	if (pathText.empty() || pathText.find('\0') != std::string_view::npos)
+	{
+		return "must be non-empty and contain no NUL";
+	}
+
+	const std::filesystem::path path(std::u8string(pathText.begin(), pathText.end()));
+	const std::filesystem::path normalizedPath = path.lexically_normal();
+
+	const bool goesOutsideRoot = normalizedPath.begin() != normalizedPath.end() && *normalizedPath.begin() == "..";
+	if (path.has_root_path() || goesOutsideRoot) { return "must be a repository-relative path"; }
+
+	return {};
+}
+
 namespace
 {
-	std::string_view ValidateAssetPath(const rapidjson::Value& value)
+	/** 한 객체에 같은 종류의 컴포넌트가 두 번 나오면 실패한다. 처음이면 read로 slot을 채운다. */
+	template <typename Definition>
+	bool ReadComponentOnce(std::optional<Definition>& slot, bool (*read)(const rapidjson::Value&, std::string_view, Definition&), std::string_view typeName, const rapidjson::Value& properties, const std::string& context)
 	{
-		if (!value.IsString()) { return "must be a string"; }
-
-		const std::string_view pathText(value.GetString(), value.GetStringLength());
-		if (pathText.empty() || pathText.find('\0') != std::string_view::npos)
+		if (slot.has_value())
 		{
-			return "must be non-empty and contain no NUL";
-		}
-
-		const std::filesystem::path path(std::u8string(pathText.begin(), pathText.end()));
-		const std::filesystem::path normalizedPath = path.lexically_normal();
-
-		const bool goesOutsideRoot = normalizedPath.begin() != normalizedPath.end() && *normalizedPath.begin() == "..";
-		if (path.has_root_path() || goesOutsideRoot) { return "must be a repository-relative path"; }
-
-		return {};
-	}
-
-	bool ReadSkyboxProperties(const rapidjson::Value& properties, std::string_view context, PrefabSkyboxDefinition& skybox)
-	{
-		const auto enabled = properties.FindMember("enabled");
-		if (enabled != properties.MemberEnd())
-		{
-			if (!enabled->value.IsBool())
-			{
-				Log::Write(LogLevel::Error, "Prefab", std::format("{}: enabled must be a boolean", context));
-				return false;
-			}
-			skybox.enabled = enabled->value.GetBool();
-		}
-
-		const auto faces = properties.FindMember("faces");
-		if (faces == properties.MemberEnd() || !faces->value.IsObject())
-		{
-			Log::Write(LogLevel::Error, "Prefab", std::format("{}: faces must be an object", context));
+			Log::Write(LogLevel::Error, "Prefab", std::format("{}: duplicate {} component", context, typeName));
 			return false;
 		}
-
-		constexpr std::array<const char*, 6> faceKeys{
-			"positiveX", "negativeX", "positiveY", "negativeY", "positiveZ", "negativeZ"
-		};
-
-		for (std::size_t index = 0; index < faceKeys.size(); ++index)
-		{
-			const char* key = faceKeys[index];
-			const auto face = faces->value.FindMember(key);
-			if (face == faces->value.MemberEnd())
-			{
-				Log::Write(LogLevel::Error, "Prefab", std::format("{}: faces.{} is required", context, key));
-				return false;
-			}
-
-			const std::string_view error = ValidateAssetPath(face->value);
-			if (!error.empty())
-			{
-				Log::Write(LogLevel::Error, "Prefab", std::format("{}: faces.{} {}", context, key, error));
-				return false;
-			}
-
-			skybox.facePaths[index].assign(face->value.GetString(), face->value.GetStringLength());
-		}
-
-		return true;
-	}
-
-	bool ReadStaticMeshProperties(const rapidjson::Value& properties, std::string_view context, PrefabStaticMeshDefinition& mesh)
-	{
-		const auto model = properties.FindMember("model");
-		const std::string_view error = model == properties.MemberEnd() ? "is required" : ValidateAssetPath(model->value);
-		if (!error.empty())
-		{
-			Log::Write(LogLevel::Error, "Prefab", std::format("{}.model {}", context, error));
-			return false;
-		}
-
-		const auto meshIndex = properties.FindMember("meshIndex");
-		if (meshIndex == properties.MemberEnd() || !meshIndex->value.IsUint64() || !std::in_range<std::size_t>(meshIndex->value.GetUint64()))
-		{
-			Log::Write(LogLevel::Error, "Prefab", std::format("{}.meshIndex must be a non-negative integer in range", context));
-			return false;
-		}
-
-		mesh.modelPath.assign(model->value.GetString(), model->value.GetStringLength());
-		mesh.meshIndex = static_cast<std::size_t>(meshIndex->value.GetUint64());
-
-		const auto baseColorTexture = properties.FindMember("baseColorTexture");
-		if (baseColorTexture != properties.MemberEnd())
-		{
-			const std::string_view textureError = ValidateAssetPath(baseColorTexture->value);
-			if (!textureError.empty())
-			{
-				Log::Write(LogLevel::Error, "Prefab", std::format("{}.baseColorTexture {}", context, textureError));
-				return false;
-			}
-			mesh.baseColorTexturePath.emplace(baseColorTexture->value.GetString(), baseColorTexture->value.GetStringLength());
-		}
-
-		return true;
-	}
-
-	bool ReadAnimationProperties(const rapidjson::Value& properties, std::string_view context, PrefabAnimationDefinition& animation)
-	{
-		const auto model = properties.FindMember("model");
-		const std::string_view error = model == properties.MemberEnd() ? "is required" : ValidateAssetPath(model->value);
-		if (!error.empty())
-		{
-			Log::Write(LogLevel::Error, "Prefab", std::format("{}.model {}", context, error));
-			return false;
-		}
-
-		const auto bindings = properties.FindMember("nodeBindings");
-		if (bindings == properties.MemberEnd() || !bindings->value.IsArray())
-		{
-			Log::Write(LogLevel::Error, "Prefab", std::format("{}.nodeBindings must be an array", context));
-			return false;
-		}
-
-		animation.modelPath.assign(model->value.GetString(), model->value.GetStringLength());
-
-		const rapidjson::Value::ConstArray entries = bindings->value.GetArray();
-		animation.nodeBindings.reserve(entries.Size());
-		for (rapidjson::SizeType index = 0; index < entries.Size(); ++index)
-		{
-			const rapidjson::Value& entry = entries[index];
-			const std::string bindingContext = std::format("{}.nodeBindings[{}]", context, index);
-			if (!entry.IsObject())
-			{
-				Log::Write(LogLevel::Error, "Prefab", bindingContext + " must be an object");
-				return false;
-			}
-
-			const auto sourceNode = entry.FindMember("sourceNode");
-			if (sourceNode == entry.MemberEnd() || !sourceNode->value.IsUint64() || !std::in_range<std::size_t>(sourceNode->value.GetUint64()))
-			{
-				Log::Write(LogLevel::Error, "Prefab", bindingContext + ".sourceNode must be a non-negative integer in range");
-				return false;
-			}
-
-			const auto target = entry.FindMember("target");
-			if (target == entry.MemberEnd() || !target->value.IsString() || target->value.GetStringLength() == 0)
-			{
-				Log::Write(LogLevel::Error, "Prefab", bindingContext + ".target must be a non-empty string");
-				return false;
-			}
-
-			PrefabNodeBinding binding{ static_cast<std::size_t>(sourceNode->value.GetUint64()), std::string(target->value.GetString(), target->value.GetStringLength()) };
-
-			// 한 노드를 두 객체에 넣거나 두 노드가 한 객체를 덮어쓰면 어느 값이 남는지 정해지지 않는다.
-			const auto isDuplicate = [&binding](const PrefabNodeBinding& other) { return other.sourceNode == binding.sourceNode || other.targetID == binding.targetID; };
-			if (std::ranges::any_of(animation.nodeBindings, isDuplicate))
-			{
-				Log::Write(LogLevel::Error, "Prefab", bindingContext + ": sourceNode or target is already bound");
-				return false;
-			}
-
-			animation.nodeBindings.push_back(std::move(binding));
-		}
-
-		return true;
-	}
-
-	bool ReadSkinProperties(const rapidjson::Value& properties, std::string_view context, PrefabSkinDefinition& skin)
-	{
-		const auto model = properties.FindMember("model");
-		const std::string_view error = model == properties.MemberEnd() ? "is required" : ValidateAssetPath(model->value);
-		if (!error.empty())
-		{
-			Log::Write(LogLevel::Error, "Prefab", std::format("{}.model {}", context, error));
-			return false;
-		}
-
-		const auto sourceNode = properties.FindMember("sourceNode");
-		if (sourceNode == properties.MemberEnd() || !sourceNode->value.IsUint64() || !std::in_range<std::size_t>(sourceNode->value.GetUint64()))
-		{
-			Log::Write(LogLevel::Error, "Prefab", std::format("{}.sourceNode must be a non-negative integer in range", context));
-			return false;
-		}
-
-		skin.modelPath.assign(model->value.GetString(), model->value.GetStringLength());
-		skin.sourceNode = static_cast<std::size_t>(sourceNode->value.GetUint64());
-		return true;
+		return read(properties, context + ".properties", slot.emplace());
 	}
 
 	bool ReadPrefabComponents(const rapidjson::Value& object, std::string_view objectContext, PrefabObjectDefinition& definition)
@@ -241,47 +90,17 @@ namespace
 				return false;
 			}
 
-			if (typeName == "skybox")
-			{
-				if (definition.skybox.has_value())
-				{
-					Log::Write(LogLevel::Error, "Prefab", context + ": duplicate skybox component");
-					return false;
-				}
-				if (!ReadSkyboxProperties(properties->value, context + ".properties", definition.skybox.emplace())) { return false; }
-			}
-			else if (typeName == "staticMesh")
-			{
-				if (definition.staticMesh.has_value())
-				{
-					Log::Write(LogLevel::Error, "Prefab", context + ": duplicate staticMesh component");
-					return false;
-				}
-				if (!ReadStaticMeshProperties(properties->value, context + ".properties", definition.staticMesh.emplace())) { return false; }
-			}
-			else if (typeName == "animation")
-			{
-				if (definition.animation.has_value())
-				{
-					Log::Write(LogLevel::Error, "Prefab", context + ": duplicate animation component");
-					return false;
-				}
-				if (!ReadAnimationProperties(properties->value, context + ".properties", definition.animation.emplace())) { return false; }
-			}
-			else if (typeName == "skin")
-			{
-				if (definition.skin.has_value())
-				{
-					Log::Write(LogLevel::Error, "Prefab", context + ": duplicate skin component");
-					return false;
-				}
-				if (!ReadSkinProperties(properties->value, context + ".properties", definition.skin.emplace())) { return false; }
-			}
+			bool isRead = false;
+			if (typeName == "skybox") { isRead = ReadComponentOnce(definition.skybox, &ReadSkyboxProperties, typeName, properties->value, context); }
+			else if (typeName == "staticMesh") { isRead = ReadComponentOnce(definition.staticMesh, &ReadStaticMeshProperties, typeName, properties->value, context); }
+			else if (typeName == "animation") { isRead = ReadComponentOnce(definition.animation, &ReadAnimationProperties, typeName, properties->value, context); }
+			else if (typeName == "skin") { isRead = ReadComponentOnce(definition.skin, &ReadSkinProperties, typeName, properties->value, context); }
 			else
 			{
 				Log::Write(LogLevel::Error, "Prefab", std::format("{}.type: unsupported component type {}", context, typeName));
 				return false;
 			}
+			if (!isRead) { return false; }
 		}
 
 		return true;
@@ -489,7 +308,7 @@ bool ReadPrefabDefinition(const std::filesystem::path& absolutePath, PrefabDefin
 	const auto model = document.FindMember("model");
 	if (model != document.MemberEnd())
 	{
-		const std::string_view error = ValidateAssetPath(model->value);
+		const std::string_view error = ValidatePrefabAssetPath(model->value);
 		if (!error.empty())
 		{
 			Log::Write(LogLevel::Error, "Prefab", std::format("{}: model {}", pathText, error));
@@ -535,7 +354,7 @@ bool ReadPrefabDefinition(const std::filesystem::path& absolutePath, PrefabDefin
 			const auto baseColorTexture = entry.FindMember("baseColorTexture");
 			const std::string_view error = baseColorTexture == entry.MemberEnd()
 				? "is required"
-				: ValidateAssetPath(baseColorTexture->value);
+				: ValidatePrefabAssetPath(baseColorTexture->value);
 			if (!error.empty())
 			{
 				Log::Write(LogLevel::Error, "Prefab", std::format("{}: materialOverrides[{}].baseColorTexture {}", pathText, i, error));

@@ -58,6 +58,11 @@
     <ClCompile Include="Engine\Source\GLTFLoader.cpp" />
     <ClCompile Include="Engine\Source\LevelLoader.cpp" />
     <ClCompile Include="Engine\Source\Prefab.cpp" />
+    <ClCompile Include="Engine\Source\Prefab\PrefabAnimation.cpp" />
+    <ClCompile Include="Engine\Source\Prefab\PrefabInstantiation.cpp" />
+    <ClCompile Include="Engine\Source\Prefab\PrefabSkin.cpp" />
+    <ClCompile Include="Engine\Source\Prefab\PrefabSkybox.cpp" />
+    <ClCompile Include="Engine\Source\Prefab\PrefabStaticMesh.cpp" />
     <ClCompile Include="Engine\Source\ImageLoader.cpp" />
     <ClCompile Include="Engine\Source\WindowsApplication.cpp" />
     <ClCompile Include="Engine\Source\World.cpp" />
@@ -119,6 +124,7 @@
     <ClInclude Include="Engine\Source\GLTFLoader.h" />
     <ClInclude Include="Engine\Source\LevelLoader.h" />
     <ClInclude Include="Engine\Source\Prefab.h" />
+    <ClInclude Include="Engine\Source\Prefab\PrefabComponents.h" />
     <ClInclude Include="Engine\Source\WindowsApplication.h" />
     <ClInclude Include="Engine\Source\World.h" />
     <ClInclude Include="Engine\Source\Renderer\Material.h" />

@@ -49,6 +49,9 @@
     <Filter Include="Engine\Source\Texture">
       <UniqueIdentifier>{f895b427-8ea9-4923-a931-5b461624c193}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Engine\Source\Prefab">
+      <UniqueIdentifier>{63e63055-b179-4dce-971a-5242371f0afa}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Engine\ThirdParty">
       <UniqueIdentifier>{2dcb4069-d326-49c4-bab3-b25f9bff6062}</UniqueIdentifier>
     </Filter>
@@ -191,6 +194,21 @@
     </ClCompile>
     <ClCompile Include="Engine\Source\Prefab.cpp">
       <Filter>Engine\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Prefab\PrefabAnimation.cpp">
+      <Filter>Engine\Source\Prefab</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Prefab\PrefabInstantiation.cpp">
+      <Filter>Engine\Source\Prefab</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Prefab\PrefabSkin.cpp">
+      <Filter>Engine\Source\Prefab</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Prefab\PrefabSkybox.cpp">
+      <Filter>Engine\Source\Prefab</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Prefab\PrefabStaticMesh.cpp">
+      <Filter>Engine\Source\Prefab</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Source\ImageLoader.cpp">
       <Filter>Engine\Source</Filter>
@@ -391,6 +409,9 @@
     </ClInclude>
     <ClInclude Include="Engine\Source\Prefab.h">
       <Filter>Engine\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Prefab\PrefabComponents.h">
+      <Filter>Engine\Source\Prefab</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Core\FileHelper.h">
       <Filter>Engine\Source\Core</Filter>

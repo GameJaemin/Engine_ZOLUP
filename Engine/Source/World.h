@@ -6,10 +6,15 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
+#include <string>
 #include <vector>
 
 class CameraComponent;
 class GameObject;
+struct Prefab;
+struct PrefabPlacement;
+struct Transform;
 
 struct GameObjectDestroyingSubscription
 {
@@ -72,6 +77,15 @@ public:
 	 * 갱신 중에는 호출하지 않는다. 할당 실패 예외는 전파한다.
 	 */
 	GameObject* AddGameObject(std::unique_ptr<GameObject> newGameObject);
+
+	/** 기본 GameObject에 이름과 Transform을 적용한 뒤 등록한다. name을 생략하면 객체 기본 이름을 유지한다. */
+	[[nodiscard]] GameObject* CreateGameObject(const std::optional<std::string>& name, const Transform& transform);
+
+	/**
+	 * 로드된 프리팹을 등록하고 삭제 전까지 유효한 비소유 루트 포인터를 반환한다.
+	 * placement에서 지정한 루트 값만 덮어쓴다. 월드 갱신 중에는 호출하지 않는다.
+	 */
+	[[nodiscard]] GameObject* InstantiatePrefab(const Prefab& prefab, const PrefabPlacement& placement);
 
 	/**
 	 * 등록된 객체와 그 자손을 삭제 예정으로 표시하고 대기 목록에 넣는다.

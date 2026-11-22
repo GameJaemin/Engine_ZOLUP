@@ -76,6 +76,14 @@ struct Prefab
 	std::vector<std::shared_ptr<const Material>> meshMaterialOverrides;
 };
 
+/** 프리팹 루트의 배치 값이다. 비어 있는 항목은 프리팹 기본값을 쓴다. */
+struct PrefabPlacement
+{
+	std::optional<std::string> name;
+	// 루트의 월드 Transform이다. 위치 단위는 cm다.
+	std::optional<Transform> transform;
+};
+
 struct PrefabMaterialOverride
 {
 	// 0부터 시작하는 모델 메시 번호다. 실제 메시 범위는 모델을 읽은 뒤 확인한다.

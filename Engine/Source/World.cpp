@@ -1,10 +1,15 @@
 #include "World.h"
 
 #include "Component/CameraComponent.h"
+#include "Component/TransformComponent.h"
+#include "Core/Math/Transform.h"
 #include "GameObject.h"
 
 #include <algorithm>
 #include <cstddef>
+#include <memory>
+#include <optional>
+#include <string>
 #include <utility>
 
 World::World() = default;
@@ -28,6 +33,18 @@ GameObject* World::AddGameObject(std::unique_ptr<GameObject> newGameObject)
 	GameObject* gameObject = newGameObject.get();
 	gameObjects.push_back(std::move(newGameObject));
 	return gameObject;
+}
+
+GameObject* World::CreateGameObject(const std::optional<std::string>& name, const Transform& transform)
+{
+	std::unique_ptr<GameObject> object = std::make_unique<GameObject>(*this);
+	if (name.has_value())
+	{
+		object->SetName(*name);
+	}
+	object->GetComponent<TransformComponent>()->SetTransform(transform);
+	// World가 객체를 소유하고 호출부에는 빌린 포인터를 돌려준다.
+	return AddGameObject(std::move(object));
 }
 
 bool World::DestroyGameObject(GameObject* gameObject)
