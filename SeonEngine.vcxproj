@@ -89,6 +89,7 @@
     <ClInclude Include="Game\Source\PlayerObject.h" />
     <ClInclude Include="Game\Source\GameApplication.h" />
     <ClInclude Include="Editor\Source\EditorApplication.h" />
+    <ClInclude Include="Editor\Source\EditorAssetDragDrop.h" />
     <ClInclude Include="Editor\Source\EditorCamera.h" />
     <ClInclude Include="Editor\Source\EditorCameraController.h" />
     <ClInclude Include="Editor\Source\EditorSelection.h" />

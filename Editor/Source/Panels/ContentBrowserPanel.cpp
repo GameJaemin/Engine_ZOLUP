@@ -1,5 +1,6 @@
 #include "ContentBrowserPanel.h"
 
+#include "EditorAssetDragDrop.h"
 #include "Paths.h"
 
 #include <imgui.h>
@@ -563,6 +564,13 @@ std::error_code ContentBrowserPanel::DrawEntryTile(const ContentBrowserEntry& en
 		{
 			SelectFile(entry.relativePath, error);
 		}
+	}
+
+	if (entry.type == ContentBrowserEntryType::Prefab && ImGui::BeginDragDropSource())
+	{
+		ImGui::SetDragDropPayload(PrefabDragPayloadType, entry.relativePath.data(), entry.relativePath.size(), ImGuiCond_Once);
+		ImGui::TextUnformatted(entry.name.c_str());
+		ImGui::EndDragDropSource();
 	}
 
 	// 이름에 ## 같은 문자가 있어도 그대로 표시하도록 버튼 라벨과 분리한다.

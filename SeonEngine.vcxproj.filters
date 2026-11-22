@@ -248,6 +248,9 @@
     <ClInclude Include="Editor\Source\EditorApplication.h">
       <Filter>Editor\Source</Filter>
     </ClInclude>
+    <ClInclude Include="Editor\Source\EditorAssetDragDrop.h">
+      <Filter>Editor\Source</Filter>
+    </ClInclude>
     <ClInclude Include="Editor\Source\EditorCamera.h">
       <Filter>Editor\Source</Filter>
     </ClInclude>

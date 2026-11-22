@@ -1,23 +1,28 @@
 #include "ViewportPanel.h"
 
 #include "DataHub_Resource.h"
+#include "EditorAssetDragDrop.h"
 #include "EditorViewport.h"
 #include "Renderer/TextureRenderTarget2D.h"
 
 #include <imgui.h>
 
+#include <cstddef>
 #include <cstdint>
+#include <optional>
+#include <string>
 
-void ViewportPanel::Draw(EditorViewport& viewport)
+std::optional<std::string> ViewportPanel::Draw(EditorViewport& viewport)
 {
 	wasImageRightClicked = false;
 
 	if (!ImGui::Begin(WindowName))
 	{
 		ImGui::End();
-		return;
+		return std::nullopt;
 	}
 
+	std::optional<std::string> droppedPrefabPath;
 	const ImVec2 availableSize = ImGui::GetContentRegionAvail();
 
 	// 정수 픽셀로 바꿨을 때 너비와 높이가 모두 1 이상인 경우만 준비한다.
@@ -50,9 +55,19 @@ void ViewportPanel::Draw(EditorViewport& viewport)
 					wasImageRightClicked = isInsideX && isInsideY;
 				}
 
+				if (ImGui::BeginDragDropTarget())
+				{
+					const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(PrefabDragPayloadType);
+					if (payload != nullptr && payload->IsDelivery() && payload->DataSize > 0)
+					{
+						droppedPrefabPath.emplace(static_cast<const char*>(payload->Data), static_cast<std::size_t>(payload->DataSize));
+					}
+					ImGui::EndDragDropTarget();
+				}
 			}
 		}
 	}
 
 	ImGui::End();
+	return droppedPrefabPath;
 }

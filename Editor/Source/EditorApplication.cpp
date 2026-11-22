@@ -1,15 +1,21 @@
 #include "EditorApplication.h"
 
+#include "AssetManager.h"
 #include "Core/Log.h"
+#include "Core/Math/Transform.h"
+#include "Core/Math/Vector3.h"
 #include "Engine.h"
 #include "Paths.h"
+#include "Prefab.h"
 #include "World.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
 
 #include <filesystem>
+#include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -109,7 +115,7 @@ void EditorApplication::OnGui()
 	ImGui::DockSpaceOverViewport(dockSpaceID, viewport, ImGuiDockNodeFlags_PassthruCentralNode);
 
 	editorViewport.ResetRenderRequestState();
-	viewportPanel.Draw(editorViewport);
+	const std::optional<std::string> droppedPrefabPath = viewportPanel.Draw(editorViewport);
 
 	if (editorViewport.TryBeginCameraControl(viewportPanel.WasImageRightClicked()))
 	{
@@ -118,6 +124,26 @@ void EditorApplication::OnGui()
 
 	World* world = worldSession.GetEditWorld();
 	if (world == nullptr) { return; }
+
+	if (droppedPrefabPath.has_value())
+	{
+		const std::shared_ptr<const Prefab> prefab = AssetManager::Get().LoadPrefab(*droppedPrefabPath);
+		if (prefab == nullptr)
+		{
+			Log::Write(LogLevel::Warning, "Editor", "Failed to load the dropped prefab");
+		}
+		else
+		{
+			Transform transform = prefab->root.localTransform;
+			transform.position = Vector3{ 0.0f, 0.0f, 0.0f };
+			const PrefabPlacement placement{ .transform = transform };
+			GameObject* root = world->InstantiatePrefab(*prefab, placement);
+			if (!selection.Select(root))
+			{
+				Log::Write(LogLevel::Warning, "Editor", "Could not select the dropped prefab instance");
+			}
+		}
+	}
 
 	// 생성과 삭제 처리를 마친 뒤 World의 객체 목록을 순회한다.
 	// Hierarchy에서 바뀐 선택을 같은 프레임의 Inspector가 읽도록 먼저 그린다.
