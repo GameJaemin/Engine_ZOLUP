@@ -123,6 +123,26 @@ bool Engine::Initialize(bool enableGui)
 		return false;
 	}
 
+	// 포워드 SSAO는 불투명 깊이 프리패스를 읽는다. 반경 25 cm와 깊이 바이어스 1 cm로 시작한다.
+	Hakko::DataHub::SetLayerEarlyZ(true);
+	Hakko::DataHub::RTB_SetSSAO ambientOcclusion{};
+	ambientOcclusion.radiusScale = 50.0f;
+	ambientOcclusion.intensity = 0.7f;
+	ambientOcclusion.biasScale = 40.0f;
+	Hakko::DataHub::SendRTB(ambientOcclusion);
+
+	Hakko::DataHub::RTB_SetAOBlur ambientOcclusionBlur{};
+	// 깊이 차이가 4 cm 이내인 주변 픽셀을 블러에 사용한다.
+	ambientOcclusionBlur.depthThresholdScale = 16.0f;
+	Hakko::DataHub::SendRTB(ambientOcclusionBlur);
+
+	// 후처리 슬롯 순서대로 톤매핑 결과에 FXAA를 적용한다.
+	Hakko::DataHub::RTB_SetTonemap tonemap{};
+	Hakko::DataHub::SendRTB(tonemap);
+	Hakko::DataHub::RTB_SetFXAA antialiasing{};
+	antialiasing.ppSlot = 1;
+	Hakko::DataHub::SendRTB(antialiasing);
+
 	return true;
 }
 
