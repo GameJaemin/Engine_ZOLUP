@@ -55,29 +55,33 @@ namespace
 		return std::string(imagePathUtf8.begin(), imagePathUtf8.end());
 	}
 
-	bool LoadPrefabObject(AssetManager& assets, const PrefabObjectDefinition& definition, std::string_view context, PrefabObject& object)
+}
+
+bool LoadPrefabObject(AssetManager& assets, const PrefabObjectDefinition& definition, std::string_view context, PrefabObject& object)
+{
+	object.id = definition.id;
+	object.name = definition.name;
+	object.localTransform = definition.localTransform;
+
+	if (definition.staticMesh.has_value() && !LoadPrefabStaticMesh(assets, *definition.staticMesh, context, object.staticMesh.emplace())) { return false; }
+
+	if (definition.skybox.has_value() && !LoadPrefabSkybox(assets, *definition.skybox, context, object.skybox.emplace())) { return false; }
+
+	if (definition.animation.has_value() && !LoadPrefabAnimation(assets, *definition.animation, context, object.animation.emplace())) { return false; }
+
+	if (definition.skin.has_value() && !LoadPrefabSkin(assets, *definition.skin, context, object.skin.emplace())) { return false; }
+
+	object.light = definition.light;
+	object.camera = definition.camera;
+
+	object.children.reserve(definition.children.size());
+	for (std::size_t index = 0; index < definition.children.size(); ++index)
 	{
-		object.id = definition.id;
-		object.name = definition.name;
-		object.localTransform = definition.localTransform;
-
-		if (definition.staticMesh.has_value() && !LoadPrefabStaticMesh(assets, *definition.staticMesh, context, object.staticMesh.emplace())) { return false; }
-
-		if (definition.skybox.has_value() && !LoadPrefabSkybox(assets, *definition.skybox, context, object.skybox.emplace())) { return false; }
-
-		if (definition.animation.has_value() && !LoadPrefabAnimation(assets, *definition.animation, context, object.animation.emplace())) { return false; }
-
-		if (definition.skin.has_value() && !LoadPrefabSkin(assets, *definition.skin, context, object.skin.emplace())) { return false; }
-
-		object.children.reserve(definition.children.size());
-		for (std::size_t index = 0; index < definition.children.size(); ++index)
-		{
-			const std::string childContext = std::format("{}.children[{}]", context, index);
-			if (!LoadPrefabObject(assets, definition.children[index], childContext, object.children.emplace_back())) { return false; }
-		}
-
-		return true;
+		const std::string childContext = std::format("{}.children[{}]", context, index);
+		if (!LoadPrefabObject(assets, definition.children[index], childContext, object.children.emplace_back())) { return false; }
 	}
+
+	return true;
 }
 
 AssetManager* AssetManager::instance = nullptr;

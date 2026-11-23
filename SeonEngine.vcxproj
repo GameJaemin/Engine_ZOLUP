@@ -60,7 +60,9 @@
     <ClCompile Include="Engine\Source\LevelLoader.cpp" />
     <ClCompile Include="Engine\Source\Prefab.cpp" />
     <ClCompile Include="Engine\Source\Prefab\PrefabAnimation.cpp" />
+    <ClCompile Include="Engine\Source\Prefab\PrefabCamera.cpp" />
     <ClCompile Include="Engine\Source\Prefab\PrefabInstantiation.cpp" />
+    <ClCompile Include="Engine\Source\Prefab\PrefabLight.cpp" />
     <ClCompile Include="Engine\Source\Prefab\PrefabSkin.cpp" />
     <ClCompile Include="Engine\Source\Prefab\PrefabSkybox.cpp" />
     <ClCompile Include="Engine\Source\Prefab\PrefabStaticMesh.cpp" />

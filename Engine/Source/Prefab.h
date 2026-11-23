@@ -14,6 +14,33 @@ struct Material;
 struct Model;
 class StaticMesh;
 class Texture;
+enum class CameraProjectionMode : unsigned char;
+
+enum class PrefabLightType : unsigned char { Directional, Point, Spot, Ambient };
+
+struct PrefabLightDefinition
+{
+	PrefabLightType type;
+	// 아래 세 값은 JSON에서 생략하면 LightComponent 기본값(흰색, 1, true)이 들어간다.
+	// 선형 RGB다.
+	Vector3 color;
+	float intensity;
+	bool enabled;
+	// Point, Spot에서만 쓴다. 단위는 cm다.
+	float rangeCm = 0.0f;
+	// Spot에서만 쓴다. 원뿔 전체 각도이며 단위는 도다.
+	float outerConeDegrees = 0.0f;
+};
+
+struct PrefabCameraDefinition
+{
+	CameraProjectionMode projection;
+	// Perspective면 세로 시야각(도), Orthographic이면 보이는 영역의 세로 길이(cm)다.
+	float projectionValue;
+	// JSON에서 생략하면 CameraComponent 기본값이 들어간다. 단위는 cm다.
+	float nearClipCm;
+	float farClipCm;
+};
 
 struct PrefabSkybox
 {
@@ -63,6 +90,9 @@ struct PrefabObject
 	std::optional<PrefabSkybox> skybox;
 	std::optional<PrefabAnimation> animation;
 	std::optional<PrefabSkin> skin;
+	// 에셋이 없어 읽은 값을 그대로 쓴다.
+	std::optional<PrefabLightDefinition> light;
+	std::optional<PrefabCameraDefinition> camera;
 	std::vector<PrefabObject> children;
 };
 
@@ -130,6 +160,8 @@ struct PrefabObjectDefinition
 	std::optional<PrefabSkyboxDefinition> skybox;
 	std::optional<PrefabAnimationDefinition> animation;
 	std::optional<PrefabSkinDefinition> skin;
+	std::optional<PrefabLightDefinition> light;
+	std::optional<PrefabCameraDefinition> camera;
 	std::vector<PrefabObjectDefinition> children;
 };
 

@@ -47,6 +47,10 @@ namespace
 
 		if (data.skybox.has_value()) { AttachPrefabSkybox(object, *data.skybox); }
 
+		if (data.light.has_value()) { AttachPrefabLight(object, *data.light); }
+
+		if (data.camera.has_value()) { AttachPrefabCamera(object, *data.camera); }
+
 		// 대상 객체가 아직 없을 수 있어 계층을 모두 만든 뒤 붙인다.
 		if (data.animation.has_value())
 		{

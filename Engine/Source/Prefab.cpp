@@ -40,18 +40,28 @@ std::string_view ValidatePrefabAssetPath(const rapidjson::Value& value)
 	return {};
 }
 
+bool IsPrefabFiniteFloat(const rapidjson::Value& value)
+{
+	if (!value.IsNumber()) { return false; }
+
+	// float로 변환하기 전에 double로 읽어 범위를 확인한다.
+	constexpr double MaxFloat = (std::numeric_limits<float>::max)();
+	const double number = value.GetDouble();
+	return std::isfinite(number) && std::abs(number) <= MaxFloat;
+}
+
 namespace
 {
-	/** 한 객체에 같은 종류의 컴포넌트가 두 번 나오면 실패한다. 처음이면 read로 slot을 채운다. */
+	/** 한 객체에 같은 종류의 컴포넌트가 두 번 나오면 실패한다. 처음이면 slot에 initial을 넣은 뒤 read로 채운다. */
 	template <typename Definition>
-	bool ReadComponentOnce(std::optional<Definition>& slot, bool (*read)(const rapidjson::Value&, std::string_view, Definition&), std::string_view typeName, const rapidjson::Value& properties, const std::string& context)
+	bool ReadComponentOnce(std::optional<Definition>& slot, bool (*read)(const rapidjson::Value&, std::string_view, Definition&), std::string_view typeName, const rapidjson::Value& properties, const std::string& context, Definition initial = {})
 	{
 		if (slot.has_value())
 		{
 			Log::Write(LogLevel::Error, "Prefab", std::format("{}: duplicate {} component", context, typeName));
 			return false;
 		}
-		return read(properties, context + ".properties", slot.emplace());
+		return read(properties, context + ".properties", slot.emplace(std::move(initial)));
 	}
 
 	bool ReadPrefabComponents(const rapidjson::Value& object, std::string_view objectContext, PrefabObjectDefinition& definition)
@@ -95,6 +105,12 @@ namespace
 			else if (typeName == "staticMesh") { isRead = ReadComponentOnce(definition.staticMesh, &ReadStaticMeshProperties, typeName, properties->value, context); }
 			else if (typeName == "animation") { isRead = ReadComponentOnce(definition.animation, &ReadAnimationProperties, typeName, properties->value, context); }
 			else if (typeName == "skin") { isRead = ReadComponentOnce(definition.skin, &ReadSkinProperties, typeName, properties->value, context); }
+			else if (typeName == "camera") { isRead = ReadComponentOnce(definition.camera, &ReadCameraProperties, typeName, properties->value, context); }
+			else if (const std::optional<PrefabLightType> lightType = FindPrefabLightType(typeName); lightType.has_value())
+			{
+				// 조명 4종은 한 칸을 쓴다. 중복 오류는 "duplicate light component"로 나온다.
+				isRead = ReadComponentOnce(definition.light, &ReadLightProperties, "light", properties->value, context, PrefabLightDefinition{ .type = *lightType });
+			}
 			else
 			{
 				Log::Write(LogLevel::Error, "Prefab", std::format("{}.type: unsupported component type {}", context, typeName));
@@ -112,11 +128,10 @@ namespace
 		const auto member = fields.FindMember(name);
 		if (member != fields.MemberEnd() && member->value.IsArray() && member->value.Size() == Size)
 		{
-			constexpr double MaxFloat = (std::numeric_limits<float>::max)();
 			std::size_t index = 0;
 			for (const rapidjson::Value& entry : member->value.GetArray())
 			{
-				if (!entry.IsNumber() || !std::isfinite(entry.GetDouble()) || std::abs(entry.GetDouble()) > MaxFloat) { break; }
+				if (!IsPrefabFiniteFloat(entry)) { break; }
 				out[index++] = entry.GetFloat();
 			}
 			if (index == Size) { return true; }
@@ -257,6 +272,15 @@ namespace
 		if (!CollectObjectIDs(root, context, ids)) { return false; }
 		return CheckBindingTargets(root, context, ids);
 	}
+}
+
+bool ReadPrefabObjectDefinition(const rapidjson::Value& object, std::string_view context, PrefabObjectDefinition& outDefinition)
+{
+	PrefabObjectDefinition definition;
+	if (!ReadPrefabObject(object, context, definition)) { return false; }
+	if (!ValidateObjectIDs(definition, context)) { return false; }
+	outDefinition = std::move(definition);
+	return true;
 }
 
 bool ReadPrefabDefinition(const std::filesystem::path& absolutePath, PrefabDefinition& outDefinition)
