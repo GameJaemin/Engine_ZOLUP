@@ -4,6 +4,8 @@
 #include "ImGuiSystem.h"
 #include "WindowsApplication.h"
 
+#include "DataHub_Interface.h"
+
 #include <memory>
 
 namespace Hakko
@@ -53,7 +55,7 @@ public:
 
 private:
 	/**
-	 * 창, (enableGui면 ImGui), DataHub와 렌더러를 순서대로 준비하고 기본 배경을 설정한다.
+	 * 창, (enableGui면 ImGui), DataHub와 렌더러를 순서대로 준비하고 방향광 섀도 맵을 등록한다.
 	 * enableGui면 렌더러가 ImGui 출력 백엔드를 등록했는지까지 확인한다.
 	 */
 	bool Initialize(bool enableGui);
@@ -71,6 +73,9 @@ private:
 
 	// 초기화에 성공한 렌더러만 소유한다. nullptr이면 Finalize할 렌더러가 없다.
 	std::unique_ptr<Hakko::D3D12Renderer> renderer;
+
+	// DataHub가 소유하는 방향광 깊이 텍스처다. 창 크기와 무관하게 재사용한다.
+	Hakko::DataHub::ShadowAtlas directionalShadowAtlas;
 
 	// 초기화 또는 OnResize에 마지막으로 전달한 클라이언트 영역의 픽셀 크기다.
 	int renderWidth = 0;

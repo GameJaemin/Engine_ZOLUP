@@ -1,0 +1,14 @@
+{
+	"root": {
+		"name": "ShadowTestFloor",
+		"components": [
+			{
+				"type": "staticMesh",
+				"properties": {
+					"model": "Game/Content/Meshes/BoxAnimated/BoxAnimated.gltf",
+					"meshIndex": 0
+				}
+			}
+		]
+	}
+}

@@ -4,6 +4,7 @@
 #include "DataHub_Types.h"
 
 #include <array>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -13,6 +14,11 @@ class StaticMeshComponent;
 struct CameraViewInfo;
 struct Matrix4x4;
 struct ViewportRect;
+
+namespace Hakko::DataHub
+{
+	struct ShadowAtlas;
+}
 
 enum class FramePreparationResult
 {
@@ -86,12 +92,13 @@ public:
 	/**
 	 * DataHub 초기화 후 호출한다. viewport는 중간 렌더 타깃 안에서 그릴 픽셀 영역이다.
 	 * projectionAspectRatio는 최종 출력 대상의 너비를 높이로 나눈 값이다.
+	 * shadowAtlas는 등록된 방향광 깊이 텍스처다. 호출 전에 기본 레이어의 캐스케이드 0을 꺼 둔다.
 	 * 영역 크기가 양수가 아니거나, 투영 비율이 유한한 양수가 아니거나,
 	 * 카메라 투영 계산에 실패하면 SkipFrame을 반환한다.
 	 * 조명이나 리소스 및 그리기 요청 준비에 실패하면 Failed를 반환한다.
 	 * Ready를 반환한 프레임은 Sketch에서 준비한 요청을 소비해야 한다.
 	 */
-	FramePreparationResult PrepareFrame(const CameraViewInfo& cameraViewInfo, const ViewportRect& viewport, float projectionAspectRatio);
+	FramePreparationResult PrepareFrame(const CameraViewInfo& cameraViewInfo, const ViewportRect& viewport, float projectionAspectRatio, const Hakko::DataHub::ShadowAtlas& shadowAtlas);
 
 	// Hakko 메시 등록
 private:
@@ -116,9 +123,12 @@ private:
 	/**
 	 * DataHub 초기화 후 Sketch 전에 기본 레이어의 방향광과 환경광을 갱신한다.
 	 * 등록 순서상 처음 방향 조회에 성공한 활성 방향광과 첫 활성 환경광을 각각 사용한다.
-	 * 사용할 조명이 없는 종류는 해당 색상의 RGB를 0으로 설정한다.
+	 * 사용할 조명이 없는 종류는 해당 색상의 RGB를 0으로 설정한다. 선택한 방향광이 있으면 그 방향을 반환한다.
 	 */
-	void PrepareGlobalLight();
+	std::optional<Vector3> PrepareGlobalLight();
+
+	/** 선택한 방향광으로 기본 레이어의 캐스케이드 0을 준비한다. splitEnd는 화면 카메라 공간의 깊이 끝이며 단위는 cm다. */
+	bool PrepareDirectionalShadow(const CameraViewInfo& cameraViewInfo, const Vector3& lightDirection, float splitEnd, const Hakko::DataHub::ShadowAtlas& shadowAtlas);
 
 	// Hakko 점광원 준비
 	/**
@@ -139,7 +149,7 @@ private:
 	 */
 	bool PrepareSpotLight();
 
-	// 0은 Hakko의 빈 조명 ID다. 첫 등록 후에는 같은 ID를 갱신하며 DataHub 종료 시 정리된다.
+	// 첫 등록 후에는 같은 ID를 재사용한다. 0은 아직 등록하지 않았다는 뜻이다.
 	Hakko::DataHub::DataBoxID spotLightDataId = 0;
 
 	// Hakko 그리기 요청 준비
@@ -148,13 +158,14 @@ private:
 	 * 메시와 TransformComponent가 있는 대상의 객체 데이터를 갱신하고 첫 서브메시의 그리기 요청을 추가한다.
 	 * 메시 ID는 에셋 경로로 매번 조회하며 재질의 텍스처 조합을 준비해 요청에 연결한다.
 	 * 투명 요청은 메시 경계 상자 중심의 카메라 공간 Z를 near부터 far 범위의 16비트 정렬 키로 변환한다.
-	 * 준비 실패 시 두 요청 목록을 비우고 false를 반환한다.
+	 * 방향광 그림자가 활성화되면 불투명 요청을 캐스케이드 0에도 제출한다.
+	 * 준비 실패 시 불투명, 투명 및 그림자 요청 목록을 비우고 false를 반환한다.
 	 * 요청 생성부터 렌더러의 요청 소비까지 메시, 텍스처와 조합 ID를 재배치하거나 DataHub를 종료하면 안 된다.
 	 * 새 텍스처와 조합의 업로드 요청은 같은 프레임에 렌더러가 처리해야 한다.
 	 * 경로 변환과 할당 실패 예외는 전파한다.
 	 * 재질 미지정은 오류용 조합 0을 사용한다. 색상 텍스처가 없는 재질은 기본 흰색에 재질 색상 계수를 적용한다.
 	 */
-	bool PrepareDrawRequests(const CameraViewInfo& cameraViewInfo, const Matrix4x4& viewMatrix);
+	bool PrepareDrawRequests(const CameraViewInfo& cameraViewInfo, const Matrix4x4& viewMatrix, bool hasDirectionalShadow);
 
 public:
 	/** 이 장면을 교체할 때 활성 DataHub의 로컬 조명 슬롯을 비우고 재사용하던 ID를 반환한다. */

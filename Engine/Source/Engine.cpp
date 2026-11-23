@@ -116,6 +116,14 @@ bool Engine::Initialize(bool enableGui)
 		}
 	}
 
+	directionalShadowAtlas = Hakko::DataHub::CreateShadowAtlas(L"DirectionalShadow", 2048);
+	if (directionalShadowAtlas.size == 0)
+	{
+		Log::Write(LogLevel::Error, "Engine", "Directional shadow atlas registration failed");
+		return false;
+	}
+
+
 	return true;
 }
 
@@ -188,6 +196,10 @@ int Engine::RunFrameLoop(IApplication& application)
 		Hakko::DataHub::ClearTranslucentDrawRequests();
 		Hakko::DataHub::ClearScreenDrawRequests();
 		Hakko::DataHub::ClearShadowDrawRequests();
+		// 그리기 요청을 비운 뒤에도 남는 깊이 출력과 캐스케이드 범위를 초기화한다.
+		Hakko::DataHub::RTB_SetShadowCascade shadow{};
+		shadow.enable = false;
+		Hakko::DataHub::SendRTB(shadow);
 		Hakko::DataHub::SetLayerBackground(0);
 		Hakko::DataHub::SetLayerCompositeTarget({});
 		Hakko::DataHub::SetLayerViewport(Hakko::DataHub::Layer_Viewport{ renderArea.x, renderArea.y, renderArea.width, renderArea.height });
@@ -218,7 +230,7 @@ int Engine::RunFrameLoop(IApplication& application)
 
 			const float projectionAspectRatio = static_cast<float>(outputWidth) / static_cast<float>(outputHeight);
 			RenderScene& scene = request->scene.get();
-			const FramePreparationResult result = scene.PrepareFrame(request->camera, renderArea, projectionAspectRatio);
+			const FramePreparationResult result = scene.PrepareFrame(request->camera, renderArea, projectionAspectRatio, directionalShadowAtlas);
 
 			if (result == FramePreparationResult::Failed) { return 1; }
 
@@ -245,6 +257,7 @@ bool Engine::Shutdown()
 	if (shouldFinalizeDataHub)
 	{
 		Hakko::DataHub::Finalize();
+		directionalShadowAtlas = {};
 		shouldFinalizeDataHub = false;
 	}
 	renderer.reset();
