@@ -3,6 +3,7 @@
 #include "Core/Math/Vector3.h"
 #include "DataHub_Types.h"
 
+#include <array>
 #include <unordered_map>
 #include <vector>
 
@@ -121,13 +122,15 @@ private:
 
 	// Hakko 점광원 준비
 	/**
-	 * DataHub 초기화 후 Sketch 전에 기본 레이어의 슬롯 1에 첫 유효한 활성 점광원을 연결한다.
-	 * 사용할 점광원이 없으면 빈 조명을 연결한다. 조명 데이터 등록이나 갱신 실패 시 false를 반환한다.
+	 * DataHub 초기화 후 Sketch 전에 기본 레이어에 등록 순서대로 유효한 활성 점광원을 최대 4개 연결한다.
+	 * 남은 슬롯에는 빈 조명을 연결한다. 조명 데이터 등록이나 갱신 실패 시 false를 반환한다.
 	 */
-	bool PreparePointLight();
+	bool PreparePointLights();
 
-	// 0은 Hakko의 빈 조명 ID다. 첫 등록 후에는 같은 ID를 갱신하며 DataHub 종료 시 정리된다.
-	Hakko::DataHub::DataBoxID pointLightDataId = 0;
+	// 슬롯 0은 빈 조명이며 슬롯 2는 스포트라이트가 사용한다.
+	static constexpr std::array<uint16_t, 4> PointLightSlots{ 1, 3, 4, 5 };
+	// 각 슬롯에서 처음 등록한 ID를 재사용한다. 0은 아직 등록하지 않았다는 뜻이다.
+	std::array<Hakko::DataHub::DataBoxID, PointLightSlots.size()> pointLightDataIds{};
 
 	// Hakko 스포트라이트 준비
 	/**
@@ -154,6 +157,9 @@ private:
 	bool PrepareDrawRequests(const CameraViewInfo& cameraViewInfo, const Matrix4x4& viewMatrix);
 
 public:
+	/** 이 장면을 교체할 때 활성 DataHub의 로컬 조명 슬롯을 비우고 재사용하던 ID를 반환한다. */
+	void ReleaseLightData();
+
 	/**
 	 * 종료 시 장면 제출을 중단한 뒤 객체 데이터 ID와 뼈 행렬 데이터 ID와 메시 경계 상자 중심 캐시를 비운다. 이후 이 장면을 제출하지 않는다.
 	 * 실제 객체 데이터는 DataHub에 남으며 GPU 작업 완료 뒤 DataHub 종료에서 정리한다.

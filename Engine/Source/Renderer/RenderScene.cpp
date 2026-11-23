@@ -33,8 +33,6 @@
 
 namespace
 {
-	// 드로우 데이터에서 사용하지 않는 조명 칸은 빈 슬롯 0을 참조한다.
-	constexpr uint16_t pointLightSlot = 1;
 	constexpr uint16_t spotLightSlot = 2;
 
 	void ClearDrawRequests()
@@ -219,7 +217,7 @@ FramePreparationResult RenderScene::PrepareFrame(const CameraViewInfo& cameraVie
 	PrepareBackground();
 	PrepareGlobalLight();
 
-	if (!PreparePointLight())
+	if (!PreparePointLights())
 	{
 		return FramePreparationResult::Failed;
 	}
@@ -321,16 +319,14 @@ void RenderScene::PrepareGlobalLight()
 	Hakko::DataHub::SendRTB(light);
 }
 
-bool RenderScene::PreparePointLight()
+bool RenderScene::PreparePointLights()
 {
 	constexpr uint32_t pointLightType = 2;
 
-	Hakko::DataHub::RTB_SetLight request{};
-	request.slot = pointLightSlot;
-
+	std::size_t lightIndex = 0;
 	for (const LightComponent* lightComponent : lightComponents)
 	{
-		const auto* component = dynamic_cast<const PointLightComponent*>(lightComponent);
+		const PointLightComponent* component = dynamic_cast<const PointLightComponent*>(lightComponent);
 		if (component == nullptr || !component->IsEnabled()) { continue; }
 
 		Vector3 position;
@@ -345,6 +341,7 @@ bool RenderScene::PreparePointLight()
 		light.range = component->GetRange();
 		light.color = { color.x * intensity, color.y * intensity, color.z * intensity };
 
+		Hakko::DataHub::DataBoxID& pointLightDataId = pointLightDataIds[lightIndex];
 		if (pointLightDataId == 0)
 		{
 			pointLightDataId = Hakko::DataHub::AddDataBox(light);
@@ -355,11 +352,21 @@ bool RenderScene::PreparePointLight()
 			return false;
 		}
 
+		Hakko::DataHub::RTB_SetLight request{};
+		request.slot = PointLightSlots[lightIndex];
 		request.light = pointLightDataId;
-		break;
+		Hakko::DataHub::SendRTB(request);
+
+		++lightIndex;
+		if (lightIndex == PointLightSlots.size()) { break; }
 	}
 
-	Hakko::DataHub::SendRTB(request);
+	for (; lightIndex < PointLightSlots.size(); ++lightIndex)
+	{
+		Hakko::DataHub::RTB_SetLight request{};
+		request.slot = PointLightSlots[lightIndex];
+		Hakko::DataHub::SendRTB(request);
+	}
 	return true;
 }
 
@@ -430,8 +437,12 @@ bool RenderScene::PrepareDrawRequests(const CameraViewInfo& cameraViewInfo, cons
 		const Matrix4x4 worldMatrix = transform->GetWorldMatrix();
 
 		Hakko::DataHub::DataBox_Render3DGeneral objectData{};
-		objectData.affectLights[0] = pointLightSlot;
+		objectData.affectLights[0] = PointLightSlots[0];
 		objectData.affectLights[1] = spotLightSlot;
+		for (std::size_t lightIndex = 1; lightIndex < PointLightSlots.size(); ++lightIndex)
+		{
+			objectData.affectLights[lightIndex + 1] = PointLightSlots[lightIndex];
+		}
 		objectData.worldMat = ToShaderMatrix(worldMatrix);
 		// 재질 미지정 시에도 객체 데이터에는 유효한 수치를 채운다.
 		// 정상 표면과 오류용 표면의 구분은 텍스처 조합에서 처리한다.
@@ -560,6 +571,29 @@ bool RenderScene::PrepareDrawRequests(const CameraViewInfo& cameraViewInfo, cons
 	}
 
 	return true;
+}
+
+void RenderScene::ReleaseLightData()
+{
+	for (std::size_t lightIndex = 0; lightIndex < PointLightSlots.size(); ++lightIndex)
+	{
+		Hakko::DataHub::DataBoxID& lightId = pointLightDataIds[lightIndex];
+		if (lightId == 0) { continue; }
+
+		Hakko::DataHub::RTB_SetLight request{};
+		request.slot = PointLightSlots[lightIndex];
+		Hakko::DataHub::SendRTB(request);
+		Hakko::DataHub::RemoveDataBox(Hakko::DataHub::DataBoxType_DtB_Light, lightId);
+		lightId = 0;
+	}
+
+	if (spotLightDataId == 0) { return; }
+
+	Hakko::DataHub::RTB_SetLight request{};
+	request.slot = spotLightSlot;
+	Hakko::DataHub::SendRTB(request);
+	Hakko::DataHub::RemoveDataBox(Hakko::DataHub::DataBoxType_DtB_Light, spotLightDataId);
+	spotLightDataId = 0;
 }
 
 void RenderScene::ClearObjectDataIds()

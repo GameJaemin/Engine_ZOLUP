@@ -26,6 +26,10 @@ bool EditorWorldSession::OpenLevel(const std::filesystem::path& levelPath, Edito
 	if (!LoadLevel(levelPath, *newWorld).has_value()) { return false; }
 	if (!selection.SetWorld(newWorld.get())) { return false; }
 
+	if (editWorld)
+	{
+		editWorld->GetRenderScene().ReleaseLightData();
+	}
 	editWorld = std::move(newWorld);
 
 	return true;
