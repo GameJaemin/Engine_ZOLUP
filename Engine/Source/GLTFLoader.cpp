@@ -359,7 +359,34 @@ namespace
 		return occlusionTextureInfo;
 	}
 
-	/** materials 배열을 읽는다. 배열이 없으면 빈 배열을 돌려준다. pbrMetallicRoughness, normalTexture 및 occlusionTexture 외의 항목은 읽지 않는다. */
+	/** 발광 필드의 형태를 검사한 뒤 원본 참조와 계수를 채운다. 잘못된 필드는 발광 기본값을 유지한다. */
+	bool ReadMaterialEmission(const rapidjson::Value& item, GLTFMaterial& material)
+	{
+		const auto texture = item.FindMember("emissiveTexture");
+		if (texture != item.MemberEnd())
+		{
+			const rapidjson::Value& info = texture->value;
+			if (!info.IsObject() || !info.HasMember("index") || !info["index"].IsUint64()) { return false; }
+			if (info.HasMember("texCoord") && !info["texCoord"].IsUint64()) { return false; }
+		}
+
+		const auto factor = item.FindMember("emissiveFactor");
+		if (factor != item.MemberEnd())
+		{
+			const rapidjson::Value& rgb = factor->value;
+			if (!rgb.IsArray() || rgb.Size() != 3) { return false; }
+			if (!rgb[0].IsNumber() || !rgb[1].IsNumber() || !rgb[2].IsNumber()) { return false; }
+
+			material.emissiveFactor = { rgb[0].GetDouble(), rgb[1].GetDouble(), rgb[2].GetDouble() };
+		}
+		if (texture != item.MemberEnd())
+		{
+			material.emissiveTexture = ReadTextureInfo(texture->value);
+		}
+		return true;
+	}
+
+	/** materials 배열에서 지원하는 색, 알파, 노멀, ORM 및 발광 정보를 읽는다. 배열이 없으면 빈 배열을 돌려준다. */
 	std::vector<GLTFMaterial> ReadMaterials(const rapidjson::Value& document)
 	{
 		std::vector<GLTFMaterial> materials;
@@ -395,6 +422,10 @@ namespace
 
 			if (item.HasMember("normalTexture")) { material.normalTexture = ReadNormalTextureInfo(item["normalTexture"]); }
 			if (item.HasMember("occlusionTexture")) { material.occlusionTexture = ReadOcclusionTextureInfo(item["occlusionTexture"]); }
+			if (!ReadMaterialEmission(item, material))
+			{
+				Log::Write(LogLevel::Warning, "GLTFLoader", std::format("Material '{}': invalid emissiveTexture or emissiveFactor; emission disabled", material.name));
+			}
 
 			materials.push_back(std::move(material));
 		}
@@ -966,6 +997,7 @@ namespace
 	 * 계수가 0~1 밖이거나 번호가 범위를 벗어나거나, 지원하지 않는 형식의 색, 노멀 또는 금속성-거칠기 텍스처면 출력값을 유지하고 false를 반환한다.
 	 * 노멀 scale이 1이 아니면 경고 로그를 남기고 1로 본다.
 	 * 차폐 strength가 1이 아니면 경고 로그를 남기고 1로 본다. 차폐 텍스처를 찾지 못하면 경고 로그를 남기고 비워 둔다.
+	 * 발광 계수나 텍스처 참조를 사용할 수 없으면 경고 로그를 남기고 발광 데이터만 기본값으로 둔다.
 	 */
 	bool ConvertMaterial(const GLTFDocument& gltfDocument, std::size_t materialIndex, GLTFModelMaterial& outMaterial)
 	{
@@ -975,7 +1007,7 @@ namespace
 		const GLTFMaterialPBRMetallicRoughness& pbr = source.pbrMetallicRoughness;
 
 		// 명세상 계수는 모두 0~1이다. 엔진 재질도 같은 범위만 받으므로 벗어나면 잘못된 파일로 본다.
-		const auto isUnitRange = [](float value) { return std::isfinite(value) && value >= 0.0f && value <= 1.0f; };
+		const auto isUnitRange = [](double value) { return std::isfinite(value) && value >= 0.0 && value <= 1.0; };
 		if (!isUnitRange(pbr.baseColorFactor[0]) || !isUnitRange(pbr.baseColorFactor[1]) || !isUnitRange(pbr.baseColorFactor[2])) { return false; }
 		if (!isUnitRange(pbr.metallicFactor) || !isUnitRange(pbr.roughnessFactor)) { return false; }
 
@@ -1030,6 +1062,20 @@ namespace
 			{
 				Log::Write(LogLevel::Warning, "GLTFLoader", std::format("Material {} ('{}'): occlusionTexture is not supported; ignored", materialIndex, source.name));
 			}
+		}
+
+		const std::array<double, 3>& emission = source.emissiveFactor;
+		if (!isUnitRange(emission[0]) || !isUnitRange(emission[1]) || !isUnitRange(emission[2]))
+		{
+			Log::Write(LogLevel::Warning, "GLTFLoader", std::format("Material {} ('{}'): emissiveFactor is out of range; emission disabled", materialIndex, source.name));
+		}
+		else if (source.emissiveTexture.has_value() && !FindTextureImageUri(gltfDocument, *source.emissiveTexture, material.emissiveImageUri))
+		{
+			Log::Write(LogLevel::Warning, "GLTFLoader", std::format("Material {} ('{}'): emissiveTexture is not supported; emission disabled", materialIndex, source.name));
+		}
+		else
+		{
+			material.emissiveFactor = { static_cast<float>(emission[0]), static_cast<float>(emission[1]), static_cast<float>(emission[2]) };
 		}
 
 		outMaterial = std::move(material);

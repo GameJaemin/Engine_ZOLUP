@@ -12,7 +12,9 @@
 #include "Texture/ORMImageBuilder.h"
 #include "Texture/Texture.h"
 
+#include <array>
 #include <cassert>
+#include <cmath>
 #include <cstddef>
 #include <format>
 #include <optional>
@@ -33,7 +35,7 @@ std::shared_ptr<const Material> LoadMaterialWithBaseColorTexture(AssetManager& a
 namespace
 {
 	// 생성 식별자가 경로 정규화를 거쳐도 원본 키의 구분자와 문자가 해석되지 않게 한다.
-	std::string EncodeORMPathKey(std::string_view key)
+	std::string EncodeGeneratedPathKey(std::string_view key)
 	{
 		constexpr char HexDigits[] = "0123456789abcdef";
 		std::string encoded;
@@ -46,6 +48,21 @@ namespace
 		return encoded;
 	}
 
+	/** 8비트 sRGB 값마다 선형 계수를 곱한 뒤 다시 sRGB로 저장할 바이트를 계산한다. */
+	std::array<std::byte, 256> MakeEmissiveChannelTable(float factor)
+	{
+		std::array<std::byte, 256> table{};
+		for (std::size_t index = 0; index < table.size(); ++index)
+		{
+			const double srgb = static_cast<double>(index) / 255.0;
+			const double linear = srgb <= 0.04045 ? srgb / 12.92 : std::pow((srgb + 0.055) / 1.055, 2.4);
+			const double scaled = linear * factor;
+			const double encoded = scaled <= 0.0031308 ? scaled * 12.92 : 1.055 * std::pow(scaled, 1.0 / 2.4) - 0.055;
+			table[index] = static_cast<std::byte>(std::lround(encoded * 255.0));
+		}
+		return table;
+	}
+
 	/** 모델 폴더 기준 UTF-8 uri를 modelDirectory와 합쳐 저장소 루트 기준 UTF-8 상대 경로로 바꾼다. */
 	std::string MakeModelImagePath(const std::filesystem::path& modelDirectory, const std::string& uri)
 	{
@@ -54,7 +71,6 @@ namespace
 		const std::u8string imagePathUtf8 = imagePath.generic_u8string();
 		return std::string(imagePathUtf8.begin(), imagePathUtf8.end());
 	}
-
 }
 
 bool LoadPrefabObject(AssetManager& assets, const PrefabObjectDefinition& definition, std::string_view context, PrefabObject& object)
@@ -256,6 +272,22 @@ std::shared_ptr<const Material> AssetManager::CreateMaterial(const GLTFModelMate
 		if (material.ormTexture == nullptr) { return nullptr; }
 	}
 
+	const Vector3& factor = source.emissiveFactor;
+	if (factor.x > 0.0f || factor.y > 0.0f || factor.z > 0.0f)
+	{
+		std::string texturePath;
+		if (!source.emissiveImageUri.empty())
+		{
+			texturePath = MakeModelImagePath(modelDirectory, source.emissiveImageUri);
+		}
+
+		material.emissiveTexture = LoadEmissiveTexture(texturePath, factor);
+		if (material.emissiveTexture == nullptr)
+		{
+			Log::Write(LogLevel::Warning, "AssetManager", std::format("Material '{}': could not prepare emissive texture", source.name));
+		}
+	}
+
 	return std::make_shared<const Material>(std::move(material));
 }
 
@@ -374,7 +406,7 @@ std::shared_ptr<const Texture> AssetManager::LoadORMTexture(std::string_view occ
 	}
 
 	// ':'와 '|'로 실제 파일 경로와 구분하고, 역할과 원본 바이트 길이를 포함한다.
-	const std::string generatedPath = std::format("generated:orm|o={}:{}|m={}:{}", cacheKey.first.size(), EncodeORMPathKey(cacheKey.first), cacheKey.second.size(), EncodeORMPathKey(cacheKey.second));
+	const std::string generatedPath = std::format("generated:orm|o={}:{}|m={}:{}", cacheKey.first.size(), EncodeGeneratedPathKey(cacheKey.first), cacheKey.second.size(), EncodeGeneratedPathKey(cacheKey.second));
 	Texture textureData("ORM", generatedPath);
 	if (!textureData.Initialize(std::move(ormImage), TextureFormat::RGBA8UNorm))
 	{
@@ -384,6 +416,51 @@ std::shared_ptr<const Texture> AssetManager::LoadORMTexture(std::string_view occ
 
 	std::shared_ptr<const Texture> texture = std::make_shared<const Texture>(std::move(textureData));
 	ormTextures.emplace(cacheKey, texture);
+	return texture;
+}
+
+std::shared_ptr<const Texture> AssetManager::LoadEmissiveTexture(std::string_view texturePath, const Vector3& factor)
+{
+	constexpr TextureFormat format = TextureFormat::RGBA8SRGB;
+	std::shared_ptr<const Texture> source;
+	if (!texturePath.empty())
+	{
+		source = LoadTexture(texturePath, format);
+		if (source == nullptr) { return nullptr; }
+
+		const bool usesOriginalColor = factor.x == 1.0f && factor.y == 1.0f && factor.z == 1.0f;
+		if (usesOriginalColor) { return source; }
+	}
+
+	const std::string sourceKey = source != nullptr ? Paths::MakeAssetKey(source->GetPath()) : std::string{};
+	// 계수를 손실 없이 키에 넣고, 양의 0과 음의 0은 같은 키를 쓴다.
+	const std::string generatedPath = std::format("generated:emissive|image={}|rgb={:a},{:a},{:a}", EncodeGeneratedPathKey(sourceKey), std::abs(factor.x), std::abs(factor.y), std::abs(factor.z));
+	const std::pair<std::string, TextureFormat> cacheKey{ generatedPath, format };
+	const auto cachedTexture = textures.find(cacheKey);
+	if (cachedTexture != textures.end()) { return cachedTexture->second; }
+
+	constexpr std::byte white{ 255 };
+	Image image{ 1, 1, { white, white, white, white } };
+	if (source != nullptr)
+	{
+		image = Image{ source->GetWidth(), source->GetHeight(), source->GetPixels() };
+	}
+
+	const std::array<std::byte, 256> red = MakeEmissiveChannelTable(factor.x);
+	const std::array<std::byte, 256> green = MakeEmissiveChannelTable(factor.y);
+	const std::array<std::byte, 256> blue = MakeEmissiveChannelTable(factor.z);
+	for (std::size_t offset = 0; offset < image.pixels.size(); offset += 4)
+	{
+		image.pixels[offset] = red[std::to_integer<std::size_t>(image.pixels[offset])];
+		image.pixels[offset + 1] = green[std::to_integer<std::size_t>(image.pixels[offset + 1])];
+		image.pixels[offset + 2] = blue[std::to_integer<std::size_t>(image.pixels[offset + 2])];
+	}
+
+	Texture textureData("Emissive", generatedPath);
+	if (!textureData.Initialize(std::move(image), format)) { return nullptr; }
+
+	std::shared_ptr<const Texture> texture = std::make_shared<const Texture>(std::move(textureData));
+	textures.emplace(cacheKey, texture);
 	return texture;
 }
 

@@ -58,6 +58,10 @@ struct GLTFModelMaterial
 	// 비어 있으면 차폐 텍스처가 없거나 지원하지 않는 형식이다. 금속성-거칠기 텍스처와 같은 이미지(한 장에 묶은 ORM)일 수 있다.
 	// 퍼센트 인코딩은 baseColorImageUri와 같이 풀지 않은 그대로다.
 	std::string occlusionImageUri;
+	// 발광 이미지의 .gltf 폴더 기준 UTF-8 상대 경로다. 비어 있으면 발광 이미지를 사용하지 않는다.
+	std::string emissiveImageUri;
+	// 선형 RGB 발광 계수다. 각 성분은 0 이상 1 이하다. 발광 입력이 잘못됐으면 기본값 (0, 0, 0)이다.
+	Vector3 emissiveFactor{};
 	// 금속성 계수. 0 이상 1 이하다.
 	float metallic = 1.0f;
 	// 거칠기 계수. 0 이상 1 이하다.

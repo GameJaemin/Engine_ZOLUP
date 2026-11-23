@@ -286,6 +286,17 @@ bool HakkoResources::PrepareTextureProp(const Material* material, Hakko::DataHub
 		name += "|O=" + ormName;
 	}
 
+	Hakko::DataHub::TexID emissiveTextureID = RESERVED_TEX_NONE_EMISSION_ID;
+	if (material->emissiveTexture != nullptr)
+	{
+		const Texture& emissiveTexture = *material->emissiveTexture;
+		if (!PrepareTexture(emissiveTexture, emissiveTextureID)) { return false; }
+
+		std::string emissiveName;
+		if (!MakeTexturePropNamePart(emissiveTexture, emissiveName)) { return false; }
+		name += "|E=" + emissiveName;
+	}
+
 	const Hakko::DataHub::TexPropID existingTexturePropID = Hakko::DataHub::GetTexPropId(name);
 	if (existingTexturePropID != 0)
 	{
@@ -297,7 +308,7 @@ bool HakkoResources::PrepareTextureProp(const Material* material, Hakko::DataHub
 	prop.texId[0] = baseColorTextureID;
 	prop.texId[1] = normalTextureID;
 	prop.texId[2] = ormTextureID;
-	prop.texId[3] = RESERVED_TEX_NONE_EMISSION_ID;
+	prop.texId[3] = emissiveTextureID;
 
 	const Hakko::DataHub::TexPropID texturePropID = Hakko::DataHub::CreateTexProp(name.c_str(), prop);
 	if (texturePropID == 0)

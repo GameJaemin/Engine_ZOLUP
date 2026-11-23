@@ -37,6 +37,9 @@ struct Material
 	// nullptr이면 ORM 텍스처가 없는 정상 상태이며 차폐 없이 거칠기와 금속성 계수만 쓴다.
 	std::shared_ptr<const Texture> ormTexture;
 
+	// 선형 RGB 발광 계수가 반영된 sRGB 텍스처다. nullptr이면 발광이 없다.
+	std::shared_ptr<const Texture> emissiveTexture;
+
 	// ORM의 G에 곱할 거칠기 계수다. 범위는 0부터 1까지다.
 	// 1이면 텍스처 값을 유지하고, 0이면 최종 거칠기가 0이 된다.
 	float roughness = 1.0f;
