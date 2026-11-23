@@ -12,6 +12,7 @@
 #include "Component/TransformComponent.h"
 #include "Core/Log.h"
 #include "Core/Math/MathUtility.h"
+#include "Core/Math/Matrix4x4.h"
 #include "GameObject.h"
 #include "HakkoResources.h"
 #include "Mesh/StaticMesh.h"
@@ -21,6 +22,8 @@
 #include "DataHub.h"
 #include "DataHub_Interface.h"
 
+#include <DirectXMath.h>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -29,6 +32,7 @@
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <string>
 
 namespace
@@ -37,10 +41,13 @@ namespace
 	constexpr uint16_t pointLightSlot = 1;
 	constexpr uint16_t spotLightSlot = 2;
 
+	constexpr float DirectionalShadowDistanceCm = 5000.0f;
+
 	void ClearDrawRequests()
 	{
 		Hakko::DataHub::ClearOpaqueDrawRequests();
 		Hakko::DataHub::ClearTranslucentDrawRequests();
+		Hakko::DataHub::ClearShadowDrawRequests();
 	}
 
 	Vector3 CalculateLocalBoundsCenter(const StaticMesh& mesh)
@@ -199,7 +206,7 @@ void RenderScene::PrepareBackground() const
 	Hakko::DataHub::SetLayerBackgroundColor(1.0f, 1.0f, 1.0f, 1.0f);
 }
 
-FramePreparationResult RenderScene::PrepareFrame(const CameraViewInfo& cameraViewInfo, const ViewportRect& viewport, float projectionAspectRatio)
+FramePreparationResult RenderScene::PrepareFrame(const CameraViewInfo& cameraViewInfo, const ViewportRect& viewport, float projectionAspectRatio, const Hakko::DataHub::ShadowAtlas& shadowAtlas)
 {
 	ClearDrawRequests();
 
@@ -217,7 +224,7 @@ FramePreparationResult RenderScene::PrepareFrame(const CameraViewInfo& cameraVie
 	}
 
 	PrepareBackground();
-	PrepareGlobalLight();
+	const std::optional<Vector3> directionalLightDirection = PrepareGlobalLight();
 
 	if (!PreparePointLight())
 	{
@@ -234,7 +241,15 @@ FramePreparationResult RenderScene::PrepareFrame(const CameraViewInfo& cameraVie
 		return FramePreparationResult::Failed;
 	}
 
-	if (!PrepareDrawRequests(cameraViewInfo, viewMatrix))
+	const float splitEnd = (std::min)(DirectionalShadowDistanceCm, cameraViewInfo.farClipDistance);
+	const bool hasDirectionalShadow = directionalLightDirection.has_value() && splitEnd > cameraViewInfo.nearClipDistance;
+	if (hasDirectionalShadow && !PrepareDirectionalShadow(cameraViewInfo, *directionalLightDirection, splitEnd, shadowAtlas))
+	{
+		Log::Write(LogLevel::Error, "RenderScene", "Failed to prepare directional shadow cascade");
+		return FramePreparationResult::Failed;
+	}
+
+	if (!PrepareDrawRequests(cameraViewInfo, viewMatrix, hasDirectionalShadow))
 	{
 		return FramePreparationResult::Failed;
 	}
@@ -273,7 +288,7 @@ bool RenderScene::PrepareCamera(const CameraViewInfo& cameraViewInfo, const Matr
 	return true;
 }
 
-void RenderScene::PrepareGlobalLight()
+std::optional<Vector3> RenderScene::PrepareGlobalLight()
 {
 	Hakko::DataHub::RTB_SetGlobalLight light{};
 
@@ -282,15 +297,15 @@ void RenderScene::PrepareGlobalLight()
 	light.direction = { 0.0f, 0.0f, 1.0f };
 	light.color = { 0.0f, 0.0f, 0.0f, 1.0f };
 
-	bool hasDirectionalLight = false;
+	std::optional<Vector3> directionalLightDirection;
 	bool hasAmbientLight = false;
 	for (const LightComponent* lightComponent : lightComponents)
 	{
 		if (!lightComponent->IsEnabled()) { continue; }
 
-		if (!hasDirectionalLight)
+		if (!directionalLightDirection.has_value())
 		{
-			if (const auto* component = dynamic_cast<const DirectionalLightComponent*>(lightComponent))
+			if (const DirectionalLightComponent* component = dynamic_cast<const DirectionalLightComponent*>(lightComponent))
 			{
 				Vector3 direction;
 				if (component->GetLightDirection(direction))
@@ -299,7 +314,7 @@ void RenderScene::PrepareGlobalLight()
 					const float intensity = component->GetIntensity();
 					light.direction = { direction.x, direction.y, direction.z };
 					light.color = { color.x * intensity, color.y * intensity, color.z * intensity, 1.0f };
-					hasDirectionalLight = true;
+					directionalLightDirection = direction;
 				}
 			}
 		}
@@ -315,10 +330,52 @@ void RenderScene::PrepareGlobalLight()
 			}
 		}
 
-		if (hasDirectionalLight && hasAmbientLight) { break; }
+		if (directionalLightDirection.has_value() && hasAmbientLight) { break; }
 	}
 
 	Hakko::DataHub::SendRTB(light);
+	return directionalLightDirection;
+}
+
+bool RenderScene::PrepareDirectionalShadow(const CameraViewInfo& cameraViewInfo, const Vector3& lightDirection, float splitEnd, const Hakko::DataHub::ShadowAtlas& shadowAtlas)
+{
+	constexpr float ShadowViewSizeCm = 8000.0f;
+	constexpr float ShadowDepthCm = 12000.0f;
+	constexpr float ShadowNearClipCm = 1.0f;
+
+	const Matrix4x4 cameraRotation = Matrix4x4::CreateFromQuaternion(cameraViewInfo.rotation);
+	const Vector3 cameraForward{ cameraRotation.m[2][0], cameraRotation.m[2][1], cameraRotation.m[2][2] };
+	// 카메라의 그림자 구간 중간을 조명 직교 영역의 중심으로 잡는다.
+	const float centerDepth = std::midpoint(cameraViewInfo.nearClipDistance, splitEnd);
+	const Vector3 center = cameraViewInfo.position + cameraForward * centerDepth;
+	const float lightLengthSquared = lightDirection.Dot(lightDirection);
+	if (!(lightLengthSquared > 0.0f) || !std::isfinite(lightLengthSquared)) { return false; }
+
+	const Vector3 lightForward = lightDirection / std::sqrt(lightLengthSquared);
+	const Vector3 lightEye = center - lightForward * (ShadowDepthCm * 0.5f);
+	// 수직에 가까운 빛에서도 뷰 행렬을 만들 수 있도록 다른 기준 축을 고른다.
+	const Vector3 referenceUp = std::abs(lightForward.y) < 0.99f ? Vector3{ 0.0f, 1.0f, 0.0f } : Vector3{ 0.0f, 0.0f, 1.0f };
+	const Vector3 right = referenceUp.Cross(lightForward);
+	const Vector3 lightRight = right / std::sqrt(right.Dot(right));
+	const Vector3 lightUp = lightForward.Cross(lightRight);
+
+	// 행 벡터를 각 열의 조명 축에 투영하고, 마지막 행에서 조명 카메라 위치를 뺀다.
+	const Matrix4x4 lightView{ {
+		{ lightRight.x, lightUp.x, lightForward.x, 0.0f },
+		{ lightRight.y, lightUp.y, lightForward.y, 0.0f },
+		{ lightRight.z, lightUp.z, lightForward.z, 0.0f },
+		{ -lightEye.Dot(lightRight), -lightEye.Dot(lightUp), -lightEye.Dot(lightForward), 1.0f }
+	} };
+	const Matrix4x4 lightProjection = Matrix4x4::CreateOrthographicViewSize(ShadowViewSizeCm, ShadowViewSizeCm, ShadowNearClipCm, ShadowDepthCm);
+
+	Hakko::DataHub::RTB_SetShadowCascade shadow{};
+	shadow.atlas = shadowAtlas;
+	shadow.lightViewProj = ToShaderMatrix(lightView * lightProjection);
+	shadow.splitEnd = splitEnd;
+	Hakko::DataHub::SendRTB(shadow);
+
+	const Hakko::DataHub::RTB_ActionDraw& action = Hakko::DataHub::LayerList[0].actionGlobalSDWs[0];
+	return action.output.useDS && action.actionDataBoxId != 0;
 }
 
 bool RenderScene::PreparePointLight()
@@ -408,7 +465,7 @@ bool RenderScene::PrepareSpotLight()
 	return true;
 }
 
-bool RenderScene::PrepareDrawRequests(const CameraViewInfo& cameraViewInfo, const Matrix4x4& viewMatrix)
+bool RenderScene::PrepareDrawRequests(const CameraViewInfo& cameraViewInfo, const Matrix4x4& viewMatrix, bool hasDirectionalShadow)
 {
 	for (const StaticMeshComponent* component : staticMeshComponents)
 	{
@@ -556,10 +613,31 @@ bool RenderScene::PrepareDrawRequests(const CameraViewInfo& cameraViewInfo, cons
 			request.generalId = objectDataId;
 			request.optionalId = boneDataId;
 			Hakko::DataHub::SendRTB(request);
+
+			if (hasDirectionalShadow)
+			{
+				const Hakko::DataHub::RTB_DrawSDW shadowRequest = Hakko::DataHub::MakeShadowRequest(request);
+				Hakko::DataHub::SendRTB(shadowRequest, Hakko::DataHub::LayerList[0].actionGlobalSDWs[0]);
+			}
 		}
 	}
 
 	return true;
+}
+
+void RenderScene::ReleaseLightData()
+{
+	if (pointLightDataId != 0)
+	{
+		Hakko::DataHub::RemoveDataBox(Hakko::DataHub::DataBoxType_DtB_Light, pointLightDataId);
+		pointLightDataId = 0;
+	}
+
+	if (spotLightDataId != 0)
+	{
+		Hakko::DataHub::RemoveDataBox(Hakko::DataHub::DataBoxType_DtB_Light, spotLightDataId);
+		spotLightDataId = 0;
+	}
 }
 
 void RenderScene::ClearObjectDataIds()

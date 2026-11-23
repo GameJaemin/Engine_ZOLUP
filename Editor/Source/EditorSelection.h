@@ -19,7 +19,7 @@ public:
 
 	/**
 	 * World를 바꾸면 기존 선택을 비우고 구독을 해제한다. 같은 World면 기존 선택을 유지한다.
-	 * nullptr로 분리할 수 있다. 새 구독이 거절되면 분리된 상태로 false를 반환한다.
+	 * nullptr로 분리할 수 있다. 새 구독이 거절되면 기존 관찰과 선택을 유지하고 false를 반환한다.
 	 */
 	bool SetWorld(World* newWorld);
 

@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -251,8 +252,9 @@ std::string ContentBrowserPanel::GetSelectedFilePath()
 	return selectedFilePath;
 }
 
-void ContentBrowserPanel::Draw()
+std::optional<std::string> ContentBrowserPanel::Draw(const std::optional<MouseCoordinates>& leftDoubleClickPosition)
 {
+	std::optional<std::string> requestedMapPath;
 	ValidateSelection();
 
 	if (ImGui::Begin(WindowName))
@@ -297,7 +299,7 @@ void ContentBrowserPanel::Draw()
 					resetContentScroll = false;
 				}
 
-				contentError = DrawContentGrid();
+				contentError = DrawContentGrid(leftDoubleClickPosition, requestedMapPath);
 			}
 			ImGui::EndChild();
 		}
@@ -327,6 +329,7 @@ void ContentBrowserPanel::Draw()
 
 	// Begin의 반환값과 관계없이 End를 호출해야 한다.
 	ImGui::End();
+	return requestedMapPath;
 }
 
 std::error_code ContentBrowserPanel::DrawToolbar()
@@ -528,7 +531,7 @@ bool ContentBrowserPanel::MatchesSearch(const ContentBrowserEntry& entry) const
 	return name.find(query) != std::string::npos;
 }
 
-std::error_code ContentBrowserPanel::DrawEntryTile(const ContentBrowserEntry& entry, float tileWidth, std::string& outRequestedDirectory)
+std::error_code ContentBrowserPanel::DrawEntryTile(const ContentBrowserEntry& entry, float tileWidth, const std::optional<MouseCoordinates>& leftDoubleClickPosition, std::string& outRequestedDirectory, std::optional<std::string>& outRequestedMapPath)
 {
 	std::error_code error;
 
@@ -545,24 +548,39 @@ std::error_code ContentBrowserPanel::DrawEntryTile(const ContentBrowserEntry& en
 
 	const ImVec2 tilePosition = ImGui::GetCursorScreenPos();
 	const ImVec2 tileSize(tileWidth, 80.0f);
+	const ImVec2 tileEnd(tilePosition.x + tileSize.x, tilePosition.y + tileSize.y);
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
 
 	// 표시 이름과 별개로 전체 상대 경로를 ID에 사용한다.
 	ImGui::PushID(entry.relativePath.c_str());
 
 	// 타일 전체가 클릭 영역이며 선택 상태에 따라 배경을 표시한다.
-	if (ImGui::Selectable("##Tile", isSelected, ImGuiSelectableFlags_AllowDoubleClick, tileSize))
+	const bool activated = ImGui::Selectable("##Tile", isSelected, ImGuiSelectableFlags_None, tileSize);
+	const bool isMap = entry.type == ContentBrowserEntryType::Map;
+	bool wasDoubleClicked = false;
+	if ((isFolder || isMap) && leftDoubleClickPosition && ImGui::IsItemVisible())
 	{
-		if (isFolder)
+		// 단일 ImGui 뷰포트의 타일 좌표는 Win32 클라이언트 픽셀과 같은 기준이다.
+		const ImVec2 clipMin = drawList->GetClipRectMin();
+		const ImVec2 clipMax = drawList->GetClipRectMax();
+		const float clickX = static_cast<float>(leftDoubleClickPosition->x);
+		const float clickY = static_cast<float>(leftDoubleClickPosition->y);
+		const bool isInsideTile = clickX >= tilePosition.x && clickX < tileEnd.x && clickY >= tilePosition.y && clickY < tileEnd.y;
+		const bool isInsideClip = clickX >= clipMin.x && clickX < clipMax.x && clickY >= clipMin.y && clickY < clipMax.y;
+		wasDoubleClicked = isInsideTile && isInsideClip;
+	}
+
+	if (isFolder && wasDoubleClicked)
+	{
+		// 순회 중 목록이 교체되지 않도록 실제 이동은 호출자에게 맡긴다.
+		outRequestedDirectory = entry.relativePath;
+	}
+	else if (!isFolder && (activated || wasDoubleClicked))
+	{
+		const bool selected = SelectFile(entry.relativePath, error);
+		if (selected && wasDoubleClicked)
 		{
-			// 순회 중 목록이 교체되지 않도록 실제 이동은 호출자에게 맡긴다.
-			if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-			{
-				outRequestedDirectory = entry.relativePath;
-			}
-		}
-		else
-		{
-			SelectFile(entry.relativePath, error);
+			outRequestedMapPath = entry.relativePath;
 		}
 	}
 
@@ -579,10 +597,8 @@ std::error_code ContentBrowserPanel::DrawEntryTile(const ContentBrowserEntry& en
 	text += entry.name;
 
 	const ImVec2 textPosition(tilePosition.x + 6.0f, tilePosition.y + 6.0f);
-	const ImVec2 tileEnd(tilePosition.x + tileSize.x, tilePosition.y + tileSize.y);
 
 	// 긴 이름은 타일 안에서 줄바꿈하고 타일 밖으로 그리지 않는다.
-	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	drawList->PushClipRect(tilePosition, tileEnd, true);
 	drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), textPosition, ImGui::GetColorU32(ImGuiCol_Text), text.c_str(), nullptr, tileWidth - 12.0f);
 	drawList->PopClipRect();
@@ -592,7 +608,7 @@ std::error_code ContentBrowserPanel::DrawEntryTile(const ContentBrowserEntry& en
 	return error;
 }
 
-std::error_code ContentBrowserPanel::DrawContentGrid()
+std::error_code ContentBrowserPanel::DrawContentGrid(const std::optional<MouseCoordinates>& leftDoubleClickPosition, std::optional<std::string>& outRequestedMapPath)
 {
 	std::error_code error;
 
@@ -623,6 +639,10 @@ std::error_code ContentBrowserPanel::DrawContentGrid()
 	int visibleCount = 0;
 	std::string requestedDirectory;
 
+	// 팝업에 가렸거나 드래그 중이면 타일의 더블클릭 요청을 받지 않는다.
+	const bool acceptsDoubleClick = leftDoubleClickPosition && ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) && ImGui::GetDragDropPayload() == nullptr;
+	const std::optional<MouseCoordinates> tileDoubleClickPosition = acceptsDoubleClick ? leftDoubleClickPosition : std::nullopt;
+
 	for (const ContentBrowserEntry& entry : currentEntries)
 	{
 		if (!MatchesSearch(entry)) { continue; }
@@ -632,7 +652,7 @@ std::error_code ContentBrowserPanel::DrawContentGrid()
 			ImGui::SameLine();
 		}
 
-		const std::error_code tileError = DrawEntryTile(entry, tileWidth, requestedDirectory);
+		const std::error_code tileError = DrawEntryTile(entry, tileWidth, tileDoubleClickPosition, requestedDirectory, outRequestedMapPath);
 
 		// 뒤의 정상 항목이 앞서 발생한 오류를 덮어쓰지 않도록 한다.
 		if (tileError && !error)

@@ -32,7 +32,7 @@ class InputState
 	// 프레임 갱신
 public:
 	/**
-	 * 메시지 처리 전에 프레임당 한 번 호출한다. 키 이벤트 목록과 상대 이동량 및 휠 누적값을 비운다.
+	 * 메시지 처리 전에 프레임당 한 번 호출한다. 키 이벤트 목록, 더블클릭 위치, 상대 이동량 및 휠 누적값을 비운다.
 	 * 누르는 중인 키, 마지막 마우스 위치와 이벤트 목록 메모리는 유지한다.
 	 */
 	void ClearFrameEvents();
@@ -79,11 +79,17 @@ public:
 	/** 커서가 창을 벗어날 때 저장한 위치를 지운다. 상대 이동량은 유지한다. */
 	void InvalidateMousePosition();
 
-	/** 포커스 상실 시 저장한 마우스 위치와 상대 이동량 및 휠 누적값을 비운다. */
+	/** 포커스 상실 시 저장한 마우스 위치, 더블클릭 위치, 상대 이동량 및 휠 누적값을 비운다. */
 	void ResetMouseInput();
 
 	/** 마지막으로 기록한 클라이언트 좌표를 반환한다. 유효한 위치가 없으면 std::nullopt를 반환한다. */
 	std::optional<MouseCoordinates> GetMousePosition() const;
+
+	/** 왼쪽 버튼 더블클릭 메시지의 클라이언트 좌표를 기록한다. */
+	void RecordLeftDoubleClick(int x, int y);
+
+	/** 이번 프레임에서 마지막 왼쪽 버튼 더블클릭 위치를 반환한다. */
+	std::optional<MouseCoordinates> GetLeftDoubleClickPosition() const;
 
 	/** 상대 이동량을 이번 프레임의 누적값에 더한다. 화면 픽셀 단위가 아니다. */
 	void AddRawMouseDelta(int deltaX, int deltaY);
@@ -99,6 +105,7 @@ public:
 
 private:
 	std::optional<MouseCoordinates> mousePosition;
+	std::optional<MouseCoordinates> leftDoubleClickPosition;
 	// 이번 프레임에 누적된 장치 보고 단위의 상대 이동량이다.
 	RawMouseDelta rawMouseDelta{};
 	float mouseWheelDelta = 0.0f;

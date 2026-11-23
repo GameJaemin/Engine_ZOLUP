@@ -1,8 +1,11 @@
 #pragma once
 
+#include "Input/InputState.h"
+
 #include <array>
 #include <cstddef>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -80,8 +83,10 @@ public:
 	 * 유효한 ImGui Context에서 NewFrame 이후, Render 전에 호출한다.
 	 * 파일 탐색 초기화는 호출자가 Initialize로 수행한다.
 	 * 창 표시 전에 선택을 검증해 삭제되거나 접근할 수 없는 파일의 선택을 해제한다.
+	 * leftDoubleClickPosition은 이번 프레임의 클라이언트 픽셀 좌표다.
+	 * 맵을 더블클릭해 파일 선택에 성공한 프레임에만 저장소 기준 UTF-8 상대 경로를 반환한다.
 	 */
-	void Draw();
+	[[nodiscard]] std::optional<std::string> Draw(const std::optional<MouseCoordinates>& leftDoubleClickPosition);
 
 public:
 	// ImGui 창 이름이다. 도킹 기본 배치도 이 이름으로 창을 찾으므로 같은 상수를 쓴다.
@@ -138,17 +143,19 @@ private:
 	 * 콘텐츠 항목 하나를 지정한 너비의 타일로 그린다. tileWidth는 여백 합계인 12보다 커야 한다.
 	 * 유효한 ImGui 프레임과 콘텐츠 영역 내부에서 호출한다.
 	 * 파일 클릭 시 선택하고, 폴더 더블클릭 시 이동 요청 경로를 출력한다.
+	 * 맵 더블클릭에서 파일 선택에 성공하면 outRequestedMapPath에 상대 경로를 저장한다.
 	 * 호출자는 전체 항목 순회를 마친 뒤 요청한 폴더로 이동한다.
 	 */
-	std::error_code DrawEntryTile(const ContentBrowserEntry& entry, float tileWidth, std::string& outRequestedDirectory);
+	std::error_code DrawEntryTile(const ContentBrowserEntry& entry, float tileWidth, const std::optional<MouseCoordinates>& leftDoubleClickPosition, std::string& outRequestedDirectory, std::optional<std::string>& outRequestedMapPath);
 
 	/**
 	 * 현재 폴더의 직계 항목을 검색어로 필터링해 타일 그리드로 표시한다.
 	 * 유효한 ImGui 프레임과 콘텐츠 영역 내부에서 호출한다.
 	 * 영역 너비에 맞춰 열 개수를 계산하며, 폴더 이동은 순회 종료 후 수행한다.
+	 * 맵 더블클릭으로 생성된 요청은 outRequestedMapPath로 전달한다.
 	 * 파일 선택 또는 폴더 이동 실패 시 오류를 반환한다.
 	 */
-	std::error_code DrawContentGrid();
+	std::error_code DrawContentGrid(const std::optional<MouseCoordinates>& leftDoubleClickPosition, std::optional<std::string>& outRequestedMapPath);
 
 	/**
 	 * 폴더 하나와 펼쳐진 하위 폴더를 트리로 표시한다.

@@ -15,28 +15,30 @@
 #include <string>
 #include <typeinfo>
 
-void InspectorPanel::Draw(EditorSelection& selection)
+bool InspectorPanel::Draw(EditorSelection& selection)
 {
 	if (!ImGui::Begin(WindowName))
 	{
 		ImGui::End();
-		return;
+		return false;
 	}
 
 	GameObject* selected = selection.GetSelectedGameObject();
 	if (selected == nullptr || selected->IsPendingDestroy())
 	{
 		ImGui::End();
-		return;
+		return false;
 	}
 
 	ImGui::PushID(selected);
+	bool edited = false;
 
 	// 편집 결과를 매 프레임 이름에 반영하고, 입력 항목의 편집 상태는 객체별 ImGui ID로 구분한다.
 	std::string name = selected->GetName();
-	if (ImGui::InputText("Name", &name))
+	if (ImGui::InputText("Name", &name) && name != selected->GetName())
 	{
 		selected->SetName(name);
+		edited = true;
 	}
 
 	const GameObject* parent = selected->GetParent();
@@ -64,6 +66,7 @@ void InspectorPanel::Draw(EditorSelection& selection)
 			if (std::isfinite(positionValues[0]) && std::isfinite(positionValues[1]) && std::isfinite(positionValues[2]))
 			{
 				transform->SetPosition(Vector3{ positionValues[0], positionValues[1], positionValues[2] });
+				edited = true;
 			}
 		}
 
@@ -75,6 +78,7 @@ void InspectorPanel::Draw(EditorSelection& selection)
 			if (std::isfinite(rotationValues[0]) && std::isfinite(rotationValues[1]) && std::isfinite(rotationValues[2]))
 			{
 				transform->SetRotation(EulerAngles{ rotationValues[0], rotationValues[1], rotationValues[2] });
+				edited = true;
 			}
 		}
 
@@ -86,10 +90,12 @@ void InspectorPanel::Draw(EditorSelection& selection)
 			if (std::isfinite(scaleValues[0]) && std::isfinite(scaleValues[1]) && std::isfinite(scaleValues[2]))
 			{
 				transform->SetScale(Vector3{ scaleValues[0], scaleValues[1], scaleValues[2] });
+				edited = true;
 			}
 		}
 	}
 
 	ImGui::PopID();
 	ImGui::End();
+	return edited;
 }

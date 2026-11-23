@@ -19,6 +19,7 @@ void InputState::ClearFrameEvents()
 {
 	// clear는 원소만 지우고 할당한 메모리는 유지하므로 다음 프레임에 재사용한다.
 	frameEvents.clear();
+	leftDoubleClickPosition.reset();
 	rawMouseDelta = {};
 	mouseWheelDelta = 0.0f;
 }
@@ -84,6 +85,7 @@ void InputState::InvalidateMousePosition()
 void InputState::ResetMouseInput()
 {
 	InvalidateMousePosition();
+	leftDoubleClickPosition.reset();
 	rawMouseDelta = {};
 	mouseWheelDelta = 0.0f;
 }
@@ -91,6 +93,16 @@ void InputState::ResetMouseInput()
 std::optional<MouseCoordinates> InputState::GetMousePosition() const
 {
 	return mousePosition;
+}
+
+void InputState::RecordLeftDoubleClick(int x, int y)
+{
+	leftDoubleClickPosition = MouseCoordinates{ x, y };
+}
+
+std::optional<MouseCoordinates> InputState::GetLeftDoubleClickPosition() const
+{
+	return leftDoubleClickPosition;
 }
 
 void InputState::AddRawMouseDelta(int deltaX, int deltaY)

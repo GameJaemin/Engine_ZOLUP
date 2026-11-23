@@ -150,17 +150,23 @@ namespace
 		case WM_SYSKEYUP:
 			inputState.ReleaseKey(TranslateKey(wParam));
 			break;
+		case WM_LBUTTONDBLCLK:
+			inputState.RecordLeftDoubleClick(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+			// Windows는 더블클릭의 두 번째 누름을 별도 메시지로 보낸다.
+			[[fallthrough]];
 		case WM_LBUTTONDOWN:
 		case WM_LBUTTONUP:
-			RecordMouseButton(windowHandle, inputState, Key::MouseLeft, message == WM_LBUTTONDOWN);
+			RecordMouseButton(windowHandle, inputState, Key::MouseLeft, message != WM_LBUTTONUP);
 			break;
 		case WM_RBUTTONDOWN:
+		case WM_RBUTTONDBLCLK:
 		case WM_RBUTTONUP:
-			RecordMouseButton(windowHandle, inputState, Key::MouseRight, message == WM_RBUTTONDOWN);
+			RecordMouseButton(windowHandle, inputState, Key::MouseRight, message != WM_RBUTTONUP);
 			break;
 		case WM_MBUTTONDOWN:
+		case WM_MBUTTONDBLCLK:
 		case WM_MBUTTONUP:
-			RecordMouseButton(windowHandle, inputState, Key::MouseMiddle, message == WM_MBUTTONDOWN);
+			RecordMouseButton(windowHandle, inputState, Key::MouseMiddle, message != WM_MBUTTONUP);
 			break;
 		case WM_MOUSEMOVE:
 			RecordMouseMove(windowHandle, inputState, lParam);
@@ -282,7 +288,7 @@ bool WindowsApplication::Create()
 
 	WNDCLASSEXW windowClass = {};
 	windowClass.cbSize = sizeof(windowClass);
-	windowClass.style = CS_HREDRAW | CS_VREDRAW;
+	windowClass.style = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
 	windowClass.lpfnWndProc = WindowProc;
 	windowClass.hInstance = instance;
 	windowClass.lpszClassName = WindowClassName;

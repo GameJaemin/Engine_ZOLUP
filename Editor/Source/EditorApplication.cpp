@@ -17,12 +17,14 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <vector>
+#include <utility>
 
 namespace
 {
-	// 맵 열기 기능이 생기기 전까지 에디터가 시작할 때 여는 맵이다. 저장소 루트 기준 경로다.
+	// 에디터가 시작할 때 여는 맵의 저장소 기준 경로다.
 	constexpr std::string_view DefaultLevelPath = "Game/Content/Maps/DevMap.json";
+	constexpr char ConfirmMapOpenPopup[] = "Unsaved Map Changes";
+	constexpr char MapOpenFailedPopup[] = "Could Not Open Map";
 
 	/**
 	 * 도킹 공간을 오른쪽 Inspector, 아래 Content Browser, 왼쪽 Hierarchy와 가운데 Viewport로 나눈다.
@@ -57,7 +59,6 @@ bool EditorApplication::OnInitialize(Engine& inEngine)
 	// 패널을 탭과 칸으로 붙일 수 있게 한다. 렌더러가 창 밖 출력을 지원하지 않아 멀티 뷰포트는 켜지 않는다.
 	ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
-	// TODO: 맵 열기 기능이 생기면 기본 맵 대신 사용자가 고른 맵을 연다.
 	std::filesystem::path levelPath;
 	if (!Paths::GetAbsolutePath(DefaultLevelPath, levelPath))
 	{
@@ -66,6 +67,10 @@ bool EditorApplication::OnInitialize(Engine& inEngine)
 	else if (!worldSession.OpenLevel(levelPath))
 	{
 		Log::Write(LogLevel::Error, "Editor", "Failed to open the default level");
+	}
+	else
+	{
+		currentMapKey = Paths::MakeAssetKey(DefaultLevelPath);
 	}
 
 	// 기본 맵을 열지 못해도 패널과 콘텐츠 브라우저는 쓸 수 있으므로 빈 World로 시작한다.
@@ -90,6 +95,9 @@ bool EditorApplication::OnInitialize(Engine& inEngine)
 
 void EditorApplication::OnUpdate(const InputState& input, float deltaTime)
 {
+	leftDoubleClickPosition = input.GetLeftDoubleClickPosition();
+	ProcessMapOpenRequest();
+
 	if (editorViewport.UpdateCamera(input, deltaTime))
 	{
 		engine->SetCursorVisible(true);
@@ -138,6 +146,10 @@ void EditorApplication::OnGui()
 			transform.position = Vector3{ 0.0f, 0.0f, 0.0f };
 			const PrefabPlacement placement{ .transform = transform };
 			GameObject* root = world->InstantiatePrefab(*prefab, placement);
+			if (root != nullptr)
+			{
+				hasUnsavedMapChanges = true;
+			}
 			if (!selection.Select(root))
 			{
 				Log::Write(LogLevel::Warning, "Editor", "Could not select the dropped prefab instance");
@@ -148,10 +160,19 @@ void EditorApplication::OnGui()
 	// 생성과 삭제 처리를 마친 뒤 World의 객체 목록을 순회한다.
 	// Hierarchy에서 바뀐 선택을 같은 프레임의 Inspector가 읽도록 먼저 그린다.
 	hierarchyPanel.Draw(*world, selection);
-	inspectorPanel.Draw(selection);
+	if (inspectorPanel.Draw(selection))
+	{
+		hasUnsavedMapChanges = true;
+	}
 
 	// 콘텐츠 파일 선택은 패널 내부에서 관리하므로 EditorSelection을 전달하지 않는다.
-	contentBrowserPanel.Draw();
+	std::optional<std::string> requestedMapPath = contentBrowserPanel.Draw(leftDoubleClickPosition);
+	if (requestedMapPath && !pendingMapPath && !failedMapPath && Paths::MakeAssetKey(*requestedMapPath) != currentMapKey)
+	{
+		pendingMapPath = std::move(requestedMapPath);
+		canOpenPendingMap = !hasUnsavedMapChanges;
+	}
+	DrawMapOpenDialogs();
 }
 
 std::optional<SceneRenderRequest> EditorApplication::GetRenderRequest()
@@ -178,5 +199,83 @@ void EditorApplication::OnShutdown() noexcept
 	selection.SetWorld(nullptr);
 	worldSession.Close();
 
+	currentMapKey.clear();
+	leftDoubleClickPosition.reset();
+	pendingMapPath.reset();
+	failedMapPath.reset();
+	canOpenPendingMap = false;
+	hasUnsavedMapChanges = false;
 	engine = nullptr;
+}
+
+void EditorApplication::ProcessMapOpenRequest()
+{
+	if (!pendingMapPath || !canOpenPendingMap) { return; }
+
+	std::string requestedMapPath = std::move(*pendingMapPath);
+	pendingMapPath.reset();
+	canOpenPendingMap = false;
+
+	std::string requestedMapKey = Paths::MakeAssetKey(requestedMapPath);
+	std::filesystem::path levelPath;
+	if (!Paths::GetAbsolutePath(requestedMapPath, levelPath) || !worldSession.ReplaceLevel(levelPath, selection))
+	{
+		Log::Write(LogLevel::Error, "Editor", "Could not open map: " + requestedMapPath);
+		failedMapPath = std::move(requestedMapPath);
+		return;
+	}
+
+	currentMapKey = std::move(requestedMapKey);
+	hasUnsavedMapChanges = false;
+	Log::Write(LogLevel::Info, "Editor", "Opened map: " + requestedMapPath);
+}
+
+void EditorApplication::DrawMapOpenDialogs()
+{
+	if (pendingMapPath && !canOpenPendingMap)
+	{
+		if (!ImGui::IsPopupOpen(ConfirmMapOpenPopup))
+		{
+			ImGui::OpenPopup(ConfirmMapOpenPopup);
+		}
+		if (ImGui::BeginPopupModal(ConfirmMapOpenPopup, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			ImGui::TextUnformatted("Opening another map will discard unsaved changes.");
+			ImGui::TextWrapped("%s", pendingMapPath->c_str());
+			if (ImGui::Button("Discard Changes and Open"))
+			{
+				canOpenPendingMap = true;
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape, false))
+			{
+				pendingMapPath.reset();
+				canOpenPendingMap = false;
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::SetItemDefaultFocus();
+			ImGui::EndPopup();
+		}
+	}
+
+	if (failedMapPath)
+	{
+		if (!ImGui::IsPopupOpen(MapOpenFailedPopup))
+		{
+			ImGui::OpenPopup(MapOpenFailedPopup);
+		}
+		if (ImGui::BeginPopupModal(MapOpenFailedPopup, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			ImGui::TextUnformatted("The current map is still open.");
+			ImGui::TextWrapped("%s", failedMapPath->c_str());
+			if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGuiKey_Escape, false))
+			{
+				failedMapPath.reset();
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::SetItemDefaultFocus();
+			ImGui::EndPopup();
+		}
+	}
 }

@@ -1,11 +1,24 @@
 #include "EditorWorldSession.h"
 
+#include "EditorSelection.h"
 #include "LevelLoader.h"
 #include "World.h"
 
 #include <optional>
 #include <utility>
 #include <vector>
+
+namespace
+{
+	std::unique_ptr<World> LoadEditWorld(const std::filesystem::path& levelPath)
+	{
+		std::unique_ptr<World> newWorld = std::make_unique<World>();
+		const std::optional<std::vector<GameObject*>> loadedObjects = LoadLevel(levelPath, *newWorld);
+		if (!loadedObjects.has_value()) { return nullptr; }
+
+		return newWorld;
+	}
+}
 
 EditorWorldSession::EditorWorldSession() = default;
 
@@ -26,10 +39,19 @@ bool EditorWorldSession::OpenLevel(const std::filesystem::path& levelPath)
 	if (editWorld) { return false; }
 
 	// 불러오기에 성공한 World만 세션에 넣는다. 실패하면 세션은 닫힌 상태로 남는다.
-	std::unique_ptr<World> newWorld = std::make_unique<World>();
-	const std::optional<std::vector<GameObject*>> loadedObjects = LoadLevel(levelPath, *newWorld);
-	if (!loadedObjects.has_value()) { return false; }
+	editWorld = LoadEditWorld(levelPath);
+	return editWorld != nullptr;
+}
 
+bool EditorWorldSession::ReplaceLevel(const std::filesystem::path& levelPath, EditorSelection& selection)
+{
+	if (!editWorld) { return false; }
+
+	std::unique_ptr<World> newWorld = LoadEditWorld(levelPath);
+	if (!newWorld || !selection.SetWorld(newWorld.get())) { return false; }
+
+	// World 소멸 시 메시 컴포넌트가 객체 및 본 데이터를 해제한다.
+	editWorld->GetRenderScene().ReleaseLightData();
 	editWorld = std::move(newWorld);
 	return true;
 }

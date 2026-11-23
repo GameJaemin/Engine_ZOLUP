@@ -99,10 +99,19 @@
 			]
 		},
 		{
+			"name": "ShadowTestFloor",
+			"prefab": "Game/Content/Prefabs/ShadowTestFloor.prefab.json",
+			"transform": {
+				"position": [0.0, 390.0, 3100.0],
+				"rotation": [0.0, 0.0, 0.0, 1.0],
+				"scale": [45.0, 0.2, 35.0]
+			}
+		},
+		{
 			"name": "DevOverviewCamera",
 			"transform": {
-				"position": [0, 500, -500],
-				"rotation": [0, 0, 0, 1],
+				"position": [0, 1200, -500],
+				"rotation": [0.08715574, 0, 0, 0.99619470],
 				"scale": [1, 1, 1]
 			},
 			"components": [
