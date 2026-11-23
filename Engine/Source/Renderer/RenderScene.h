@@ -3,6 +3,7 @@
 #include "Core/Math/Vector3.h"
 #include "DataHub_Types.h"
 
+#include <array>
 #include <optional>
 #include <unordered_map>
 #include <vector>
@@ -134,13 +135,14 @@ private:
 
 	// Hakko 점광원 준비
 	/**
-	 * DataHub 초기화 후 Sketch 전에 기본 레이어의 슬롯 1에 첫 유효한 활성 점광원을 연결한다.
-	 * 사용할 점광원이 없으면 빈 조명을 연결한다. 조명 데이터 등록이나 갱신 실패 시 false를 반환한다.
+	 * DataHub 초기화 후 Sketch 전에 등록 순서대로 유효한 활성 점광원을 최대 4개 연결한다.
+	 * 남은 슬롯에는 빈 조명을 연결한다. 조명 데이터 등록이나 갱신 실패 시 false를 반환한다.
 	 */
-	bool PreparePointLight();
+	bool PreparePointLights();
 
-	// 0은 Hakko의 빈 조명 ID다. 첫 등록 후에는 같은 ID를 갱신하며 DataHub 종료 시 정리된다.
-	Hakko::DataHub::DataBoxID pointLightDataId = 0;
+	// 0은 빈 조명이고 슬롯 2는 기존 스포트라이트에 사용한다.
+	static constexpr std::array<uint16_t, 4> PointLightSlots{ 1, 3, 4, 5 };
+	std::array<Hakko::DataHub::DataBoxID, PointLightSlots.size()> pointLightDataIds{};
 
 	// Hakko 스포트라이트 준비
 	/**
