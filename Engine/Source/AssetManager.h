@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Animation/AnimationClip.h"
+#include "Core/Math/Vector3.h"
 #include "GLTFLoader.h"
 
 #include <filesystem>
@@ -79,7 +80,8 @@ private:
 	 * glTF 재질 설명으로 Material을 만든다. 색 텍스처(sRGB), 노멀 텍스처와 ORM 텍스처(선형)는 modelDirectory(저장소 루트 기준 모델 폴더) 기준으로 불러온다.
 	 * 차폐의 R과 금속성-거칠기의 G, B를 ORM으로 합성하며, 없는 입력의 채널은 1로 채운다.
 	 * 두 입력이 모두 없으면 ORM 텍스처 없이 계수만 사용한다.
-	 * 텍스처 로딩이나 ORM 생성에 실패하면 nullptr를 반환한다. 두 입력의 이미지 크기는 같아야 한다.
+	 * ORM의 두 입력은 크기가 같아야 한다. 색, 노멀 또는 ORM 준비 실패 시 nullptr를 반환한다.
+	 * 발광 계수는 이미지의 선형 RGB에 곱한다. 발광 준비에 실패하면 경고하고 기본 검정으로 처리한다.
 	 */
 	std::shared_ptr<const Material> CreateMaterial(const GLTFModelMaterial& source, const std::filesystem::path& modelDirectory);
 
@@ -102,6 +104,9 @@ private:
 	 * 생성 텍스처의 경로는 파일을 가리키지 않는 식별자다. 경로 변환과 할당 예외는 전파한다.
 	 */
 	std::shared_ptr<const Texture> LoadORMTexture(std::string_view occlusionPath, std::string_view metallicRoughnessPath);
+
+	/** 텍스처 또는 흰색 한 픽셀에 선형 RGB 발광 계수를 반영한 sRGB 텍스처를 준비한다. */
+	std::shared_ptr<const Texture> LoadEmissiveTexture(std::string_view texturePath, const Vector3& factor);
 
 private:
 	std::map<std::pair<std::string, TextureFormat>, std::shared_ptr<const Texture>> textures;

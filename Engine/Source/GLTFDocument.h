@@ -167,6 +167,9 @@ struct GLTFMaterial
 	std::optional<GLTFMaterialNormalTextureInfo> normalTexture;
 	// 선택. 차폐 텍스처. R 채널만 쓰며 선형 값이다.
 	std::optional<GLTFMaterialOcclusionTextureInfo> occlusionTexture;
+	// 선택. 발광 텍스처의 RGB는 sRGB이고, 발광 계수는 선형 RGB다.
+	std::optional<GLTFTextureInfo> emissiveTexture;
+	std::array<float, 3> emissiveFactor{};
 };
 
 struct GLTFMeshPrimitive;

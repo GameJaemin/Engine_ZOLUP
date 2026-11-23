@@ -359,7 +359,7 @@ namespace
 		return occlusionTextureInfo;
 	}
 
-	/** materials 배열을 읽는다. 배열이 없으면 빈 배열을 돌려준다. pbrMetallicRoughness, normalTexture 및 occlusionTexture 외의 항목은 읽지 않는다. */
+	/** materials 배열에서 현재 지원하는 색, 알파, 노멀, ORM 및 발광 정보를 읽는다. 배열이 없으면 빈 배열을 돌려준다. */
 	std::vector<GLTFMaterial> ReadMaterials(const rapidjson::Value& document)
 	{
 		std::vector<GLTFMaterial> materials;
@@ -395,6 +395,33 @@ namespace
 
 			if (item.HasMember("normalTexture")) { material.normalTexture = ReadNormalTextureInfo(item["normalTexture"]); }
 			if (item.HasMember("occlusionTexture")) { material.occlusionTexture = ReadOcclusionTextureInfo(item["occlusionTexture"]); }
+			const auto emissiveTexture = item.FindMember("emissiveTexture");
+			if (emissiveTexture != item.MemberEnd())
+			{
+				const rapidjson::Value& info = emissiveTexture->value;
+				const bool hasValidIndex = info.IsObject() && info.HasMember("index") && info["index"].IsUint64();
+				if (!hasValidIndex || (info.HasMember("texCoord") && !info["texCoord"].IsUint64()))
+				{
+					Log::Write(LogLevel::Warning, "GLTFLoader", std::format("Material '{}': invalid emissiveTexture; emission disabled", material.name));
+					materials.push_back(std::move(material));
+					continue;
+				}
+				material.emissiveTexture = ReadTextureInfo(info);
+			}
+
+			const auto emissiveFactor = item.FindMember("emissiveFactor");
+			if (emissiveFactor != item.MemberEnd())
+			{
+				const rapidjson::Value& factor = emissiveFactor->value;
+				if (factor.IsArray() && factor.Size() == 3 && factor[0].IsNumber() && factor[1].IsNumber() && factor[2].IsNumber())
+				{
+					material.emissiveFactor = { factor[0].GetFloat(), factor[1].GetFloat(), factor[2].GetFloat() };
+				}
+				else
+				{
+					Log::Write(LogLevel::Warning, "GLTFLoader", std::format("Material '{}': invalid emissiveFactor; emission disabled", material.name));
+				}
+			}
 
 			materials.push_back(std::move(material));
 		}
@@ -1030,6 +1057,20 @@ namespace
 			{
 				Log::Write(LogLevel::Warning, "GLTFLoader", std::format("Material {} ('{}'): occlusionTexture is not supported; ignored", materialIndex, source.name));
 			}
+		}
+
+		const std::array<float, 3>& emission = source.emissiveFactor;
+		if (!isUnitRange(emission[0]) || !isUnitRange(emission[1]) || !isUnitRange(emission[2]))
+		{
+			Log::Write(LogLevel::Warning, "GLTFLoader", std::format("Material {} ('{}'): emissiveFactor is out of range; emission disabled", materialIndex, source.name));
+		}
+		else if (source.emissiveTexture.has_value() && !FindTextureImageUri(gltfDocument, source.emissiveTexture.value(), material.emissiveImageUri))
+		{
+			Log::Write(LogLevel::Warning, "GLTFLoader", std::format("Material {} ('{}'): emissiveTexture is not supported; emission disabled", materialIndex, source.name));
+		}
+		else
+		{
+			material.emissiveFactor = { emission[0], emission[1], emission[2] };
 		}
 
 		outMaterial = std::move(material);
