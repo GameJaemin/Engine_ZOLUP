@@ -17,6 +17,37 @@
 #include <optional>
 #include <utility>
 
+namespace
+{
+	void ConfigureDefaultRenderPasses()
+	{
+		// 포워드 SSAO가 읽을 불투명 깊이를 먼저 만든다.
+		Hakko::DataHub::SetLayerEarlyZ(true);
+
+		// 반경 25 cm, 깊이 바이어스 1 cm를 초깃값으로 사용한다.
+		Hakko::DataHub::RTB_SetSSAO ambientOcclusion{};
+		ambientOcclusion.radiusScale = 50.0f;
+		ambientOcclusion.intensity = 0.7f;
+		ambientOcclusion.biasScale = 40.0f;
+		Hakko::DataHub::SendRTB(ambientOcclusion);
+
+		// 기준 픽셀과 카메라 공간 깊이 차이가 4 cm 미만인 샘플을 평균에 포함한다.
+		Hakko::DataHub::RTB_SetAOBlur ambientOcclusionBlur{};
+		ambientOcclusionBlur.depthThresholdScale = 16.0f;
+		Hakko::DataHub::SendRTB(ambientOcclusionBlur);
+
+		// 슬롯 순서에 따라 톤매핑 결과에 FXAA를 적용한다.
+		Hakko::DataHub::RTB_SetTonemap tonemap{};
+		tonemap.ppSlot = 0;
+		tonemap.mode = Hakko::DataHub::Tonemap_Mode_ACES;
+		Hakko::DataHub::SendRTB(tonemap);
+
+		Hakko::DataHub::RTB_SetFXAA antialiasing{};
+		antialiasing.ppSlot = 1;
+		Hakko::DataHub::SendRTB(antialiasing);
+	}
+}
+
 Engine::Engine() = default;
 
 Engine::~Engine()
@@ -123,6 +154,7 @@ bool Engine::Initialize(bool enableGui)
 		return false;
 	}
 
+	ConfigureDefaultRenderPasses();
 
 	return true;
 }
