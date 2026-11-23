@@ -206,8 +206,9 @@ bool ContentBrowserPanel::Initialize()
 	currentDirectory.clear();
 	currentEntries.clear();
 
-	// 이전 탐색에서 선택한 파일이 새 초기화 상태에 남지 않도록 해제한다.
+	// 이전 탐색에서 선택한 파일과 맵 열기 요청을 비운다.
 	selectedFilePath.clear();
+	requestedLevelPath.reset();
 
 	// 이전 폴더의 조회 결과와 오류 캐시를 모두 제거한다.
 	directoryCache.clear();
@@ -327,6 +328,11 @@ void ContentBrowserPanel::Draw()
 
 	// Begin의 반환값과 관계없이 End를 호출해야 한다.
 	ImGui::End();
+}
+
+std::optional<std::string> ContentBrowserPanel::TakeLevelOpenRequest()
+{
+	return std::exchange(requestedLevelPath, std::nullopt);
 }
 
 std::error_code ContentBrowserPanel::DrawToolbar()
@@ -562,7 +568,11 @@ std::error_code ContentBrowserPanel::DrawEntryTile(const ContentBrowserEntry& en
 		}
 		else
 		{
-			SelectFile(entry.relativePath, error);
+			const bool selected = SelectFile(entry.relativePath, error);
+			if (selected && entry.type == ContentBrowserEntryType::Map && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+			{
+				requestedLevelPath = entry.relativePath;
+			}
 		}
 	}
 

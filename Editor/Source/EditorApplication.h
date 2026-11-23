@@ -27,6 +27,9 @@ public:
 	void OnShutdown() noexcept override;
 
 private:
+	void ProcessLevelOpenRequest();
+
+private:
 	// OnInitialize에서 빌리고 OnShutdown에서 비운다. 소유하지 않는다.
 	Engine* engine = nullptr;
 

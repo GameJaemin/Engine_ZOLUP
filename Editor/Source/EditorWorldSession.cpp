@@ -1,11 +1,10 @@
 #include "EditorWorldSession.h"
 
+#include "EditorSelection.h"
 #include "LevelLoader.h"
 #include "World.h"
 
-#include <optional>
 #include <utility>
-#include <vector>
 
 EditorWorldSession::EditorWorldSession() = default;
 
@@ -21,16 +20,14 @@ void EditorWorldSession::NewLevel()
 	editWorld = std::make_unique<World>();
 }
 
-bool EditorWorldSession::OpenLevel(const std::filesystem::path& levelPath)
+bool EditorWorldSession::OpenLevel(const std::filesystem::path& levelPath, EditorSelection& selection)
 {
-	if (editWorld) { return false; }
-
-	// 불러오기에 성공한 World만 세션에 넣는다. 실패하면 세션은 닫힌 상태로 남는다.
 	std::unique_ptr<World> newWorld = std::make_unique<World>();
-	const std::optional<std::vector<GameObject*>> loadedObjects = LoadLevel(levelPath, *newWorld);
-	if (!loadedObjects.has_value()) { return false; }
+	if (!LoadLevel(levelPath, *newWorld).has_value()) { return false; }
+	if (!selection.SetWorld(newWorld.get())) { return false; }
 
 	editWorld = std::move(newWorld);
+
 	return true;
 }
 

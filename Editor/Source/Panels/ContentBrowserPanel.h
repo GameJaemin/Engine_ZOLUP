@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -80,8 +81,12 @@ public:
 	 * 유효한 ImGui Context에서 NewFrame 이후, Render 전에 호출한다.
 	 * 파일 탐색 초기화는 호출자가 Initialize로 수행한다.
 	 * 창 표시 전에 선택을 검증해 삭제되거나 접근할 수 없는 파일의 선택을 해제한다.
+	 * 맵 더블클릭으로 파일 선택에 성공하면 맵 열기 요청을 기록한다.
 	 */
 	void Draw();
+
+	/** 저장소 기준 UTF-8 상대 경로를 반환하고 요청을 비운다. 요청이 없으면 std::nullopt다. */
+	std::optional<std::string> TakeLevelOpenRequest();
 
 public:
 	// ImGui 창 이름이다. 도킹 기본 배치도 이 이름으로 창을 찾으므로 같은 상수를 쓴다.
@@ -138,6 +143,7 @@ private:
 	 * 콘텐츠 항목 하나를 지정한 너비의 타일로 그린다. tileWidth는 여백 합계인 12보다 커야 한다.
 	 * 유효한 ImGui 프레임과 콘텐츠 영역 내부에서 호출한다.
 	 * 파일 클릭 시 선택하고, 폴더 더블클릭 시 이동 요청 경로를 출력한다.
+	 * 맵 더블클릭으로 파일 선택에 성공하면 맵 열기 요청을 기록한다.
 	 * 호출자는 전체 항목 순회를 마친 뒤 요청한 폴더로 이동한다.
 	 */
 	std::error_code DrawEntryTile(const ContentBrowserEntry& entry, float tileWidth, std::string& outRequestedDirectory);
@@ -303,6 +309,9 @@ private:
 
 	// 선택한 파일의 저장소 기준 UTF-8 상대 경로. 비어 있으면 선택이 없다.
 	std::string selectedFilePath;
+
+	// 맵 열기 요청이 있으면 저장소 기준 UTF-8 상대 경로를 보관한다.
+	std::optional<std::string> requestedLevelPath;
 
 	// 널 종료 문자를 포함한 UTF-8 검색어 버퍼. 초기 상태는 빈 문자열이다.
 	std::array<char, 256> searchText{};

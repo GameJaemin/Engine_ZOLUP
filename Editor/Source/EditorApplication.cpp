@@ -63,7 +63,7 @@ bool EditorApplication::OnInitialize(Engine& inEngine)
 	{
 		Log::Write(LogLevel::Error, "Editor", "Could not resolve the default level path from the repository root");
 	}
-	else if (!worldSession.OpenLevel(levelPath))
+	else if (!worldSession.OpenLevel(levelPath, selection))
 	{
 		Log::Write(LogLevel::Error, "Editor", "Failed to open the default level");
 	}
@@ -72,11 +72,7 @@ bool EditorApplication::OnInitialize(Engine& inEngine)
 	if (worldSession.GetEditWorld() == nullptr)
 	{
 		worldSession.NewLevel();
-	}
-
-	if (!selection.SetWorld(worldSession.GetEditWorld()))
-	{
-		return false;
+		if (!selection.SetWorld(worldSession.GetEditWorld())) { return false; }
 	}
 
 	// 파일시스템 탐색만 초기화하므로 ImGui Context나 프레임은 필요하지 않다.
@@ -90,6 +86,8 @@ bool EditorApplication::OnInitialize(Engine& inEngine)
 
 void EditorApplication::OnUpdate(const InputState& input, float deltaTime)
 {
+	ProcessLevelOpenRequest();
+
 	if (editorViewport.UpdateCamera(input, deltaTime))
 	{
 		engine->SetCursorVisible(true);
@@ -179,4 +177,22 @@ void EditorApplication::OnShutdown() noexcept
 	worldSession.Close();
 
 	engine = nullptr;
+}
+
+void EditorApplication::ProcessLevelOpenRequest()
+{
+	const std::optional<std::string> relativePath = contentBrowserPanel.TakeLevelOpenRequest();
+	if (!relativePath) { return; }
+
+	std::filesystem::path absolutePath;
+	if (!Paths::GetAbsolutePath(*relativePath, absolutePath))
+	{
+		Log::Write(LogLevel::Error, "Editor", "Could not resolve map path: " + *relativePath);
+		return;
+	}
+
+	if (!worldSession.OpenLevel(absolutePath, selection))
+	{
+		Log::Write(LogLevel::Error, "Editor", "Could not open map: " + *relativePath);
+	}
 }
