@@ -2,6 +2,7 @@
   "dependencies": [
     "directx-headers",
     "directx-dxc",
+    "imguizmo",
     {
       "name": "imgui",
       "features": [
