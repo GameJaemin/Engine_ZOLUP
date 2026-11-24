@@ -1,6 +1,7 @@
 #include "GameApplication.h"
 
 #include "Component/CameraComponent.h"
+#include "Component/GravityComponent.h"
 #include "Component/TransformComponent.h"
 #include "Core/Log.h"
 #include "Core/Math/Quaternion.h"
@@ -21,25 +22,26 @@
 #include <memory>
 #include <optional>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace
 {
-	bool ActivateMapCamera(World& world, const std::vector<GameObject*>& levelObjects, std::string_view name)
+	const CameraComponent* FindMapCamera(const std::vector<GameObject*>& levelObjects, std::string_view name)
 	{
-		CameraComponent* selectedCamera = nullptr;
-		for (GameObject* object : levelObjects)
+		const CameraComponent* selectedCamera = nullptr;
+		for (const GameObject* object : levelObjects)
 		{
 			if (object->GetName() != name) { continue; }
 
 			for (const std::unique_ptr<Component>& component : object->GetComponents())
 			{
-				CameraComponent* camera = dynamic_cast<CameraComponent*>(component.get());
+				const CameraComponent* camera = dynamic_cast<const CameraComponent*>(component.get());
 				if (camera == nullptr) { continue; }
 				if (selectedCamera != nullptr)
 				{
 					Log::Write(LogLevel::Error, "Camera", std::format("Multiple map cameras match {}", name));
-					return false;
+					return nullptr;
 				}
 				selectedCamera = camera;
 			}
@@ -48,16 +50,9 @@ namespace
 		if (selectedCamera == nullptr)
 		{
 			Log::Write(LogLevel::Error, "Camera", std::format("Map camera {} was not found", name));
-			return false;
-		}
-		if (!world.SetActiveCamera(selectedCamera))
-		{
-			Log::Write(LogLevel::Error, "Camera", std::format("Could not activate map camera {}", name));
-			return false;
 		}
 
-		Log::Write(LogLevel::Info, "Camera", std::format("Active map camera: {}", name));
-		return true;
+		return selectedCamera;
 	}
 }
 
@@ -72,7 +67,7 @@ bool GameApplication::OnInitialize(Engine& inEngine)
 	gameWorld = std::make_unique<World>();
 	World& world = *gameWorld;
 	constexpr std::string_view startupLevelPath = "Game/Content/Maps/BistroMap.json";
-	constexpr std::string_view startupCameraName = "BistroCamera";
+	constexpr std::string_view spawnCameraName = "BistroCamera";
 	std::filesystem::path levelPath;
 	if (!Paths::GetAbsolutePath(startupLevelPath, levelPath))
 	{
@@ -93,7 +88,23 @@ bool GameApplication::OnInitialize(Engine& inEngine)
 		const Vector3& scale = transform.scale;
 		Log::Write(LogLevel::Info, "Level", std::format("{}: position(cm) [{}, {}, {}], rotation [{}, {}, {}, {}], scale [{}, {}, {}]", object->GetName(), position.x, position.y, position.z, rotation.x, rotation.y, rotation.z, rotation.w, scale.x, scale.y, scale.z));
 	}
-	return ActivateMapCamera(world, *loadedObjects, startupCameraName);
+	const CameraComponent* spawnCamera = FindMapCamera(*loadedObjects, spawnCameraName);
+	if (spawnCamera == nullptr) { return false; }
+
+	const GameObject* mapCameraOwner = spawnCamera->GetGameObject();
+	const Vector3 spawnPosition = mapCameraOwner->GetComponent<TransformComponent>()->GetWorldTransform().position;
+	std::unique_ptr<PlayerObject> player = std::make_unique<PlayerObject>(world);
+	player->GetComponent<TransformComponent>()->SetPosition(spawnPosition);
+	player->AddComponent(std::make_unique<GravityComponent>());
+	GameObject* registeredPlayer = world.AddGameObject(std::move(player));
+	if (registeredPlayer == nullptr || !world.SetActiveCamera(registeredPlayer->GetComponent<CameraComponent>()))
+	{
+		Log::Write(LogLevel::Error, "Camera", "Could not activate the player camera");
+		return false;
+	}
+
+	Log::Write(LogLevel::Info, "Camera", "Active camera: player");
+	return true;
 }
 
 void GameApplication::OnUpdate(const InputState& input, float deltaTime)

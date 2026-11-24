@@ -153,6 +153,9 @@
     <ClCompile Include="Engine\Source\Component\DirectionalLightComponent.cpp">
       <Filter>Engine\Source\Component</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Source\Component\GravityComponent.cpp">
+      <Filter>Engine\Source\Component</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Source\Component\LightComponent.cpp">
       <Filter>Engine\Source\Component</Filter>
     </ClCompile>
@@ -354,6 +357,9 @@
       <Filter>Engine\Source\Component</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Component\DirectionalLightComponent.h">
+      <Filter>Engine\Source\Component</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Component\GravityComponent.h">
       <Filter>Engine\Source\Component</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Component\LightComponent.h">
