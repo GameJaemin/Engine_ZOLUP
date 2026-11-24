@@ -56,6 +56,11 @@ void InspectorPanel::Draw(EditorSelection& selection)
 	{
 		ImGui::SeparatorText("Local Transform");
 
+		if (ImGui::Button("Reset##Position"))
+		{
+			transform->SetPosition(Vector3{ 0.0f, 0.0f, 0.0f });
+		}
+		ImGui::SameLine();
 		const Vector3 position = transform->GetPosition();
 		float positionValues[3] = { position.x, position.y, position.z };
 
@@ -67,6 +72,11 @@ void InspectorPanel::Draw(EditorSelection& selection)
 			}
 		}
 
+		if (ImGui::Button("Reset##Rotation"))
+		{
+			transform->SetRotation(EulerAngles{ 0.0f, 0.0f, 0.0f });
+		}
+		ImGui::SameLine();
 		const EulerAngles rotation = transform->GetRotation();
 		float rotationValues[3] = { rotation.pitch, rotation.yaw, rotation.roll };
 
@@ -78,6 +88,11 @@ void InspectorPanel::Draw(EditorSelection& selection)
 			}
 		}
 
+		if (ImGui::Button("Reset##Scale"))
+		{
+			transform->SetScale(Vector3{ 1.0f, 1.0f, 1.0f });
+		}
+		ImGui::SameLine();
 		const Vector3 scale = transform->GetScale();
 		float scaleValues[3] = { scale.x, scale.y, scale.z };
 
