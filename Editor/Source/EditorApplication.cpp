@@ -11,6 +11,7 @@
 
 #include <imgui.h>
 #include <imgui_internal.h>
+#include <ImGuizmo.h>
 
 #include <filesystem>
 #include <memory>
@@ -92,12 +93,12 @@ void EditorApplication::OnUpdate(const InputState& input, float deltaTime)
 	{
 		engine->SetCursorVisible(true);
 	}
-
-	worldSession.GetEditWorld()->DestroyPendingGameObjects();
 }
 
 void EditorApplication::OnGui()
 {
+	ImGuizmo::BeginFrame();
+
 	const ImGuiViewport* viewport = ImGui::GetMainViewport();
 	const ImGuiID dockSpaceID = ImGui::GetID("EditorDockSpace");
 
@@ -113,7 +114,7 @@ void EditorApplication::OnGui()
 	ImGui::DockSpaceOverViewport(dockSpaceID, viewport, ImGuiDockNodeFlags_PassthruCentralNode);
 
 	editorViewport.ResetRenderRequestState();
-	const std::optional<std::string> droppedPrefabPath = viewportPanel.Draw(editorViewport);
+	const std::optional<std::string> droppedPrefabPath = viewportPanel.Draw(editorViewport, selection);
 
 	if (editorViewport.TryBeginCameraControl(viewportPanel.WasImageRightClicked()))
 	{
@@ -147,13 +148,16 @@ void EditorApplication::OnGui()
 		}
 	}
 
-	// 생성과 삭제 처리를 마친 뒤 World의 객체 목록을 순회한다.
+	// 프리팹 생성을 마친 뒤 World의 객체 목록을 순회한다.
 	// Hierarchy에서 바뀐 선택을 같은 프레임의 Inspector가 읽도록 먼저 그린다.
 	hierarchyPanel.Draw(*world, selection);
 	inspectorPanel.Draw(selection);
 
 	// 콘텐츠 파일 선택은 패널 내부에서 관리하므로 EditorSelection을 전달하지 않는다.
 	contentBrowserPanel.Draw();
+
+	// 에디터의 객체 생성과 삭제 요청은 OnGui에서만 일어난다. 렌더 요청 전에 정리해 삭제 예정 객체가 그려지지 않게 한다.
+	world->DestroyPendingGameObjects();
 }
 
 std::optional<SceneRenderRequest> EditorApplication::GetRenderRequest()

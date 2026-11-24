@@ -20,6 +20,10 @@ public:
 	bool TryBeginCameraControl(bool wasImageRightClicked);
 	/** 조작 상태를 초기화하고, 조작 중이었다면 true를 반환한다. */
 	bool StopCameraControl() noexcept;
+	/** 장면 이미지에서 시작한 우클릭 카메라 조작이 계속되고 있으면 true다. */
+	bool IsCameraControlActive() const { return isViewportCameraActive; }
+	/** 장면 렌더 요청에 쓰는 카메라 시점의 복사본을 반환한다. */
+	CameraViewInfo GetCameraViewInfo() const { return camera.GetCameraViewInfo(); }
 
 private:
 	EditorCamera camera;
