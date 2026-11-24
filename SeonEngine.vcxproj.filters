@@ -195,6 +195,9 @@
     <ClCompile Include="Engine\Source\LevelLoader.cpp">
       <Filter>Engine\Source</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Source\ObjectID.cpp">
+      <Filter>Engine\Source</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Source\Prefab.cpp">
       <Filter>Engine\Source</Filter>
     </ClCompile>
@@ -420,6 +423,9 @@
       <Filter>Engine\Source</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\LevelLoader.h">
+      <Filter>Engine\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\ObjectID.h">
       <Filter>Engine\Source</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Prefab.h">

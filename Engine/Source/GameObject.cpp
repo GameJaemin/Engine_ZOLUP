@@ -25,6 +25,14 @@ void GameObject::SetName(std::string newName)
 	name = std::move(newName);
 }
 
+bool GameObject::SetObjectID(const ObjectID& newObjectID)
+{
+	if (!newObjectID.IsValid() || objectID.IsValid()) { return false; }
+
+	objectID = newObjectID;
+	return true;
+}
+
 World& GameObject::GetWorld()
 {
 	return world;

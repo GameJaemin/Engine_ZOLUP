@@ -13,7 +13,11 @@
 #include <utility>
 
 World::World() = default;
-World::~World() = default;
+World::~World()
+{
+	// 객체 파괴 도중 들어오는 ID 조회가 파괴 중인 객체를 돌려주지 않게 인덱스를 먼저 비운다.
+	gameObjectsByID.clear();
+}
 
 InputDispatcher& World::GetInputDispatcher()
 {
@@ -27,10 +31,27 @@ RenderScene& World::GetRenderScene()
 
 GameObject* World::AddGameObject(std::unique_ptr<GameObject> newGameObject)
 {
+	// 생성 실패로 무효 ID가 오면 아래 등록이 거절한다.
+	return AddGameObject(std::move(newGameObject), ObjectID::Generate());
+}
+
+GameObject* World::AddGameObject(std::unique_ptr<GameObject> newGameObject, const ObjectID& objectID)
+{
 	if (newGameObject == nullptr) { return nullptr; }
 	if (&newGameObject->GetWorld() != this) { return nullptr; }
+	if (!objectID.IsValid() || newGameObject->GetObjectID().IsValid()) { return nullptr; }
+	if (gameObjectsByID.contains(objectID)) { return nullptr; }
+
+	// 할당 실패 예외가 목록과 인덱스를 어긋나게 하지 않도록 목록 공간을 먼저 확보한다.
+	if (gameObjects.size() == gameObjects.capacity())
+	{
+		gameObjects.reserve(std::max<std::size_t>(gameObjects.capacity() * 2, 1));
+	}
 
 	GameObject* gameObject = newGameObject.get();
+	gameObject->SetObjectID(objectID);
+	gameObjectsByID.emplace(objectID, gameObject);
+	// 공간을 확보했으므로 여기서는 실패하지 않는다.
 	gameObjects.push_back(std::move(newGameObject));
 	return gameObject;
 }
@@ -100,6 +121,7 @@ void World::DestroyPendingGameObjects()
 	{
 		if (std::ranges::find(pendingDestroyGameObjects, entry.get()) != pendingDestroyGameObjects.end())
 		{
+			gameObjectsByID.erase(entry->GetObjectID());
 			removedObjects.push_back(std::move(entry));
 		}
 	}
@@ -147,6 +169,20 @@ bool World::ContainsGameObject(const GameObject* gameObject) const
 	}
 
 	return false;
+}
+
+GameObject* World::FindGameObject(const ObjectID& objectID)
+{
+	const auto found = gameObjectsByID.find(objectID);
+	if (found == gameObjectsByID.end() || found->second->IsPendingDestroy()) { return nullptr; }
+	return found->second;
+}
+
+const GameObject* World::FindGameObject(const ObjectID& objectID) const
+{
+	const auto found = gameObjectsByID.find(objectID);
+	if (found == gameObjectsByID.end() || found->second->IsPendingDestroy()) { return nullptr; }
+	return found->second;
 }
 
 void World::NotifyGameObjectsDestroying() noexcept

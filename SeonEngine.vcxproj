@@ -58,6 +58,7 @@
     <ClCompile Include="Engine\Source\GameObject.cpp" />
     <ClCompile Include="Engine\Source\GLTFLoader.cpp" />
     <ClCompile Include="Engine\Source\LevelLoader.cpp" />
+    <ClCompile Include="Engine\Source\ObjectID.cpp" />
     <ClCompile Include="Engine\Source\Prefab.cpp" />
     <ClCompile Include="Engine\Source\Prefab\PrefabAnimation.cpp" />
     <ClCompile Include="Engine\Source\Prefab\PrefabCamera.cpp" />
@@ -128,6 +129,7 @@
     <ClInclude Include="Engine\Source\GLTFDocument.h" />
     <ClInclude Include="Engine\Source\GLTFLoader.h" />
     <ClInclude Include="Engine\Source\LevelLoader.h" />
+    <ClInclude Include="Engine\Source\ObjectID.h" />
     <ClInclude Include="Engine\Source\Prefab.h" />
     <ClInclude Include="Engine\Source\Prefab\PrefabComponents.h" />
     <ClInclude Include="Engine\Source\WindowsApplication.h" />

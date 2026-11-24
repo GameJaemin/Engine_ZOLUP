@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Input/InputDispatcher.h"
+#include "ObjectID.h"
 #include "Renderer/RenderScene.h"
 
 #include <cstdint>
@@ -8,6 +9,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 class CameraComponent;
@@ -72,11 +74,17 @@ private:
 	// 객체 관리
 public:
 	/**
-	 * 소유권을 받아 등록하고 해당 객체가 삭제되기 전까지 유효한 비소유 포인터를 반환한다.
-	 * 빈 입력과 소속 불일치는 nullptr를 반환하고 입력 객체는 정리한다.
+	 * 새 ObjectID를 발급해 등록하고 해당 객체가 삭제되기 전까지 유효한 비소유 포인터를 반환한다.
+	 * 빈 입력, 소속 불일치, 이미 ID를 가진 객체와 ID 발급 실패는 nullptr를 반환하고 입력 객체는 정리한다.
 	 * 갱신 중에는 호출하지 않는다. 할당 실패 예외는 전파한다.
 	 */
 	GameObject* AddGameObject(std::unique_ptr<GameObject> newGameObject);
+
+	/**
+	 * 저장이나 복제에서 가져온 ID를 유지해 등록한다. 그 밖의 계약은 ID를 받지 않는 AddGameObject와 같다.
+	 * 무효 ID, 이 World에 이미 있는 ID, 이미 ID를 가진 객체는 nullptr를 반환하고 입력 객체는 정리한다.
+	 */
+	GameObject* AddGameObject(std::unique_ptr<GameObject> newGameObject, const ObjectID& objectID);
 
 	/** 기본 GameObject에 이름과 Transform을 적용한 뒤 등록한다. name을 생략하면 객체 기본 이름을 유지한다. */
 	[[nodiscard]] GameObject* CreateGameObject(const std::optional<std::string>& name, const Transform& transform);
@@ -110,6 +118,10 @@ public:
 	/** 이 World에 등록된 객체인지 확인한다. nullptr는 false다. */
 	bool ContainsGameObject(const GameObject* gameObject) const;
 
+	/** 등록된 객체를 ID로 빌려준다. 없거나 삭제 예정이면 nullptr이다. */
+	GameObject* FindGameObject(const ObjectID& objectID);
+	const GameObject* FindGameObject(const ObjectID& objectID) const;
+
 	/**
 	 * 삭제 예정 객체를 포함한 소유 목록을 등록 순서대로 빌려준다.
 	 * 컨테이너 자체는 World 수명 동안 유효하다.
@@ -129,6 +141,8 @@ private:
 	std::vector<GameObjectDestroyingSubscription> destroyingSubscriptions;
 	std::uint64_t nextDestroyingSubscriptionId = 1;
 	bool isDestroyingPendingGameObjects = false;
+	// gameObjects가 소유한 객체를 ID로 찾는 비소유 인덱스다. 삭제 예정 객체도 실제 파괴 직전까지 남아 있다.
+	std::unordered_map<ObjectID, GameObject*> gameObjectsByID;
 	std::vector<std::unique_ptr<GameObject>> gameObjects;
 
 	// 갱신

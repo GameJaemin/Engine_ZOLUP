@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Component/Component.h"
+#include "ObjectID.h"
 
 #include <concepts>
 #include <memory>
@@ -35,6 +36,20 @@ public:
 
 private:
 	std::string name = "GameObject";
+
+	// 식별자
+public:
+	/** 등록 전에는 무효 ID다. World에 등록된 뒤에는 바뀌지 않는다. */
+	const ObjectID& GetObjectID() const { return objectID; }
+
+	/**
+	 * World가 등록 직전에 호출한다. 게임 코드에서 직접 호출하지 않는다.
+	 * 입력이 무효이거나 이미 유효한 ID가 있으면 기존 값을 유지하고 false를 반환한다.
+	 */
+	bool SetObjectID(const ObjectID& newObjectID);
+
+private:
+	ObjectID objectID;
 
 	// 소속 월드
 public:
