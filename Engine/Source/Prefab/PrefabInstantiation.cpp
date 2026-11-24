@@ -36,7 +36,8 @@ namespace
 	};
 
 	// object는 월드에 이미 등록되어 있고 삭제 예정이 아니어야 한다.
-	void ApplyPrefabObject(GameObject& object, const PrefabObject& data, PrefabInstanceLinks& links)
+	// 자식 생성에 실패하면 false를 반환한다. 이미 만든 자식은 모두 object 아래에 연결되어 있다.
+	bool ApplyPrefabObject(GameObject& object, const PrefabObject& data, PrefabInstanceLinks& links)
 	{
 		if (data.id.has_value())
 		{
@@ -64,17 +65,21 @@ namespace
 
 		for (const PrefabObject& child : data.children)
 		{
-			// SetParent는 월드에 등록된 객체끼리만 연결할 수 있다.
 			GameObject* childObject = object.GetWorld().CreateGameObject(child.name, child.localTransform);
+			if (childObject == nullptr) { return false; }
+
+			// SetParent는 월드에 등록된 객체끼리만 연결할 수 있다.
 			childObject->SetParent(&object);
-			ApplyPrefabObject(*childObject, child, links);
+			if (!ApplyPrefabObject(*childObject, child, links)) { return false; }
 		}
+		return true;
 	}
 
-	// 기존 최상위 model을 전개한다. 모델의 인덱스와 계층은 로더가 검증한다.
-	void ApplyLegacyPrefabModel(GameObject& root, const Prefab& prefab)
+	// 프리팹 최상위 model의 노드 계층을 root 아래에 생성한다. 모델의 인덱스와 계층은 로더가 검증한다.
+	// 노드 객체 생성에 실패하면 이번에 만든 노드를 삭제 예정으로 표시하고 false를 반환한다.
+	bool InstantiatePrefabModelHierarchy(GameObject& root, const Prefab& prefab)
 	{
-		if (prefab.model == nullptr) { return; }
+		if (prefab.model == nullptr) { return true; }
 
 		World& world = root.GetWorld();
 		const Model& model = *prefab.model;
@@ -114,8 +119,8 @@ namespace
 				continue;
 			}
 
-			std::unique_ptr<GameObject> nodeObject = std::make_unique<GameObject>(world);
-			nodeObject->GetComponent<TransformComponent>()->SetTransform(sceneNode.localTransform);
+			std::unique_ptr<GameObject> newNodeObject = std::make_unique<GameObject>(world);
+			newNodeObject->GetComponent<TransformComponent>()->SetTransform(sceneNode.localTransform);
 
 			if (sceneNode.mesh.has_value())
 			{
@@ -130,10 +135,20 @@ namespace
 					material = overrides[meshIndex];
 				}
 				mesh->SetMaterial(std::move(material));
-				nodeObject->AddComponent(std::move(mesh));
+				newNodeObject->AddComponent(std::move(mesh));
 			}
 
-			nodeObjects.push_back(world.AddGameObject(std::move(nodeObject)));
+			GameObject* nodeObject = world.AddGameObject(std::move(newNodeObject));
+			if (nodeObject == nullptr)
+			{
+				// 아직 루트 아래에 연결하기 전이라 루트 삭제로 함께 지워지지 않는다.
+				for (GameObject* createdObject : nodeObjects)
+				{
+					if (createdObject != nullptr) { world.DestroyGameObject(createdObject); }
+				}
+				return false;
+			}
+			nodeObjects.push_back(nodeObject);
 		}
 
 		// SetParent는 월드에 등록된 객체끼리만 연결할 수 있다.
@@ -183,6 +198,7 @@ namespace
 			skin->SetSkin(prefab.model, i, animation);
 			nodeObjects[i]->AddComponent(std::move(skin));
 		}
+		return true;
 	}
 }
 
@@ -191,10 +207,16 @@ GameObject* World::InstantiatePrefab(const Prefab& prefab, const PrefabPlacement
 	const std::optional<std::string>& name = placement.name.has_value() ? placement.name : prefab.root.name;
 	const Transform& transform = placement.transform.has_value() ? *placement.transform : prefab.root.localTransform;
 	GameObject* root = CreateGameObject(name, transform);
+	if (root == nullptr) { return nullptr; }
 
 	// id 조회표는 인스턴스마다 따로 만든다. 같은 프리팹을 여러 번 놓아도 각 인스턴스 안에서만 연결된다.
 	PrefabInstanceLinks links;
-	ApplyPrefabObject(*root, prefab.root, links);
+	if (!ApplyPrefabObject(*root, prefab.root, links))
+	{
+		// 이미 만든 객체는 모두 루트 아래에 있어 함께 삭제 예정이 된다.
+		DestroyGameObject(root);
+		return nullptr;
+	}
 	for (const auto& [object, animation] : links.animations)
 	{
 		AttachPrefabAnimation(*object, *animation, links.objectsByID);
@@ -204,6 +226,10 @@ GameObject* World::InstantiatePrefab(const Prefab& prefab, const PrefabPlacement
 		AttachPrefabSkin(*object, *skin, links.animations);
 	}
 
-	ApplyLegacyPrefabModel(*root, prefab);
+	if (!InstantiatePrefabModelHierarchy(*root, prefab))
+	{
+		DestroyGameObject(root);
+		return nullptr;
+	}
 	return root;
 }

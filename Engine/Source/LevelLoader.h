@@ -14,6 +14,7 @@ class World;
  * 프리팹 항목에는 name과 transform만 지정할 수 있다. 로드하는 동안 활성 카메라를 지정하지 않는다.
  * 성공 시 이번에 추가한 객체를 배열 순서대로 빌려준다. 빈 맵은 빈 목록을 반환한다.
  * 파일 읽기나 검증 실패 시 월드를 변경하지 않고 nullopt를 반환한다.
+ * 객체 생성 실패 시 이번에 만든 객체를 모두 삭제 예정으로 표시하고 nullopt를 반환한다.
  * 반환한 포인터는 각 객체가 삭제되기 전까지 유효하다. 월드 갱신 중에는 호출하지 않는다.
  */
 [[nodiscard]] std::optional<std::vector<GameObject*>> LoadLevel(const std::filesystem::path& path, World& world);

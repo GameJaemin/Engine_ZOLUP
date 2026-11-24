@@ -245,7 +245,18 @@ std::optional<std::vector<GameObject*>> LoadLevel(const std::filesystem::path& p
 	for (rapidjson::SizeType i = 0; i < entries.Size(); ++i)
 	{
 		// 맵 안 객체는 ReadPlacement가 읽는 name과 transform이 루트 값과 같다.
-		loadedObjects.push_back(world.InstantiatePrefab(*prefabs[i], ReadPlacement(entries[i])));
+		GameObject* root = world.InstantiatePrefab(*prefabs[i], ReadPlacement(entries[i]));
+		if (root == nullptr)
+		{
+			Log::Write(LogLevel::Error, "Level", std::format("{}: objects[{}] could not be created", pathText, i));
+			// 앞서 만든 인스턴스는 모두 각 루트 아래에 있어 루트만 삭제 예정으로 표시하면 된다.
+			for (GameObject* loadedObject : loadedObjects)
+			{
+				world.DestroyGameObject(loadedObject);
+			}
+			return std::nullopt;
+		}
+		loadedObjects.push_back(root);
 	}
 	return loadedObjects;
 }

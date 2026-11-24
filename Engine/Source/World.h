@@ -75,7 +75,8 @@ private:
 public:
 	/**
 	 * 새 ObjectID를 발급해 등록하고 해당 객체가 삭제되기 전까지 유효한 비소유 포인터를 반환한다.
-	 * 빈 입력, 소속 불일치, 이미 ID를 가진 객체와 ID 발급 실패는 nullptr를 반환하고 입력 객체는 정리한다.
+	 * 발급한 ID가 이 World의 기존 ID와 겹치면 다시 발급한다.
+	 * 빈 입력, 소속 불일치, 이미 ID를 가진 객체, ID 발급 실패와 재발급 횟수 초과는 nullptr를 반환하고 입력 객체는 정리한다.
 	 * 갱신 중에는 호출하지 않는다. 할당 실패 예외는 전파한다.
 	 */
 	GameObject* AddGameObject(std::unique_ptr<GameObject> newGameObject);
@@ -83,6 +84,7 @@ public:
 	/**
 	 * 저장이나 복제에서 가져온 ID를 유지해 등록한다. 그 밖의 계약은 ID를 받지 않는 AddGameObject와 같다.
 	 * 무효 ID, 이 World에 이미 있는 ID, 이미 ID를 가진 객체는 nullptr를 반환하고 입력 객체는 정리한다.
+	 * 이미 있는 ID는 다시 발급하지 않고 거절한다.
 	 */
 	GameObject* AddGameObject(std::unique_ptr<GameObject> newGameObject, const ObjectID& objectID);
 
@@ -92,6 +94,7 @@ public:
 	/**
 	 * 로드된 프리팹을 등록하고 삭제 전까지 유효한 비소유 루트 포인터를 반환한다.
 	 * placement에서 지정한 루트 값만 덮어쓴다. 월드 갱신 중에는 호출하지 않는다.
+	 * 객체 생성에 실패하면 이번에 만든 객체를 모두 삭제 예정으로 표시하고 nullptr를 반환한다.
 	 */
 	[[nodiscard]] GameObject* InstantiatePrefab(const Prefab& prefab, const PrefabPlacement& placement);
 

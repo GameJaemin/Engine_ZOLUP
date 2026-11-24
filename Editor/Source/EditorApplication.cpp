@@ -136,7 +136,11 @@ void EditorApplication::OnGui()
 			transform.position = Vector3{ 0.0f, 0.0f, 0.0f };
 			const PrefabPlacement placement{ .transform = transform };
 			GameObject* root = world->InstantiatePrefab(*prefab, placement);
-			if (!selection.Select(root))
+			if (root == nullptr)
+			{
+				Log::Write(LogLevel::Warning, "Editor", "Failed to instantiate the dropped prefab");
+			}
+			else if (!selection.Select(root))
 			{
 				Log::Write(LogLevel::Warning, "Editor", "Could not select the dropped prefab instance");
 			}

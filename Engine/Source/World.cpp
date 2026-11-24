@@ -12,6 +12,13 @@
 #include <string>
 #include <utility>
 
+namespace
+{
+	// 무작위 ID가 연속으로 겹칠 확률은 사실상 0이다. 그래도 Generate가 같은 값을 계속 돌려주는 고장에서
+	// 무한 반복하지 않도록 횟수를 제한한다.
+	constexpr int MaxObjectIDGenerateAttempts = 8;
+}
+
 World::World() = default;
 World::~World()
 {
@@ -31,8 +38,19 @@ RenderScene& World::GetRenderScene()
 
 GameObject* World::AddGameObject(std::unique_ptr<GameObject> newGameObject)
 {
-	// 생성 실패로 무효 ID가 오면 아래 등록이 거절한다.
-	return AddGameObject(std::move(newGameObject), ObjectID::Generate());
+	for (int attempt = 0; attempt < MaxObjectIDGenerateAttempts; ++attempt)
+	{
+		const ObjectID objectID = ObjectID::Generate();
+		if (!objectID.IsValid()) { return nullptr; }
+
+		// 이 World에 이미 있는 ID면 다시 만든다.
+		if (gameObjectsByID.contains(objectID)) { continue; }
+
+		return AddGameObject(std::move(newGameObject), objectID);
+	}
+
+	// 정해진 횟수 안에 겹치지 않는 ID를 얻지 못했다.
+	return nullptr;
 }
 
 GameObject* World::AddGameObject(std::unique_ptr<GameObject> newGameObject, const ObjectID& objectID)
@@ -40,17 +58,18 @@ GameObject* World::AddGameObject(std::unique_ptr<GameObject> newGameObject, cons
 	if (newGameObject == nullptr) { return nullptr; }
 	if (&newGameObject->GetWorld() != this) { return nullptr; }
 	if (!objectID.IsValid() || newGameObject->GetObjectID().IsValid()) { return nullptr; }
-	if (gameObjectsByID.contains(objectID)) { return nullptr; }
 
-	// 할당 실패 예외가 목록과 인덱스를 어긋나게 하지 않도록 목록 공간을 먼저 확보한다.
+	// 할당 실패 예외가 목록과 인덱스를 어긋나게 하지 않도록 목록 공간을 인덱스 등록보다 먼저 확보한다.
 	if (gameObjects.size() == gameObjects.capacity())
 	{
 		gameObjects.reserve(std::max<std::size_t>(gameObjects.capacity() * 2, 1));
 	}
 
 	GameObject* gameObject = newGameObject.get();
+	// 저장이나 복제에서 온 ID가 이미 있으면 데이터 손상이나 중복 등록이므로 다시 발급하지 않고 거절한다.
+	if (!gameObjectsByID.emplace(objectID, gameObject).second) { return nullptr; }
+
 	gameObject->SetObjectID(objectID);
-	gameObjectsByID.emplace(objectID, gameObject);
 	// 공간을 확보했으므로 여기서는 실패하지 않는다.
 	gameObjects.push_back(std::move(newGameObject));
 	return gameObject;
