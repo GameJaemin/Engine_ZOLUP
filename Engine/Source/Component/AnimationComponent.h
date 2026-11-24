@@ -24,6 +24,9 @@ public:
 	 */
 	void SetNodeTransforms(std::vector<TransformComponent*> newNodeTransforms);
 
+	/** 클립 node 번호 순서의 노드 TransformComponent 목록을 빌려준다. 객체가 없는 노드(뼈)는 nullptr다. */
+	const std::vector<TransformComponent*>& GetNodeTransforms() const { return nodeTransforms; }
+
 private:
 	// 클립 node 번호 순서. 비소유이며 자손 객체의 컴포넌트를 가리킨다.
 	std::vector<TransformComponent*> nodeTransforms;
@@ -32,6 +35,9 @@ private:
 public:
 	/** 노드 번호 순서의 원래 부모 기준 값을 받고, 현재 포즈도 이 값으로 채운다. */
 	void SetRestPose(std::vector<Transform> newRestPose);
+
+	/** 노드 번호 순서의 원래 부모 기준 값을 빌려준다. */
+	const std::vector<Transform>& GetRestPose() const { return restPose; }
 
 	/** 노드 번호 순서의 이번 프레임 부모 기준 값을 빌려준다. 재생 전에는 원래 값이다. */
 	const std::vector<Transform>& GetPose() const { return pose; }

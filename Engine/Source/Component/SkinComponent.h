@@ -26,6 +26,11 @@ public:
 	 */
 	void SetSkin(std::shared_ptr<const Model> newModel, std::size_t newNodeIndex, const AnimationComponent* newAnimation);
 
+	const std::shared_ptr<const Model>& GetModel() const { return model; }
+	std::size_t GetNodeIndex() const { return nodeIndex; }
+	/** 포즈를 읽는 재생 컴포넌트다. 없으면 nullptr다. */
+	const AnimationComponent* GetAnimation() const { return animation; }
+
 private:
 	// 배치표(부모 번호, 원래 값)와 스킨을 가진 원본. 같은 프리팹을 놓은 여러 객체가 함께 읽는다.
 	std::shared_ptr<const Model> model;

@@ -201,6 +201,9 @@
     <ClCompile Include="Engine\Source\Prefab.cpp">
       <Filter>Engine\Source</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Source\SceneSnapshot.cpp">
+      <Filter>Engine\Source</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Source\Prefab\PrefabAnimation.cpp">
       <Filter>Engine\Source\Prefab</Filter>
     </ClCompile>
@@ -429,6 +432,9 @@
       <Filter>Engine\Source</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Prefab.h">
+      <Filter>Engine\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\SceneSnapshot.h">
       <Filter>Engine\Source</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Prefab\PrefabComponents.h">
