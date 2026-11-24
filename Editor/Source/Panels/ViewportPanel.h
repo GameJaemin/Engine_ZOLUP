@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/Math/Vector2.h"
 #include "Core/Math/Vector3.h"
 
 #include <optional>
@@ -13,6 +14,13 @@ enum class ViewportGizmoMode
 	Move,
 	Rotate,
 	Scale,
+};
+
+struct ViewportPickClick
+{
+	// 장면 이미지의 왼쪽 위를 (0, 0)으로 하는 0 이상 1 미만의 클릭 좌표다.
+	Vector2 imageUV;
+	float aspectRatio;
 };
 
 class ViewportPanel
@@ -40,6 +48,9 @@ public:
 	/** 바로 앞 Draw에서 장면 이미지 위의 우클릭 시작을 감지했고 기즈모를 조작 중이 아니면 true다. */
 	bool WasImageRightClicked() const { return wasImageRightClicked; }
 
+	/** 바로 앞 Draw의 좌클릭 결과다. 기즈모, 카메라 또는 드롭 입력에 사용한 클릭은 비워 둔다. */
+	std::optional<ViewportPickClick> GetPickClick() const { return pickClick; }
+
 public:
 	// 기본 도킹 배치와 창 생성에서 같은 이름을 사용한다.
 	static constexpr const char* WindowName = "Viewport";
@@ -49,4 +60,5 @@ private:
 	// 현재 Scale 드래그의 기준값이다. 다음 드래그를 시작할 때 다시 읽는다.
 	Vector3 scaleAtDragStart{ 1.0f, 1.0f, 1.0f };
 	bool wasImageRightClicked = false;
+	std::optional<ViewportPickClick> pickClick;
 };

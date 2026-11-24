@@ -205,6 +205,7 @@ namespace
 std::optional<std::string> ViewportPanel::Draw(EditorViewport& viewport, EditorSelection& selection)
 {
 	wasImageRightClicked = false;
+	pickClick.reset();
 
 	if (!ImGui::Begin(WindowName))
 	{
@@ -255,6 +256,8 @@ std::optional<std::string> ViewportPanel::Draw(EditorViewport& viewport, EditorS
 				ImGui::Image(static_cast<ImTextureID>(textureID), imageSize);
 				const ImVec2 imageMin = ImGui::GetItemRectMin();
 				const ImVec2 imageMax = ImGui::GetItemRectMax();
+				const bool imageLeftClicked = ImGui::IsItemClicked(ImGuiMouseButton_Left);
+				const bool hasDragPayload = ImGui::GetDragDropPayload() != nullptr;
 
 				if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
 				{
@@ -276,6 +279,19 @@ std::optional<std::string> ViewportPanel::Draw(EditorViewport& viewport, EditorS
 				}
 
 				drewGizmo = DrawTransformGizmo(selection, viewport, gizmoMode, scaleAtDragStart, imageMin, imageMax);
+				const bool gizmoClaimsClick = ImGuizmo::IsUsingAny() || (drewGizmo && ImGuizmo::IsOver());
+				const bool canPick = !isGizmoModeLocked && !gizmoClaimsClick && !hasDragPayload;
+				if (imageLeftClicked && canPick)
+				{
+					const ImVec2 clickPosition = ImGui::GetIO().MouseClickedPos[ImGuiMouseButton_Left];
+					const bool isInsideX = clickPosition.x >= imageMin.x && clickPosition.x < imageMax.x;
+					const bool isInsideY = clickPosition.y >= imageMin.y && clickPosition.y < imageMax.y;
+					if (isInsideX && isInsideY)
+					{
+						const Vector2 imageUV{ (clickPosition.x - imageMin.x) / imageSize.x, (clickPosition.y - imageMin.y) / imageSize.y };
+						pickClick = ViewportPickClick{ imageUV, imageSize.x / imageSize.y };
+					}
+				}
 			}
 		}
 	}

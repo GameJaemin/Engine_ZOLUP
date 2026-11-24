@@ -1,10 +1,15 @@
 #include "EditorApplication.h"
 
 #include "AssetManager.h"
+#include "CameraViewInfo.h"
+#include "Component/StaticMeshComponent.h"
+#include "Component/TransformComponent.h"
 #include "Core/Log.h"
 #include "Core/Math/Transform.h"
 #include "Core/Math/Vector3.h"
 #include "Engine.h"
+#include "GameObject.h"
+#include "Mesh/StaticMesh.h"
 #include "Paths.h"
 #include "Prefab.h"
 #include "World.h"
@@ -13,6 +18,9 @@
 #include <imgui_internal.h>
 #include <ImGuizmo.h>
 
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -24,6 +32,113 @@ namespace
 {
 	// 맵 열기 기능이 생기기 전까지 에디터가 시작할 때 여는 맵이다. 저장소 루트 기준 경로다.
 	constexpr std::string_view DefaultLevelPath = "Game/Content/Maps/DevMap.json";
+
+	struct PickSegment
+	{
+		Vector3 start;
+		Vector3 end;
+	};
+
+	Vector3 TransformPickPoint(const Vector3& point, const Matrix4x4& matrix)
+	{
+		return Vector3{
+			point.x * matrix.m[0][0] + point.y * matrix.m[1][0] + point.z * matrix.m[2][0] + matrix.m[3][0],
+			point.x * matrix.m[0][1] + point.y * matrix.m[1][1] + point.z * matrix.m[2][1] + matrix.m[3][1],
+			point.x * matrix.m[0][2] + point.y * matrix.m[1][2] + point.z * matrix.m[2][2] + matrix.m[3][2]
+		};
+	}
+
+	std::optional<PickSegment> BuildPickSegment(const ViewportPickClick& click, const CameraViewInfo& camera)
+	{
+		Matrix4x4 projection;
+		if (!camera.CalculateProjectionMatrix(click.aspectRatio, projection)) { return std::nullopt; }
+
+		const float screenX = click.imageUV.x * 2.0f - 1.0f;
+		const float screenY = 1.0f - click.imageUV.y * 2.0f;
+		const float viewX = screenX / projection.m[0][0];
+		const float viewY = screenY / projection.m[1][1];
+		const bool isPerspective = camera.projectionMode == CameraProjectionMode::Perspective;
+		const float nearScale = isPerspective ? camera.nearClipDistance : 1.0f;
+		const float farScale = isPerspective ? camera.farClipDistance : 1.0f;
+
+		// 원근 투영의 화면 좌표는 깊이로 나눈 값이다. near와 far의 깊이를 각각 곱해 되돌린다.
+		const Vector3 viewStart{ viewX * nearScale, viewY * nearScale, camera.nearClipDistance };
+		const Vector3 viewEnd{ viewX * farScale, viewY * farScale, camera.farClipDistance };
+		const Matrix4x4 cameraToWorld = Matrix4x4::CreateFromQuaternion(camera.rotation) * Matrix4x4::CreateTranslation(camera.position);
+		const Vector3 start = TransformPickPoint(viewStart, cameraToWorld);
+		const Vector3 end = TransformPickPoint(viewEnd, cameraToWorld);
+		const Vector3 direction = end - start;
+		const float lengthSquared = direction.Dot(direction);
+		if (!std::isfinite(lengthSquared) || lengthSquared <= 0.0f) { return std::nullopt; }
+		return PickSegment{ start, end };
+	}
+
+	bool IntersectPickTriangle(const Vector3& start, const Vector3& direction, const Vector3& a, const Vector3& b, const Vector3& c, float& outFraction)
+	{
+		const Vector3 edgeAB = b - a;
+		const Vector3 edgeAC = c - a;
+		const Vector3 perpendicular = direction.Cross(edgeAC);
+		const float determinant = edgeAB.Dot(perpendicular);
+		// 시계 방향 앞면만 그리는 일반 메시와 같은 기준이다. 평행하거나 면적이 0인 면도 여기서 제외된다.
+		if (!(determinant > 0.0f) || !std::isfinite(determinant)) { return false; }
+
+		// u와 v는 교점의 삼각형 내부 좌표다. 나누기 전에 determinant 배율로 비교한다.
+		const Vector3 fromA = start - a;
+		const float u = fromA.Dot(perpendicular);
+		if (!(u >= 0.0f && u <= determinant)) { return false; }
+		const Vector3 cross = fromA.Cross(edgeAB);
+		const float v = direction.Dot(cross);
+		if (!(v >= 0.0f && v <= determinant - u)) { return false; }
+
+		// direction은 end - start다. 이 비율이 0이면 near, 1이면 far에 닿는다.
+		const float fraction = edgeAC.Dot(cross) / determinant;
+		if (!(fraction >= 0.0f && fraction <= 1.0f)) { return false; }
+		outFraction = fraction;
+		return true;
+	}
+
+	GameObject* PickGameObject(World& world, const PickSegment& segment)
+	{
+		const Vector3 direction = segment.end - segment.start;
+		GameObject* closestObject = nullptr;
+		float closestFraction = 1.0f;
+
+		for (const std::unique_ptr<GameObject>& object : world.GetGameObjects())
+		{
+			if (object->IsPendingDestroy()) { continue; }
+			const TransformComponent* transform = object->GetComponent<TransformComponent>();
+			if (transform == nullptr) { continue; }
+			const Matrix4x4 worldMatrix = transform->GetWorldMatrix();
+
+			for (const std::unique_ptr<Component>& component : object->GetComponents())
+			{
+				const StaticMeshComponent* meshComponent = dynamic_cast<const StaticMeshComponent*>(component.get());
+				if (meshComponent == nullptr) { continue; }
+				const std::shared_ptr<const StaticMesh>& mesh = meshComponent->GetStaticMesh();
+				if (mesh == nullptr || !mesh->skinWeights.empty()) { continue; }
+
+				for (std::size_t index = 2; index < mesh->indices.size(); index += 3)
+				{
+					const std::uint32_t aIndex = mesh->indices[index - 2];
+					const std::uint32_t bIndex = mesh->indices[index - 1];
+					const std::uint32_t cIndex = mesh->indices[index];
+					const std::size_t vertexCount = mesh->vertices.size();
+					if (aIndex >= vertexCount || bIndex >= vertexCount || cIndex >= vertexCount) { continue; }
+
+					const Vector3 a = TransformPickPoint(mesh->vertices[aIndex].position, worldMatrix);
+					const Vector3 b = TransformPickPoint(mesh->vertices[bIndex].position, worldMatrix);
+					const Vector3 c = TransformPickPoint(mesh->vertices[cIndex].position, worldMatrix);
+					float fraction = 0.0f;
+					if (!IntersectPickTriangle(segment.start, direction, a, b, c, fraction)) { continue; }
+					if (closestObject != nullptr && fraction >= closestFraction) { continue; }
+					closestFraction = fraction;
+					closestObject = object.get();
+				}
+			}
+		}
+
+		return closestObject;
+	}
 
 	/**
 	 * 도킹 공간을 오른쪽 Inspector, 아래 Content Browser, 왼쪽 Hierarchy와 가운데 Viewport로 나눈다.
@@ -144,6 +259,26 @@ void EditorApplication::OnGui()
 			else if (!selection.Select(root))
 			{
 				Log::Write(LogLevel::Warning, "Editor", "Could not select the dropped prefab instance");
+			}
+		}
+	}
+	else if (!editorViewport.IsCameraControlActive())
+	{
+		const std::optional<ViewportPickClick> click = viewportPanel.GetPickClick();
+		if (click.has_value())
+		{
+			const std::optional<PickSegment> segment = BuildPickSegment(*click, editorViewport.GetCameraViewInfo());
+			if (segment.has_value())
+			{
+				GameObject* pickedObject = PickGameObject(*world, *segment);
+				if (pickedObject != nullptr)
+				{
+					selection.Select(pickedObject);
+				}
+				else
+				{
+					selection.ClearSelection();
+				}
 			}
 		}
 	}
