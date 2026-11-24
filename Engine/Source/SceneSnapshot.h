@@ -81,8 +81,8 @@ struct GameObjectSnapshot
 {
 	ObjectID objectID;
 	std::string name;
-	// 무효면 루트다. 스냅샷 배열에서 부모가 자식보다 먼저 나온다.
-	ObjectID parentID;
+	// 자식 순서대로 담는다. 삭제 예정 자식은 빠지며 비어 있으면 자식이 없다.
+	std::vector<ObjectID> childObjectIDs;
 	// 부모 기준 엔진 좌표계이며 위치 단위는 cm다.
 	Transform localTransform;
 	std::optional<StaticMeshSnapshot> staticMesh;
@@ -97,7 +97,7 @@ struct GameObjectSnapshot
 /** World 하나의 객체 상태를 메모리에 담는다. */
 struct SceneSnapshot
 {
-	// 부모를 먼저 담는 순서다. 루트끼리는 등록 순서, 자식은 기존 자식 순서를 따른다.
+	// World 등록 순서다. 부모가 자식보다 뒤에 나올 수 있다.
 	std::vector<GameObjectSnapshot> objects;
 	// 활성 카메라를 가진 객체다. 무효면 활성 카메라가 없다.
 	ObjectID activeCameraObjectID;
@@ -106,12 +106,13 @@ struct SceneSnapshot
 /**
  * 삭제 예정이 아닌 객체를 담는다.
  * 파생 GameObject, 지원하지 않는 컴포넌트, 같은 종류 컴포넌트 중복, 스냅샷 밖을 가리키는 참조가 있으면
- * 로그를 남기고 nullopt를 반환한다.
+ * 로그를 남기고 nullopt를 반환한다. 스냅샷 밖에는 삭제 예정 객체, 부착 전 컴포넌트, 다른 World의 객체가 포함된다.
  */
 [[nodiscard]] std::optional<SceneSnapshot> CaptureWorld(const World& world);
 
 /**
  * 객체가 없는 World에 ObjectID를 유지해 복원한다.
- * 실패하면 로그를 남기고 false를 반환한다. 이미 만든 객체가 남으므로 호출자는 그 World를 버린다.
+ * 실패하면 로그를 남기고, 이번에 만든 객체를 모두 지워 빈 World로 되돌린 뒤 false를 반환한다.
+ * 실패 정리에서 삭제를 바로 처리하므로 그 World의 객체 목록을 순회하는 중에는 호출하지 않는다.
  */
 [[nodiscard]] bool RestoreWorld(const SceneSnapshot& snapshot, World& world);
