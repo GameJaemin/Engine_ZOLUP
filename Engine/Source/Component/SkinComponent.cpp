@@ -3,10 +3,34 @@
 #include "AssetManager.h"
 #include "Component/AnimationComponent.h"
 #include "Core/Math/Transform.h"
+#include "GameObject.h"
 #include "Mesh/Skin.h"
+#include "World.h"
 
 #include <optional>
 #include <utility>
+
+SkinComponent::~SkinComponent()
+{
+	if (destroyingWorld != nullptr)
+	{
+		destroyingWorld->UnsubscribeGameObjectDestroying(destroyingSubscriptionId);
+	}
+}
+
+void SkinComponent::OnRegister()
+{
+	GameObject* owner = GetGameObject();
+	if (owner == nullptr) { return; }
+
+	World& world = owner->GetWorld();
+	// 알림은 실제 파괴 전에 오므로 재생 컴포넌트가 살아 있을 때 비교하고 지운다.
+	destroyingSubscriptionId = world.SubscribeGameObjectDestroying([this](const GameObject& destroyed) noexcept
+	{
+		if (animation != nullptr && animation->GetGameObject() == &destroyed) { animation = nullptr; }
+	});
+	destroyingWorld = &world;
+}
 
 void SkinComponent::SetSkin(std::shared_ptr<const Model> newModel, std::size_t newNodeIndex, const AnimationComponent* newAnimation)
 {

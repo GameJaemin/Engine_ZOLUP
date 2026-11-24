@@ -4,12 +4,14 @@
 #include "Core/Math/Matrix4x4.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
 struct Model;
 struct Transform;
 class AnimationComponent;
+class World;
 
 /**
  * 같은 객체의 StaticMeshComponent가 그리는 스킨 메시를 모델의 뼈 포즈로 휘게 하는 연결이다.
@@ -17,12 +19,30 @@ class AnimationComponent;
  */
 class SkinComponent : public Component
 {
+	// 생성과 소멸
+public:
+	SkinComponent() = default;
+
+	/** 구독한 World가 있으면 객체 삭제 알림 구독을 해제한다. */
+	~SkinComponent() override;
+
+	// 등록
+public:
+	/** 소속 World의 객체 삭제 알림을 구독한다. GameObject::AddComponent가 호출하며 World의 삭제 처리 중에는 부착하지 않는다. */
+	void OnRegister() override;
+
+private:
+	// 소멸 시 구독을 해제하려고 보관한다. 비소유이며 World가 이 컴포넌트보다 오래 산다.
+	World* destroyingWorld = nullptr;
+	// 0이면 구독하지 않았다.
+	std::uint64_t destroyingSubscriptionId = 0;
+
 	// 스킨 연결
 public:
 	/**
 	 * model의 nodeIndex번 노드(스킨이 붙은 메시 노드)로 연결한다. 스킨은 그 노드의 skin 번호로 찾는다.
-	 * animation은 같은 모델 노드의 포즈를 가진 재생 컴포넌트이며, nullptr면 배치표의 원래 값을 포즈로 쓴다.
-	 * animation을 가진 객체는 이 컴포넌트보다 먼저 삭제하지 않는다.
+	 * animation은 같은 World에 있는 같은 모델 노드의 포즈를 가진 재생 컴포넌트이며, nullptr면 배치표의 원래 값을 포즈로 쓴다.
+	 * 부착 후 animation을 가진 객체가 삭제되면 nullptr로 바뀌어 원래 값을 쓴다.
 	 */
 	void SetSkin(std::shared_ptr<const Model> newModel, std::size_t newNodeIndex, const AnimationComponent* newAnimation);
 

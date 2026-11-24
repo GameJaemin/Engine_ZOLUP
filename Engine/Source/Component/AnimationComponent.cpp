@@ -2,11 +2,38 @@
 
 #include "Animation/AnimationClip.h"
 #include "Component/TransformComponent.h"
+#include "GameObject.h"
+#include "World.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <utility>
+
+AnimationComponent::~AnimationComponent()
+{
+	if (destroyingWorld != nullptr)
+	{
+		destroyingWorld->UnsubscribeGameObjectDestroying(destroyingSubscriptionId);
+	}
+}
+
+void AnimationComponent::OnRegister()
+{
+	GameObject* owner = GetGameObject();
+	if (owner == nullptr) { return; }
+
+	World& world = owner->GetWorld();
+	// 알림은 실제 파괴 전에 오므로 노드가 살아 있을 때 비교하고 지운다.
+	destroyingSubscriptionId = world.SubscribeGameObjectDestroying([this](const GameObject& destroyed) noexcept
+	{
+		for (TransformComponent*& node : nodeTransforms)
+		{
+			if (node != nullptr && node->GetGameObject() == &destroyed) { node = nullptr; }
+		}
+	});
+	destroyingWorld = &world;
+}
 
 void AnimationComponent::SetNodeTransforms(std::vector<TransformComponent*> newNodeTransforms)
 {

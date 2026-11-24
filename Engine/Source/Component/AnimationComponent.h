@@ -3,11 +3,13 @@
 #include "Component.h"
 #include "Core/Math/Transform.h"
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
 class AnimationClip;
 class TransformComponent;
+class World;
 
 /**
  * 클립 하나의 재생 시각을 재고, 매 프레임 트랙 값을 노드 객체의 TransformComponent에 넣는다.
@@ -15,12 +17,31 @@ class TransformComponent;
  */
 class AnimationComponent : public Component
 {
+	// 생성과 소멸
+public:
+	AnimationComponent() = default;
+
+	/** 구독한 World가 있으면 객체 삭제 알림 구독을 해제한다. */
+	~AnimationComponent() override;
+
+	// 등록
+public:
+	/** 소속 World의 객체 삭제 알림을 구독한다. GameObject::AddComponent가 호출하며 World의 삭제 처리 중에는 부착하지 않는다. */
+	void OnRegister() override;
+
+private:
+	// 소멸 시 구독을 해제하려고 보관한다. 비소유이며 World가 이 컴포넌트보다 오래 산다.
+	World* destroyingWorld = nullptr;
+	// 0이면 구독하지 않았다.
+	std::uint64_t destroyingSubscriptionId = 0;
+
 	// 노드 연결
 public:
 	/**
 	 * 클립 node 번호 순서의 노드 TransformComponent 목록을 받는다.
-	 * 노드 객체는 이 컴포넌트를 붙인 객체의 자손이어야 하고 따로 삭제하지 않는다.
+	 * 노드 객체는 같은 World에 있는 이 컴포넌트를 붙인 객체의 자손이어야 한다.
 	 * 객체로 만들지 않은 노드(뼈)는 nullptr이며, 그 노드의 값은 포즈에만 적는다.
+	 * 부착 후 노드 객체가 삭제되면 그 칸은 nullptr가 되어 뼈와 같이 다룬다.
 	 */
 	void SetNodeTransforms(std::vector<TransformComponent*> newNodeTransforms);
 
