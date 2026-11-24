@@ -177,6 +177,8 @@ void EditorApplication::OnShutdown() noexcept
 		Log::Write(LogLevel::Error, "Editor", "Failed to request viewport render target release");
 	}
 
+	contentBrowserPanel.ShutdownThumbnails();
+
 	selection.SetWorld(nullptr);
 	worldSession.Close();
 

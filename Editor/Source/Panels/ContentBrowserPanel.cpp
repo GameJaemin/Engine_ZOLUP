@@ -1,6 +1,10 @@
 #include "ContentBrowserPanel.h"
 
+#include "Core/Log.h"
+#include "DataHub_Interface.h"
 #include "EditorAssetDragDrop.h"
+#include "Image.h"
+#include "ImageLoader.h"
 #include "Paths.h"
 
 #include <imgui.h>
@@ -16,6 +20,38 @@
 
 namespace
 {
+	constexpr std::uint32_t ThumbnailMaxEdge = 96;
+	constexpr int ThumbnailLoadsPerFrame = 2;
+	constexpr std::size_t BytesPerPixel = 4;
+
+	Image CreateThumbnailImage(Image&& source)
+	{
+		const std::uint32_t longestEdge = (std::max)(source.width, source.height);
+		if (longestEdge <= ThumbnailMaxEdge) { return std::move(source); }
+
+		Image thumbnail;
+		const std::uint32_t scaledWidth = static_cast<std::uint32_t>(static_cast<std::uint64_t>(source.width) * ThumbnailMaxEdge / longestEdge);
+		const std::uint32_t scaledHeight = static_cast<std::uint32_t>(static_cast<std::uint64_t>(source.height) * ThumbnailMaxEdge / longestEdge);
+		thumbnail.width = (std::max)(1u, scaledWidth);
+		thumbnail.height = (std::max)(1u, scaledHeight);
+		thumbnail.pixels.resize(static_cast<std::size_t>(thumbnail.width) * thumbnail.height * BytesPerPixel);
+
+		// 축소된 픽셀의 중심에 대응하는 원본 픽셀 하나를 복사한다.
+		for (std::uint32_t y = 0; y < thumbnail.height; ++y)
+		{
+			const std::size_t sourceY = static_cast<std::uint64_t>(2 * y + 1) * source.height / (2 * thumbnail.height);
+			for (std::uint32_t x = 0; x < thumbnail.width; ++x)
+			{
+				const std::size_t sourceX = static_cast<std::uint64_t>(2 * x + 1) * source.width / (2 * thumbnail.width);
+				const std::size_t sourceOffset = (sourceY * source.width + sourceX) * BytesPerPixel;
+				const std::size_t destinationOffset = (static_cast<std::size_t>(y) * thumbnail.width + x) * BytesPerPixel;
+				std::copy_n(source.pixels.data() + sourceOffset, BytesPerPixel, thumbnail.pixels.data() + destinationOffset);
+			}
+		}
+
+		return thumbnail;
+	}
+
 	/** 호출자는 빈 경로와 절대 경로를 거부하고 lexically_normal로 정규화한 상대 경로를 전달한다. */
 	bool IsContentRelativePath(const std::filesystem::path& relativePath)
 	{
@@ -205,6 +241,7 @@ bool ContentBrowserPanel::Initialize()
 	rootDirectory = std::move(directory);
 	currentDirectory.clear();
 	currentEntries.clear();
+	shouldClearThumbnails = true;
 
 	// 이전 탐색에서 선택한 파일과 맵 열기 요청을 비운다.
 	selectedFilePath.clear();
@@ -234,6 +271,7 @@ bool ContentBrowserPanel::Refresh(std::error_code& outError)
 
 	// 정상 조회 결과와 실패 결과를 모두 제거해 이후 요청 시 다시 조회하게 한다.
 	directoryCache.clear();
+	shouldClearThumbnails = true;
 
 	// 폴더 재조회 결과를 보관하고 방문 기록은 추가하지 않는다.
 	const bool refreshed = NavigateTo(currentDirectory, outError, false);
@@ -254,6 +292,12 @@ std::string ContentBrowserPanel::GetSelectedFilePath()
 
 void ContentBrowserPanel::Draw()
 {
+	if (shouldClearThumbnails)
+	{
+		ClearThumbnails();
+	}
+	remainingThumbnailLoads = ThumbnailLoadsPerFrame;
+
 	ValidateSelection();
 
 	if (ImGui::Begin(WindowName))
@@ -534,6 +578,99 @@ bool ContentBrowserPanel::MatchesSearch(const ContentBrowserEntry& entry) const
 	return name.find(query) != std::string::npos;
 }
 
+const ContentBrowserPanel::Thumbnail* ContentBrowserPanel::FindOrPrepareThumbnail(const ContentBrowserEntry& entry)
+{
+	if (shouldClearThumbnails) { return nullptr; }
+
+	const std::string key = Paths::MakeAssetKey(entry.relativePath);
+	const auto cached = thumbnails.find(key);
+	if (cached != thumbnails.end())
+	{
+		return cached->second.textureName.empty() ? nullptr : &cached->second;
+	}
+
+	if (remainingThumbnailLoads == 0) { return nullptr; }
+	--remainingThumbnailLoads;
+
+	Thumbnail& thumbnail = thumbnails.try_emplace(key).first->second;
+	PrepareThumbnail(entry, thumbnail);
+	return thumbnail.textureName.empty() ? nullptr : &thumbnail;
+}
+
+void ContentBrowserPanel::PrepareThumbnail(const ContentBrowserEntry& entry, Thumbnail& thumbnail) const
+{
+	std::filesystem::path filePath;
+	std::error_code error;
+	if (!ResolveEntryFile(entry, filePath, error)) { return; }
+
+	Image original;
+	if (!ImageLoader::LoadImageFile(filePath, original)) { return; }
+	Image image = CreateThumbnailImage(std::move(original));
+
+	const std::u8string pathUtf8(entry.relativePath.begin(), entry.relativePath.end());
+	const std::filesystem::path relativePath(pathUtf8);
+	std::wstring textureName = L"Editor.ContentThumbnail." + std::to_wstring(thumbnailGeneration) + L"." + relativePath.native();
+
+	Hakko::DataHub::Texture texture{};
+	texture.data.format = Hakko::DataHub::TextureReadFormat::RGBA8_SRGB;
+	texture.data.textureType = Hakko::DataHub::TextureType_2D;
+	texture.data.width = image.width;
+	texture.data.height = image.height;
+	texture.data.depth = 1;
+	texture.data.mipLevels = 1;
+	texture.data.arraySize = 1;
+	texture.usage = Hakko::DataHub::TextureUsage_ReadOnly;
+	const std::uint32_t rowPitch = image.width * static_cast<std::uint32_t>(BytesPerPixel);
+	texture.subresources.push_back({ .offset = 0, .rowPitch = rowPitch, .slicePitch = rowPitch * image.height });
+	texture.rawData = std::move(image.pixels);
+
+	if (Hakko::DataHub::CreateTexture(textureName.c_str(), std::move(texture)) == 0)
+	{
+		Log::Write(LogLevel::Error, "ContentBrowser", "Failed to register thumbnail: " + entry.relativePath);
+		return;
+	}
+
+	Hakko::DataHub::RTB_UpdateResources upload{};
+	upload.command = Hakko::DataHub::RTBCMD_Upload_Resource;
+	Hakko::DataHub::SendRTB(upload);
+
+	thumbnail = Thumbnail{ std::move(textureName), image.width, image.height };
+}
+
+void ContentBrowserPanel::ClearThumbnails()
+{
+	bool releaseRequested = false;
+	for (const auto& [path, thumbnail] : thumbnails)
+	{
+		if (thumbnail.textureName.empty()) { continue; }
+
+		if (Hakko::DataHub::ReleaseTexture(thumbnail.textureName))
+		{
+			releaseRequested = true;
+		}
+		else
+		{
+			Log::Write(LogLevel::Error, "ContentBrowser", "Failed to release thumbnail: " + path);
+		}
+	}
+
+	if (releaseRequested)
+	{
+		Hakko::DataHub::RTB_UpdateResources release{};
+		release.command = Hakko::DataHub::RTBCMD_Release_Resource;
+		Hakko::DataHub::SendRTB(release);
+	}
+
+	thumbnails.clear();
+	++thumbnailGeneration;
+	shouldClearThumbnails = false;
+}
+
+void ContentBrowserPanel::ShutdownThumbnails()
+{
+	ClearThumbnails();
+}
+
 std::error_code ContentBrowserPanel::DrawEntryTile(const ContentBrowserEntry& entry, float tileWidth, std::string& outRequestedDirectory)
 {
 	std::error_code error;
@@ -583,16 +720,42 @@ std::error_code ContentBrowserPanel::DrawEntryTile(const ContentBrowserEntry& en
 		ImGui::EndDragDropSource();
 	}
 
+	const ImVec2 tileEnd(tilePosition.x + tileSize.x, tilePosition.y + tileSize.y);
+	ImVec2 textPosition(tilePosition.x + 6.0f, tilePosition.y + 6.0f);
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+	const Thumbnail* thumbnail = nullptr;
+	const bool isImage = entry.type == ContentBrowserEntryType::Image;
+	if (isImage && ImGui::IsRectVisible(tilePosition, tileEnd))
+	{
+		thumbnail = FindOrPrepareThumbnail(entry);
+	}
+
+	const Hakko::DataHub::TexID textureID = thumbnail != nullptr ? Hakko::DataHub::GetTexId(thumbnail->textureName) : 0;
+	std::string text;
+	if (textureID != 0)
+	{
+		constexpr float thumbnailHeight = 42.0f;
+		const float availableWidth = tileWidth - 12.0f;
+		const float imageWidth = static_cast<float>(thumbnail->width);
+		const float imageHeight = static_cast<float>(thumbnail->height);
+		const float scale = (std::min)(availableWidth / imageWidth, thumbnailHeight / imageHeight);
+		const ImVec2 imageSize(imageWidth * scale, imageHeight * scale);
+		const ImVec2 imageMin(tilePosition.x + (tileWidth - imageSize.x) * 0.5f, textPosition.y + (thumbnailHeight - imageSize.y) * 0.5f);
+		const ImVec2 imageMax(imageMin.x + imageSize.x, imageMin.y + imageSize.y);
+		drawList->AddImage(static_cast<ImTextureID>(textureID), imageMin, imageMax);
+		textPosition.y += thumbnailHeight + 4.0f;
+	}
+	else
+	{
+		text = GetEntryTypeLabel(entry.type);
+		text += "\n";
+	}
+
 	// 이름에 ## 같은 문자가 있어도 그대로 표시하도록 버튼 라벨과 분리한다.
-	std::string text = GetEntryTypeLabel(entry.type);
-	text += "\n";
 	text += entry.name;
 
-	const ImVec2 textPosition(tilePosition.x + 6.0f, tilePosition.y + 6.0f);
-	const ImVec2 tileEnd(tilePosition.x + tileSize.x, tilePosition.y + tileSize.y);
-
 	// 긴 이름은 타일 안에서 줄바꿈하고 타일 밖으로 그리지 않는다.
-	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	drawList->PushClipRect(tilePosition, tileEnd, true);
 	drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), textPosition, ImGui::GetColorU32(ImGuiCol_Text), text.c_str(), nullptr, tileWidth - 12.0f);
 	drawList->PopClipRect();
@@ -951,6 +1114,7 @@ bool ContentBrowserPanel::NavigateTo(std::string_view relativePath, std::error_c
 	if (isDirectoryChanged)
 	{
 		selectedFilePath.clear();
+		shouldClearThumbnails = true;
 
 		// 콘텐츠 영역을 그릴 때 새 폴더의 첫 줄부터 표시하도록 요청한다.
 		resetContentScroll = true;
@@ -1110,6 +1274,43 @@ void ContentBrowserPanel::RecordCurrentDirectory()
 	historyIndex = history.size() - 1;
 }
 
+bool ContentBrowserPanel::ResolveEntryFile(const ContentBrowserEntry& entry, std::filesystem::path& outFile, std::error_code& outError) const
+{
+	// 캐시된 목록과 별개로 현재 부모 폴더가 여전히 탐색 가능한지 확인한다.
+	std::filesystem::path directory;
+	if (!ResolveDirectory(currentDirectory, directory, outError)) { return false; }
+
+	const std::u8string nameUtf8(entry.name.begin(), entry.name.end());
+	std::filesystem::path filePath = directory / std::filesystem::path(nameUtf8);
+	const DWORD attributes = GetFileAttributesW(filePath.c_str());
+
+	if (attributes == INVALID_FILE_ATTRIBUTES)
+	{
+		const DWORD error = GetLastError();
+		outError = std::error_code(static_cast<int>(error), std::system_category());
+		return false;
+	}
+
+	// 목록 조회 이후 파일이 링크로 교체되었을 수도 있으므로 다시 확인한다.
+	if ((attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+	{
+		outError = std::make_error_code(std::errc::permission_denied);
+		return false;
+	}
+
+	const bool isRegularFile = std::filesystem::is_regular_file(filePath, outError);
+	if (outError) { return false; }
+
+	if (!isRegularFile)
+	{
+		outError = std::make_error_code(std::errc::invalid_argument);
+		return false;
+	}
+
+	outFile = std::move(filePath);
+	return true;
+}
+
 bool ContentBrowserPanel::SelectFile(std::string_view relativePath, std::error_code& outError)
 {
 	const std::string key = Paths::MakeAssetKey(relativePath);
@@ -1119,37 +1320,8 @@ bool ContentBrowserPanel::SelectFile(std::string_view relativePath, std::error_c
 		if (entry.type == ContentBrowserEntryType::Folder) { continue; }
 		if (Paths::MakeAssetKey(entry.relativePath) != key) { continue; }
 
-		// 캐시된 목록과 별개로 현재 부모 폴더가 여전히 탐색 가능한지 확인한다.
-		std::filesystem::path directory;
-		if (!ResolveDirectory(currentDirectory, directory, outError)) { return false; }
-
-		const std::u8string nameUtf8(entry.name.begin(), entry.name.end());
-		const std::filesystem::path filePath = directory / std::filesystem::path(nameUtf8);
-
-		const DWORD attributes = GetFileAttributesW(filePath.c_str());
-
-		if (attributes == INVALID_FILE_ATTRIBUTES)
-		{
-			const DWORD error = GetLastError();
-			outError = std::error_code(static_cast<int>(error), std::system_category());
-			return false;
-		}
-
-		// 목록 조회 이후 파일이 링크로 교체되었을 수도 있으므로 다시 확인한다.
-		if ((attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
-		{
-			outError = std::make_error_code(std::errc::permission_denied);
-			return false;
-		}
-
-		const bool isRegularFile = std::filesystem::is_regular_file(filePath, outError);
-		if (outError) { return false; }
-
-		if (!isRegularFile)
-		{
-			outError = std::make_error_code(std::errc::invalid_argument);
-			return false;
-		}
+		std::filesystem::path filePath;
+		if (!ResolveEntryFile(entry, filePath, outError)) { return false; }
 
 		// 입력 표기 대신 목록에 보관한 파일 경로를 선택 상태로 저장한다.
 		selectedFilePath = entry.relativePath;

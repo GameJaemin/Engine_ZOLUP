@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -88,11 +89,30 @@ public:
 	/** 저장소 기준 UTF-8 상대 경로를 반환하고 요청을 비운다. 요청이 없으면 std::nullopt다. */
 	std::optional<std::string> TakeLevelOpenRequest();
 
+	/** 렌더러가 살아 있고 이 패널을 더 그리지 않는 시점에 썸네일 해제를 요청한다. */
+	void ShutdownThumbnails();
+
 public:
 	// ImGui 창 이름이다. 도킹 기본 배치도 이 이름으로 창을 찾으므로 같은 상수를 쓴다.
 	static constexpr const char* WindowName = "Content Browser";
 
 private:
+	struct Thumbnail
+	{
+		// Hakko는 자원 해제 시 텍스처 ID를 재배치할 수 있으므로 이름을 보관한다.
+		std::wstring textureName;
+		std::uint32_t width = 0;
+		std::uint32_t height = 0;
+	};
+
+	/** 현재 폴더의 이미지 항목을 조회하고, 캐시에 없으면 프레임 한도 안에서 준비한다. */
+	const Thumbnail* FindOrPrepareThumbnail(const ContentBrowserEntry& entry);
+	void PrepareThumbnail(const ContentBrowserEntry& entry, Thumbnail& thumbnail) const;
+	void ClearThumbnails();
+
+	/** 현재 목록 항목의 실제 파일 경로를 검사한다. 성공 시에만 outFile을 갱신한다. */
+	bool ResolveEntryFile(const ContentBrowserEntry& entry, std::filesystem::path& outFile, std::error_code& outError) const;
+
 	/**
 	 * 이동 버튼, Breadcrumb, 검색과 새로고침을 한 줄에 배치한다.
 	 * 유효한 ImGui 프레임과 패널 창 내부에서 호출한다.
@@ -300,6 +320,14 @@ private:
 	// 키는 Paths::MakeAssetKey로 만든 저장소 기준 상대 경로다.
 	// 캐시에 없으면 미조회 상태이며, 있으면 성공 또는 실패 결과를 보관한다.
 	std::unordered_map<std::string, ContentBrowserDirectoryCache> directoryCache;
+
+	// 빈 텍스처 이름은 파일 읽기 또는 등록 실패를 뜻하며, 새로고침 시 다시 시도한다.
+	std::unordered_map<std::string, Thumbnail> thumbnails;
+	// 이전 해제 요청이 처리되기 전에도 같은 파일을 다른 이름으로 등록할 수 있다.
+	std::uint64_t thumbnailGeneration = 0;
+	int remainingThumbnailLoads = 0;
+	// 타일을 이미 그린 프레임에는 텍스처 해제를 요청하지 않는다.
+	bool shouldClearThumbnails = false;
 
 	// 성공한 폴더 이동의 저장소 기준 UTF-8 상대 경로를 순서대로 보관한다.
 	std::vector<std::string> history;
