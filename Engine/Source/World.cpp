@@ -182,12 +182,12 @@ void World::UnsubscribeGameObjectDestroying(std::uint64_t subscriptionId)
 
 bool World::ContainsGameObject(const GameObject* gameObject) const
 {
-	for (const std::unique_ptr<GameObject>& entry : gameObjects)
-	{
-		if (entry.get() == gameObject) { return true; }
-	}
+	if (gameObject == nullptr) { return false; }
 
-	return false;
+	// 등록된 객체는 자기 ID로 인덱스에 들어 있다. 미등록 객체는 무효 ID라 찾지 못하고,
+	// 다른 World의 같은 ID 객체는 주소가 달라 걸러진다.
+	const auto found = gameObjectsByID.find(gameObject->GetObjectID());
+	return found != gameObjectsByID.end() && found->second == gameObject;
 }
 
 GameObject* World::FindGameObject(const ObjectID& objectID)
@@ -230,15 +230,10 @@ bool World::SetActiveCamera(CameraComponent* camera)
 	if (&owner->GetWorld() != this) { return false; }
 
 	// 월드가 소유한 객체인지 확인한다. 등록 전 객체는 월드보다 먼저 사라질 수 있다.
-	for (const std::unique_ptr<GameObject>& gameObject : gameObjects)
-	{
-		if (gameObject.get() == owner)
-		{
-			activeCamera = camera;
-			return true;
-		}
-	}
-	return false;
+	if (!ContainsGameObject(owner)) { return false; }
+
+	activeCamera = camera;
+	return true;
 }
 
 void World::Tick(float deltaTime)

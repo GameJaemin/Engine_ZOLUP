@@ -85,6 +85,7 @@ public:
 	 * 저장이나 복제에서 가져온 ID를 유지해 등록한다. 그 밖의 계약은 ID를 받지 않는 AddGameObject와 같다.
 	 * 무효 ID, 이 World에 이미 있는 ID, 이미 ID를 가진 객체는 nullptr를 반환하고 입력 객체는 정리한다.
 	 * 이미 있는 ID는 다시 발급하지 않고 거절한다.
+	 * 삭제 예정 객체의 ID도 DestroyPendingGameObjects로 실제 삭제되기 전까지는 이미 있는 ID로 보고 거절한다.
 	 */
 	GameObject* AddGameObject(std::unique_ptr<GameObject> newGameObject, const ObjectID& objectID);
 
@@ -118,10 +119,16 @@ public:
 	/** 해제는 알림 중에도 즉시 적용한다. 0이나 이미 해제된 번호는 무시한다. */
 	void UnsubscribeGameObjectDestroying(std::uint64_t subscriptionId);
 
-	/** 이 World에 등록된 객체인지 확인한다. nullptr는 false다. */
+	/**
+	 * 이 World에 등록된 객체인지 확인한다. nullptr는 false다.
+	 * nullptr이거나 살아 있는 객체만 받는다. 이미 파괴된 객체의 주소는 넘기지 않는다.
+	 */
 	bool ContainsGameObject(const GameObject* gameObject) const;
 
-	/** 등록된 객체를 ID로 빌려준다. 없거나 삭제 예정이면 nullptr이다. */
+	/**
+	 * 등록된 객체를 ID로 빌려준다. 없거나 삭제 예정이면 nullptr이다.
+	 * 삭제 예정 객체는 찾지 못하지만 그 ID는 실제 삭제 전까지 복원 등록에 쓸 수 없다.
+	 */
 	GameObject* FindGameObject(const ObjectID& objectID);
 	const GameObject* FindGameObject(const ObjectID& objectID) const;
 
