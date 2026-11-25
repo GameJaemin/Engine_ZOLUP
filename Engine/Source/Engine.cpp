@@ -271,7 +271,7 @@ int Engine::RunFrameLoop(IApplication& application)
 
 			const float projectionAspectRatio = static_cast<float>(outputWidth) / static_cast<float>(outputHeight);
 			RenderScene& scene = request->scene.get();
-			const FramePreparationResult result = scene.PrepareFrame(request->camera, renderArea, projectionAspectRatio, directionalShadowAtlas);
+			const FramePreparationResult result = scene.PrepareFrame(request->camera, renderArea, projectionAspectRatio, directionalShadowAtlas, 0U);
 
 			if (result == FramePreparationResult::Failed) { return 1; }
 
