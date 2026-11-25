@@ -14,10 +14,12 @@
 #include <vector>
 
 class LightComponent;
+class SceneCapture2DComponent;
 class SkyboxComponent;
 class StaticMeshComponent;
 struct CameraViewInfo;
 struct Matrix4x4;
+struct SceneRenderRequest;
 struct ViewportRect;
 
 namespace Hakko::DataHub
@@ -98,6 +100,21 @@ private:
 
 	// 비소유이며 등록 순서를 유지한다. 각 컴포넌트는 소멸 시 목록에서 자신을 제거한다.
 	std::vector<SkyboxComponent*> skyboxComponents;
+
+	// 캡처
+public:
+	/** 캡처 후보로 추가한다. nullptr와 중복 등록은 무시한다. 할당 실패 예외는 전파한다. */
+	void AddSceneCaptureComponent(SceneCapture2DComponent* component);
+
+	/** 캡처 후보에서 제거한다. 등록되지 않은 대상은 무시한다. */
+	void RemoveSceneCaptureComponent(SceneCapture2DComponent* component);
+
+	/** 준비된 캡처의 요청을 등록 순서대로 outRequests에 추가한다. 요청은 같은 프레임에 소비한다. */
+	void CollectCaptureRequests(std::vector<SceneRenderRequest>& outRequests);
+
+private:
+	// 비소유이며 등록 순서를 유지한다. 각 컴포넌트는 소멸 시 목록에서 자신을 제거한다.
+	std::vector<SceneCapture2DComponent*> sceneCaptureComponents;
 
 	// Hakko 프레임 준비
 public:

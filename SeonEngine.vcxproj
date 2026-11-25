@@ -64,6 +64,7 @@
     <ClCompile Include="Engine\Source\Component\LightComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\PointLightComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\RigidBodyComponent.cpp" />
+    <ClCompile Include="Engine\Source\Component\SceneCapture2DComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\SkinComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\SkyboxComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\SpotLightComponent.cpp" />
@@ -145,6 +146,7 @@
     <ClInclude Include="Engine\Source\Component\LightComponent.h" />
     <ClInclude Include="Engine\Source\Component\PointLightComponent.h" />
     <ClInclude Include="Engine\Source\Component\RigidBodyComponent.h" />
+    <ClInclude Include="Engine\Source\Component\SceneCapture2DComponent.h" />
     <ClInclude Include="Engine\Source\Component\SkinComponent.h" />
     <ClInclude Include="Engine\Source\Component\SkyboxComponent.h" />
     <ClInclude Include="Engine\Source\Component\SpotLightComponent.h" />

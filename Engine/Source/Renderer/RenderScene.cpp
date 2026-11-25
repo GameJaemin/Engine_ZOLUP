@@ -5,6 +5,7 @@
 #include "Component/DirectionalLightComponent.h"
 #include "Component/LightComponent.h"
 #include "Component/PointLightComponent.h"
+#include "Component/SceneCapture2DComponent.h"
 #include "Component/SkinComponent.h"
 #include "Component/SkyboxComponent.h"
 #include "Component/SpotLightComponent.h"
@@ -17,6 +18,7 @@
 #include "HakkoResources.h"
 #include "Mesh/StaticMesh.h"
 #include "Renderer/Material.h"
+#include "Renderer/SceneRenderRequest.h"
 #include "Renderer/ViewportRect.h"
 
 #include "DataHub.h"
@@ -302,6 +304,30 @@ void RenderScene::AddSkyboxComponent(SkyboxComponent* component)
 void RenderScene::RemoveSkyboxComponent(SkyboxComponent* component)
 {
 	std::erase(skyboxComponents, component);
+}
+
+void RenderScene::AddSceneCaptureComponent(SceneCapture2DComponent* component)
+{
+	if (component == nullptr) { return; }
+	if (std::find(sceneCaptureComponents.begin(), sceneCaptureComponents.end(), component) != sceneCaptureComponents.end()) { return; }
+
+	sceneCaptureComponents.push_back(component);
+}
+
+void RenderScene::RemoveSceneCaptureComponent(SceneCapture2DComponent* component)
+{
+	std::erase(sceneCaptureComponents, component);
+}
+
+void RenderScene::CollectCaptureRequests(std::vector<SceneRenderRequest>& outRequests)
+{
+	for (SceneCapture2DComponent* component : sceneCaptureComponents)
+	{
+		if (std::optional<SceneRenderRequest> request = component->BuildRenderRequest())
+		{
+			outRequests.push_back(*request);
+		}
+	}
 }
 
 void RenderScene::PrepareBackground(std::uint8_t layer) const

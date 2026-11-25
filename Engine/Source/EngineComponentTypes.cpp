@@ -11,6 +11,7 @@
 #include "Component/LightComponent.h"
 #include "Component/PointLightComponent.h"
 #include "Component/RigidBodyComponent.h"
+#include "Component/SceneCapture2DComponent.h"
 #include "Component/SkinComponent.h"
 #include "Component/SkyboxComponent.h"
 #include "Component/SpotLightComponent.h"
@@ -60,7 +61,27 @@ namespace
 		return true;
 	}
 
+	/** 캡처 해상도를 int로 읽는다. 상한이 4096이라 int 범위를 넘지 않는다. */
+	int GetCaptureWidth(const SceneCapture2DComponent& capture)
+	{
+		return static_cast<int>(capture.GetWidth());
+	}
 
+	/** int 값을 캡처 너비로 쓴다. 0 이하는 부호 없는 값으로 바꾸기 전에 거부한다. */
+	bool SetCaptureWidth(SceneCapture2DComponent& capture, int value)
+	{
+		return value > 0 && capture.SetWidth(static_cast<std::uint32_t>(value));
+	}
+
+	int GetCaptureHeight(const SceneCapture2DComponent& capture)
+	{
+		return static_cast<int>(capture.GetHeight());
+	}
+
+	bool SetCaptureHeight(SceneCapture2DComponent& capture, int value)
+	{
+		return value > 0 && capture.SetHeight(static_cast<std::uint32_t>(value));
+	}
 }
 
 bool RegisterEngineComponentTypes(ComponentTypeRegistry& registry)
@@ -76,6 +97,10 @@ bool RegisterEngineComponentTypes(ComponentTypeRegistry& registry)
 	if (!registry.AddField<CameraComponent>("nearClipDistance", &CameraComponent::GetNearClipDistance, &CameraComponent::SetNearClipDistance, { .displayName = "Near Clip (cm)", .dragSpeed = 0.1f, .minValue = 0.01f, .maxValue = FLT_MAX })) { return false; }
 	if (!registry.AddField<CameraComponent>("farClipDistance", &CameraComponent::GetFarClipDistance, &CameraComponent::SetFarClipDistance, { .displayName = "Far Clip (cm)", .dragSpeed = 100.0f })) { return false; }
 	if (!registry.AddField<CameraComponent>("projectionMode", &GetCameraProjectionMode, &SetCameraProjectionMode, { .enumNames = { "Perspective", "Orthographic" } })) { return false; }
+
+	if (registry.Register<SceneCapture2DComponent, Component>("SceneCapture2DComponent") == nullptr) { return false; }
+	if (!registry.AddField<SceneCapture2DComponent>("width", &GetCaptureWidth, &SetCaptureWidth, { .displayName = "Width (px)", .dragSpeed = 1.0f, .minValue = 1.0f, .maxValue = 4096.0f })) { return false; }
+	if (!registry.AddField<SceneCapture2DComponent>("height", &GetCaptureHeight, &SetCaptureHeight, { .displayName = "Height (px)", .dragSpeed = 1.0f, .minValue = 1.0f, .maxValue = 4096.0f })) { return false; }
 
 	if (registry.Register<StaticMeshComponent, Component>("StaticMeshComponent") == nullptr) { return false; }
 	if (!registry.AddField<StaticMeshComponent>("mesh", &StaticMeshComponent::GetStaticMesh, &StaticMeshComponent::SetStaticMesh)) { return false; }
