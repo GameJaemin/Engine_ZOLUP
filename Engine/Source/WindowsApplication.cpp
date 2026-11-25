@@ -49,6 +49,8 @@ namespace
 			return Key::Escape;
 		case VK_TAB:
 			return Key::Tab;
+		case VK_OEM_PERIOD:
+			return Key::Period;
 		case VK_SHIFT:
 			return Key::Shift;
 		case VK_CONTROL:
