@@ -1,6 +1,7 @@
 #include "EditorApplication.h"
 #include "Engine.h"
 #include "GameApplication.h"
+#include "ThirdPerson/ThirdPersonTests.h"
 
 #include <string_view>
 
@@ -10,6 +11,10 @@ int wmain(int argc, wchar_t* argv[])
 	for (int index = 1; index < argc; ++index)
 	{
 		const std::wstring_view argument(argv[index]);
+		if (argument == L"--third-person-test")
+		{
+			return ThirdPersonTests::Run();
+		}
 		if (argument == L"--editor")
 		{
 			runEditor = true;

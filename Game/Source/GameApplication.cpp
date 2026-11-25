@@ -1,7 +1,6 @@
 #include "GameApplication.h"
 
 #include "Component/CameraComponent.h"
-#include "Component/GravityComponent.h"
 #include "Component/TransformComponent.h"
 #include "Core/Log.h"
 #include "Core/Math/Quaternion.h"
@@ -11,10 +10,11 @@
 #include "GameObject.h"
 #include "Input/InputDispatcher.h"
 #include "Input/InputState.h"
+#include "Input/Key.h"
 #include "LevelLoader.h"
 #include "Paths.h"
-#include "PlayerObject.h"
 #include "Renderer/RenderScene.h"
+#include "ThirdPerson/ThirdPersonCharacter.h"
 #include "World.h"
 
 #include <filesystem>
@@ -93,33 +93,48 @@ bool GameApplication::OnInitialize(Engine& inEngine)
 
 	const GameObject* mapCameraOwner = spawnCamera->GetGameObject();
 	const Vector3 spawnPosition = mapCameraOwner->GetComponent<TransformComponent>()->GetWorldTransform().position;
-	std::unique_ptr<PlayerObject> player = std::make_unique<PlayerObject>(world);
-	player->GetComponent<TransformComponent>()->SetPosition(spawnPosition);
-	player->AddComponent(std::make_unique<GravityComponent>());
-	GameObject* registeredPlayer = world.AddGameObject(std::move(player));
-	if (registeredPlayer == nullptr || !world.SetActiveCamera(registeredPlayer->GetComponent<CameraComponent>()))
+	thirdPerson = std::make_unique<ThirdPersonCharacter>();
+	const float spawnYaw = mapCameraOwner->GetComponent<TransformComponent>()->GetWorldTransform().rotation.ToEulerAngles().yaw;
+	if (!thirdPerson->Attach(world, *loadedObjects, spawnPosition, spawnYaw))
 	{
-		Log::Write(LogLevel::Error, "Camera", "Could not activate the player camera");
+		Log::Write(LogLevel::Error, "ThirdPerson", "Could not create the third-person character");
 		return false;
 	}
 
-	Log::Write(LogLevel::Info, "Camera", "Active camera: player");
+	cursorCaptured = true;
+	engine->SetCursorConfined(true);
+	engine->SetCursorVisible(false);
+	Log::Write(LogLevel::Info, "Camera", "Active camera: third-person orbit");
 	return true;
 }
 
 void GameApplication::OnUpdate(const InputState& input, float deltaTime)
 {
-	// 키와 마우스 입력을 먼저 전달해 같은 프레임의 월드 갱신에서 사용한다.
-	gameWorld->GetInputDispatcher().Dispatch(input, deltaTime);
-	if (CameraComponent* camera = gameWorld->GetActiveCamera())
+	bool justCaptured = false;
+	for (const KeyEvent& event : input.GetFrameEvents())
 	{
-		if (PlayerObject* player = dynamic_cast<PlayerObject*>(camera->GetGameObject()))
+		if (event.type != KeyEventType::Pressed) { continue; }
+		if (event.key == Key::Escape && cursorCaptured)
 		{
-			const RawMouseDelta mouseDelta = input.GetRawMouseDelta();
-			player->AddMouseLookInput(mouseDelta.x, mouseDelta.y);
+			cursorCaptured = false;
+			engine->SetCursorConfined(false);
+			engine->SetCursorVisible(true);
+		}
+		else if (event.key == Key::MouseLeft && !cursorCaptured)
+		{
+			cursorCaptured = true;
+			justCaptured = true;
+			engine->SetCursorConfined(true);
+			engine->SetCursorVisible(false);
 		}
 	}
+	// 월드의 자동 Tick 뒤에 이동 -> 포즈 -> 카메라를 한 번 적용한다.
+	gameWorld->GetInputDispatcher().Dispatch(input, deltaTime);
 	gameWorld->Tick(deltaTime);
+	if (thirdPerson)
+	{
+		thirdPerson->Update(input, deltaTime, cursorCaptured && !justCaptured);
+	}
 	gameWorld->DestroyPendingGameObjects();
 }
 
@@ -136,8 +151,10 @@ std::optional<SceneRenderRequest> GameApplication::GetRenderRequest()
 
 void GameApplication::OnShutdown() noexcept
 {
+	thirdPerson.reset();
 	if (gameWorld)
 	{
+		gameWorld->DestroyPendingGameObjects();
 		// 종료 시 DataHub가 데이터를 일괄 해제한다. 소멸자에서 ID를 반환하며 할당할 가능성을 없앤다.
 		gameWorld->GetRenderScene().ClearObjectDataIds();
 	}

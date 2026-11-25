@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "name": "SeonEngine",
+  "maxJoints": 512,
+  "maxInfluences": 4,
+  "animationInterpolation": "LINEAR",
+  "imageFormat": "PNG",
+  "skeletonTolerance": 0.0001
+}

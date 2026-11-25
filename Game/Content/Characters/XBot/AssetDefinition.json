@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "model": "Game/Content/Characters/XBot/XBot.gltf",
+  "classification": "skeletal",
+  "clips": {
+    "Idle": {
+      "animationName": "Idle",
+      "durationSeconds": 1.9666666984558105
+    },
+    "Walk": {
+      "animationName": "Walk",
+      "durationSeconds": 0.9666666388511658
+    },
+    "Run": {
+      "animationName": "Run",
+      "durationSeconds": 0.699999988079071
+    }
+  }
+}

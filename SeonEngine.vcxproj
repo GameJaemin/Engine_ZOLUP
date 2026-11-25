@@ -93,6 +93,12 @@
     <ClInclude Include="Engine\Source\Paths.h" />
     <ClInclude Include="Game\Source\PlayerObject.h" />
     <ClInclude Include="Game\Source\GameApplication.h" />
+    <ClInclude Include="Game\Source\ThirdPerson\ThirdPersonAnimator.h" />
+    <ClInclude Include="Game\Source\ThirdPerson\ThirdPersonCharacter.h" />
+    <ClInclude Include="Game\Source\ThirdPerson\ThirdPersonMath.h" />
+    <ClInclude Include="Game\Source\ThirdPerson\ThirdPersonMotor.h" />
+    <ClInclude Include="Game\Source\ThirdPerson\ThirdPersonScene.h" />
+    <ClInclude Include="Game\Source\ThirdPerson\ThirdPersonTests.h" />
     <ClInclude Include="Editor\Source\EditorApplication.h" />
     <ClInclude Include="Editor\Source\EditorAssetDragDrop.h" />
     <ClInclude Include="Editor\Source\EditorCamera.h" />

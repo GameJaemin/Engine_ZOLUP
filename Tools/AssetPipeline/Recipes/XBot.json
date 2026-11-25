@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "name": "XBot",
+  "source": "D:/TestAsset/X Bot.fbx",
+  "output": "Game/Content/Characters/XBot",
+  "sampleRate": 30,
+  "includeSourceAnimations": false,
+  "clips": [
+    { "name": "Idle", "source": "D:/TestAsset/Animation/Idle.fbx", "inPlaceBone": "mixamorig:Hips", "allowRootRestTranslation": true, "retarget": "restRotation" },
+    { "name": "Walk", "source": "D:/TestAsset/Animation/Walking.fbx", "inPlaceBone": "mixamorig:Hips", "allowRootRestTranslation": true, "retarget": "restRotation" },
+    { "name": "Run", "source": "D:/TestAsset/Animation/Fast Run.fbx", "inPlaceBone": "mixamorig:Hips", "allowRootRestTranslation": true, "retarget": "restRotation" }
+  ]
+}

@@ -1,0 +1,169 @@
+{
+  "schemaVersion": 1,
+  "generator": "SeonAssetPipeline",
+  "status": "passed",
+  "asset": "XBot",
+  "blenderVersion": "5.1.0",
+  "scriptHashes": {
+    "convert_asset.py": "47ac80f44673cb594d9598686241d83b3cd1268b0b0756e6bc2d6cd9de860957",
+    "gltf_asset.py": "feaed8269b77b8b9ac815c2a6004fdd3cdf6992f9e42b6672c7d41a722fffaa4"
+  },
+  "profile": {
+    "schemaVersion": 1,
+    "name": "SeonEngine",
+    "maxJoints": 512,
+    "maxInfluences": 4,
+    "animationInterpolation": "LINEAR",
+    "imageFormat": "PNG",
+    "skeletonTolerance": 0.0001
+  },
+  "recipe": {
+    "schemaVersion": 1,
+    "name": "XBot",
+    "source": "D:/TestAsset/X Bot.fbx",
+    "output": "Game/Content/Characters/XBot",
+    "sampleRate": 30,
+    "includeSourceAnimations": false,
+    "clips": [
+      {
+        "name": "Idle",
+        "source": "D:/TestAsset/Animation/Idle.fbx",
+        "inPlaceBone": "mixamorig:Hips",
+        "allowRootRestTranslation": true,
+        "retarget": "restRotation"
+      },
+      {
+        "name": "Walk",
+        "source": "D:/TestAsset/Animation/Walking.fbx",
+        "inPlaceBone": "mixamorig:Hips",
+        "allowRootRestTranslation": true,
+        "retarget": "restRotation"
+      },
+      {
+        "name": "Run",
+        "source": "D:/TestAsset/Animation/Fast Run.fbx",
+        "inPlaceBone": "mixamorig:Hips",
+        "allowRootRestTranslation": true,
+        "retarget": "restRotation"
+      }
+    ]
+  },
+  "sources": [
+    {
+      "path": "D:\\TestAsset\\X Bot.fbx",
+      "sha256": "334bc52cb8f911a30128662b3ee393c5e84d64ceff44c2cdd35b5f4b1d572849"
+    },
+    {
+      "path": "D:\\TestAsset\\Animation\\Idle.fbx",
+      "sha256": "b0e17e76d0f803629578e05d58a838915214e4a372e931dd848e30552ac01f63"
+    },
+    {
+      "path": "D:\\TestAsset\\Animation\\Walking.fbx",
+      "sha256": "55c339fa8bc35e74a87a18c9afd6a6b715f08cbdafd2bb669167223a75f3372e"
+    },
+    {
+      "path": "D:\\TestAsset\\Animation\\Fast Run.fbx",
+      "sha256": "46866a00262590529ec70c2e29bc9594a8400073c7f8f899dd290cfea1f91129"
+    }
+  ],
+  "stage": "D:\\ZolUp_Engine\\Engine_ZOLUP\\Intermediate\\AssetPipeline\\XBot\\conversion-ix3z087c",
+  "output": "D:\\ZolUp_Engine\\Engine_ZOLUP\\Game\\Content\\Characters\\XBot",
+  "warnings": [
+    "Source FBX animations were explicitly excluded by includeSourceAnimations=false",
+    "Idle: baked restRotation retarget; identical hierarchy and bone lengths within 1% verified",
+    "Walk: baked restRotation retarget; identical hierarchy and bone lengths within 1% verified",
+    "Run: baked restRotation retarget; identical hierarchy and bone lengths within 1% verified",
+    "Beta_HighLimbsGeoSG3: doubleSided is not represented by the engine material",
+    "Beta_HighLimbsGeoSG3: optional material extensions are not represented by the engine material",
+    "Beta_Joints_MAT1: doubleSided is not represented by the engine material",
+    "Beta_Joints_MAT1: optional material extensions are not represented by the engine material"
+  ],
+  "sourceMeshes": [
+    {
+      "name": "Beta_Joints",
+      "kind": "skeletal",
+      "vertices": 10514
+    },
+    {
+      "name": "Beta_Surface",
+      "kind": "skeletal",
+      "vertices": 14232
+    }
+  ],
+  "rootRestAlignments": [
+    {
+      "clip": "Idle",
+      "armatureLocalOffset": [
+        -7.727290721959434e-06,
+        -3.0517578125e-05,
+        1.5543158054351807
+      ]
+    },
+    {
+      "clip": "Walk",
+      "armatureLocalOffset": [
+        -7.727290721959434e-06,
+        -3.0517578125e-05,
+        1.5543158054351807
+      ]
+    },
+    {
+      "clip": "Run",
+      "armatureLocalOffset": [
+        -7.727290721959434e-06,
+        -3.0517578125e-05,
+        1.5543158054351807
+      ]
+    }
+  ],
+  "validation": {
+    "status": "passed",
+    "classification": "skeletal",
+    "meshes": [
+      {
+        "index": 0,
+        "name": "Beta_Joints_Part0",
+        "kind": "skeletal"
+      },
+      {
+        "index": 1,
+        "name": "Beta_Surface_Part0",
+        "kind": "skeletal"
+      }
+    ],
+    "vertices": 28374,
+    "triangles": 49112,
+    "skins": 1,
+    "jointCounts": [
+      65
+    ],
+    "animations": [
+      {
+        "name": "Idle",
+        "durationSeconds": 1.9666666984558105,
+        "channels": 195
+      },
+      {
+        "name": "Walk",
+        "durationSeconds": 0.9666666388511658,
+        "channels": 195
+      },
+      {
+        "name": "Run",
+        "durationSeconds": 0.699999988079071,
+        "channels": 195
+      }
+    ],
+    "warnings": [
+      "Beta_HighLimbsGeoSG3: doubleSided is not represented by the engine material",
+      "Beta_HighLimbsGeoSG3: optional material extensions are not represented by the engine material",
+      "Beta_Joints_MAT1: doubleSided is not represented by the engine material",
+      "Beta_Joints_MAT1: optional material extensions are not represented by the engine material"
+    ]
+  },
+  "files": {
+    "AssetDefinition.json": "dcbcf40161d975e8a72d95e3099f56252e2e2f80926dced81e2420f6596a6a10",
+    "XBot.bin": "88349e99119936babaa96e8319f54da8c4bdc75e843982f38428881b4c6017a4",
+    "XBot.gltf": "8fd686558250869d722ab04f5f3fba269b051d03a98d9f58efb6da74ff3edf7d"
+  }
+}

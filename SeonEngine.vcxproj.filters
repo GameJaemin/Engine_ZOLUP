@@ -16,6 +16,9 @@
     <Filter Include="Game\Source">
       <UniqueIdentifier>{0bc5d6c8-f10b-4c48-bd57-3298348ea81a}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Game\Source\ThirdPerson">
+      <UniqueIdentifier>{324d7729-6775-4e70-ad36-64a812f8c993}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Game">
       <UniqueIdentifier>{b8f07297-01c3-4ade-beaf-48c2a3dd78f5}</UniqueIdentifier>
     </Filter>
@@ -259,6 +262,24 @@
     </ClInclude>
     <ClInclude Include="Game\Source\GameApplication.h">
       <Filter>Game\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Source\ThirdPerson\ThirdPersonAnimator.h">
+      <Filter>Game\Source\ThirdPerson</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Source\ThirdPerson\ThirdPersonCharacter.h">
+      <Filter>Game\Source\ThirdPerson</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Source\ThirdPerson\ThirdPersonMath.h">
+      <Filter>Game\Source\ThirdPerson</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Source\ThirdPerson\ThirdPersonMotor.h">
+      <Filter>Game\Source\ThirdPerson</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Source\ThirdPerson\ThirdPersonScene.h">
+      <Filter>Game\Source\ThirdPerson</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Source\ThirdPerson\ThirdPersonTests.h">
+      <Filter>Game\Source\ThirdPerson</Filter>
     </ClInclude>
     <ClInclude Include="Editor\Source\EditorApplication.h">
       <Filter>Editor\Source</Filter>
