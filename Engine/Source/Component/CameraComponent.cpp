@@ -34,6 +34,16 @@ bool CameraComponent::SetOrthographicHeight(float newOrthographicHeight)
 	return true;
 }
 
+bool CameraComponent::SetNearClipDistance(float newNearClipDistance)
+{
+	return SetClipDistances(newNearClipDistance, farClipDistance);
+}
+
+bool CameraComponent::SetFarClipDistance(float newFarClipDistance)
+{
+	return SetClipDistances(nearClipDistance, newFarClipDistance);
+}
+
 bool CameraComponent::SetClipDistances(float newNearClipDistance, float newFarClipDistance)
 {
 	if (newNearClipDistance <= 0.0f || newFarClipDistance <= newNearClipDistance) { return false; }

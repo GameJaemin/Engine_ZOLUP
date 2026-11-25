@@ -2,6 +2,7 @@
 
 #include "Core/FrameTimer.h"
 #include "Core/Log.h"
+#include "EngineComponentTypes.h"
 #include "IApplication.h"
 #include "Renderer/RenderScene.h"
 #include "Renderer/SceneRenderRequest.h"
@@ -91,6 +92,12 @@ void Engine::SetCursorVisible(bool visible)
 
 bool Engine::Initialize(bool enableGui)
 {
+	if (!RegisterEngineComponentTypes(componentTypeRegistry))
+	{
+		Log::Write(LogLevel::Error, "Engine", "Component type registration failed");
+		return false;
+	}
+
 	if (!windowsApplication.Initialize()) { return false; }
 
 	int clientWidth = 0;

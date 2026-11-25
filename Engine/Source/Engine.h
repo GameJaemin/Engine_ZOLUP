@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AssetManager.h"
+#include "ComponentTypeRegistry.h"
 #include "ImGuiSystem.h"
 #include "WindowsApplication.h"
 
@@ -70,6 +71,8 @@ private:
 	ImGuiSystem imguiSystem;
 
 	AssetManager assetManager;
+
+	ComponentTypeRegistry componentTypeRegistry;
 
 	// 초기화에 성공한 렌더러만 소유한다. nullptr이면 Finalize할 렌더러가 없다.
 	std::unique_ptr<Hakko::D3D12Renderer> renderer;

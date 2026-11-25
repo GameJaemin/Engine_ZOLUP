@@ -192,6 +192,12 @@
     <ClCompile Include="Engine\Source\Core\Math\Vector3.cpp">
       <Filter>Engine\Source\Core\Math</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Source\ComponentTypeRegistry.cpp">
+      <Filter>Engine\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\EngineComponentTypes.cpp">
+      <Filter>Engine\Source</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Source\GameObject.cpp">
       <Filter>Engine\Source</Filter>
     </ClCompile>
@@ -442,6 +448,12 @@
     </ClInclude>
     <ClInclude Include="Engine\Source\Texture\ORMImageBuilder.h">
       <Filter>Engine\Source\Texture</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\ComponentTypeRegistry.h">
+      <Filter>Engine\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\EngineComponentTypes.h">
+      <Filter>Engine\Source</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\GameObject.h">
       <Filter>Engine\Source</Filter>

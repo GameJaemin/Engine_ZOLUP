@@ -48,6 +48,15 @@ public:
 
 	const std::shared_ptr<const Model>& GetModel() const { return model; }
 	std::size_t GetNodeIndex() const { return nodeIndex; }
+
+	/** 모델만 바꾼다. 노드 번호와 재생 컴포넌트는 그대로이며, 새 모델과 맞는지는 뼈 행렬을 계산할 때 확인한다. */
+	void SetModel(std::shared_ptr<const Model> newModel);
+
+	/** 메시 노드 번호만 바꾼다. 모델과 맞는지는 뼈 행렬을 계산할 때 확인한다. */
+	void SetNodeIndex(std::size_t newNodeIndex);
+
+	/** 포즈를 읽을 재생 컴포넌트만 바꾼다. nullptr면 배치표의 원래 값을 쓴다. 같은 World의 컴포넌트여야 한다. */
+	void SetAnimation(const AnimationComponent* newAnimation);
 	/** 포즈를 읽는 재생 컴포넌트다. 없으면 nullptr다. */
 	const AnimationComponent* GetAnimation() const { return animation; }
 
