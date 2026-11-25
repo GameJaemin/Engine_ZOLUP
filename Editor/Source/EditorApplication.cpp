@@ -26,12 +26,27 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace
 {
 	// 맵 열기 기능이 생기기 전까지 에디터가 시작할 때 여는 맵이다. 저장소 루트 기준 경로다.
 	constexpr std::string_view DefaultLevelPath = "Game/Content/Maps/DevMap.json";
+
+	// 기본 도킹 배치와 창 생성에서 같은 이름을 사용한다.
+	constexpr const char* PlayToolbarWindowName = "Play Toolbar";
+
+	// label 버튼을 color 계열로 그린다. 마우스를 올리면 밝게, 누르는 동안 어둡게 한다.
+	bool DrawColoredButton(const char* label, const ImVec4& color)
+	{
+		ImGui::PushStyleColor(ImGuiCol_Button, color);
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(color.x * 1.2f, color.y * 1.2f, color.z * 1.2f, 1.0f));
+		ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(color.x * 0.8f, color.y * 0.8f, color.z * 0.8f, 1.0f));
+		const bool clicked = ImGui::Button(label);
+		ImGui::PopStyleColor(3);
+		return clicked;
+	}
 
 	struct PickSegment
 	{
@@ -157,6 +172,14 @@ namespace
 		// 남은 폭은 전체의 75%이므로 전체의 20%가 되도록 0.2 / 0.75를 사용한다.
 		const ImGuiID leftID = ImGui::DockBuilderSplitNode(centerID, ImGuiDir_Left, 0.2f / 0.75f, nullptr, &centerID);
 
+		// 남은 가운데 칸의 위쪽을 버튼 한 줄 높이만큼 떼어 툴바를 둔다. 가운데 칸 높이는 전체의 70%다.
+		const float toolbarHeight = ImGui::GetFrameHeight() + ImGui::GetStyle().WindowPadding.y * 2.0f;
+		const float toolbarRatio = toolbarHeight / (viewport.WorkSize.y * 0.7f);
+		const ImGuiID toolbarID = ImGui::DockBuilderSplitNode(centerID, ImGuiDir_Up, toolbarRatio, nullptr, &centerID);
+		// 탭 막대가 있으면 버튼 한 줄보다 칸이 커지므로 숨긴다.
+		ImGui::DockBuilderGetNode(toolbarID)->LocalFlags |= ImGuiDockNodeFlags_NoTabBar;
+
+		ImGui::DockBuilderDockWindow(PlayToolbarWindowName, toolbarID);
 		ImGui::DockBuilderDockWindow(InspectorPanel::WindowName, rightID);
 		ImGui::DockBuilderDockWindow(ContentBrowserPanel::WindowName, bottomID);
 		ImGui::DockBuilderDockWindow(HierarchyPanel::WindowName, leftID);
@@ -202,7 +225,21 @@ bool EditorApplication::OnInitialize(Engine& inEngine)
 
 void EditorApplication::OnUpdate(const InputState& input, float deltaTime)
 {
+	ProcessPlayRequest();
 	ProcessLevelOpenRequest();
+
+	// Playing에서만 Play World를 진행한다. 플레이어가 없어 입력은 전달하지 않는다.
+	if (worldSession.GetPlayState() == EditorPlayState::Playing)
+	{
+		World* playWorld = worldSession.GetActiveWorld();
+		playWorld->Tick(deltaTime);
+		// OnGui는 그릴 수 있는 프레임에만 불리므로, Tick이 만든 삭제 요청은 여기서도 처리한다.
+		playWorld->DestroyPendingGameObjects();
+		if (!playWorld->GetPhysicsScene().Update(deltaTime))
+		{
+			Log::Write(LogLevel::Warning, "Physics", "Failed to update play world physics");
+		}
+	}
 
 	if (editorViewport.UpdateCamera(input, deltaTime))
 	{
@@ -228,6 +265,8 @@ void EditorApplication::OnGui()
 	// 가운데 도킹 창이 없을 때는 뒤의 화면이 보이고 입력도 통과하게 한다.
 	ImGui::DockSpaceOverViewport(dockSpaceID, viewport, ImGuiDockNodeFlags_PassthruCentralNode);
 
+	DrawPlayToolbar();
+
 	editorViewport.ResetRenderRequestState();
 	const std::optional<std::string> droppedPrefabPath = viewportPanel.Draw(editorViewport, selection);
 
@@ -236,10 +275,15 @@ void EditorApplication::OnGui()
 		engine->SetCursorVisible(false);
 	}
 
-	World* world = worldSession.GetEditWorld();
+	World* world = worldSession.GetActiveWorld();
 	if (world == nullptr) { return; }
 
-	if (droppedPrefabPath.has_value())
+	// Play World에 만든 객체는 Stop 때 사라지므로 편집으로 착각하지 않게 막는다.
+	if (droppedPrefabPath.has_value() && worldSession.GetPlayState() != EditorPlayState::Editing)
+	{
+		Log::Write(LogLevel::Warning, "Editor", "Stop play before placing a prefab");
+	}
+	else if (droppedPrefabPath.has_value())
 	{
 		const std::shared_ptr<const Prefab> prefab = AssetManager::Get().LoadPrefab(*droppedPrefabPath);
 		if (prefab == nullptr)
@@ -293,11 +337,16 @@ void EditorApplication::OnGui()
 
 	// 에디터의 객체 생성과 삭제 요청은 OnGui에서만 일어난다. 렌더 요청 전에 정리해 삭제 예정 객체가 그려지지 않게 한다.
 	world->DestroyPendingGameObjects();
+	if (worldSession.GetPlayState() == EditorPlayState::Editing &&
+		!world->GetPhysicsScene().PrepareStaticBodies())
+	{
+		Log::Write(LogLevel::Warning, "Physics", "Failed to prepare one or more editor static bodies");
+	}
 }
 
 std::optional<SceneRenderRequest> EditorApplication::GetRenderRequest()
 {
-	World* world = worldSession.GetEditWorld();
+	World* world = worldSession.GetActiveWorld();
 
 	if (world == nullptr) { return std::nullopt; }
 	return editorViewport.BuildRenderRequest(world->GetRenderScene());
@@ -329,6 +378,13 @@ void EditorApplication::ProcessLevelOpenRequest()
 	const std::optional<std::string> relativePath = contentBrowserPanel.TakeLevelOpenRequest();
 	if (!relativePath) { return; }
 
+	// 세션도 거절하지만, 원인을 알 수 있도록 먼저 안내한다. 요청은 꺼냈으므로 Stop 뒤에 다시 실행되지 않는다.
+	if (worldSession.GetPlayState() != EditorPlayState::Editing)
+	{
+		Log::Write(LogLevel::Warning, "Editor", "Stop play before opening a map: " + *relativePath);
+		return;
+	}
+
 	std::filesystem::path absolutePath;
 	if (!Paths::GetAbsolutePath(*relativePath, absolutePath))
 	{
@@ -339,5 +395,66 @@ void EditorApplication::ProcessLevelOpenRequest()
 	if (!worldSession.OpenLevel(absolutePath, selection))
 	{
 		Log::Write(LogLevel::Error, "Editor", "Could not open map: " + *relativePath);
+	}
+}
+
+void EditorApplication::DrawPlayToolbar()
+{
+	if (ImGui::Begin(PlayToolbarWindowName, nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
+	{
+		const EditorPlayState state = worldSession.GetPlayState();
+
+		// 세 버튼 너비(글자 + 좌우 여백)와 사이 간격 두 개를 더해 가운데에서 시작한다. 창이 좁으면 왼쪽부터 그린다.
+		const ImGuiStyle& style = ImGui::GetStyle();
+		const float buttonsWidth = ImGui::CalcTextSize("Play").x + ImGui::CalcTextSize("Pause").x + ImGui::CalcTextSize("Stop").x
+			+ style.FramePadding.x * 6.0f + style.ItemSpacing.x * 2.0f;
+		const float offset = (ImGui::GetContentRegionAvail().x - buttonsWidth) * 0.5f;
+		if (offset > 0.0f) { ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offset); }
+
+		// Paused에서는 Play가 Resume으로 동작한다.
+		ImGui::BeginDisabled(state == EditorPlayState::Playing);
+		if (DrawColoredButton("Play", ImVec4(0.20f, 0.55f, 0.25f, 1.0f)))
+		{
+			playRequest = state == EditorPlayState::Paused ? EditorPlayRequest::Resume : EditorPlayRequest::Play;
+		}
+		ImGui::EndDisabled();
+
+		ImGui::SameLine();
+		ImGui::BeginDisabled(state != EditorPlayState::Playing);
+		if (DrawColoredButton("Pause", ImVec4(0.70f, 0.50f, 0.15f, 1.0f))) { playRequest = EditorPlayRequest::Pause; }
+		ImGui::EndDisabled();
+
+		ImGui::SameLine();
+		ImGui::BeginDisabled(state == EditorPlayState::Editing);
+		if (DrawColoredButton("Stop", ImVec4(0.65f, 0.20f, 0.20f, 1.0f))) { playRequest = EditorPlayRequest::Stop; }
+		ImGui::EndDisabled();
+	}
+	// Begin이 false를 반환해도 End는 항상 호출한다.
+	ImGui::End();
+}
+
+void EditorApplication::ProcessPlayRequest()
+{
+	const std::optional<EditorPlayRequest> request = std::exchange(playRequest, std::nullopt);
+	if (!request.has_value()) { return; }
+
+	switch (*request)
+	{
+	case EditorPlayRequest::Play:
+		// 실패 이유는 Capture, Restore가 로그로 남긴다.
+		if (!worldSession.StartPlay(selection))
+		{
+			Log::Write(LogLevel::Error, "Editor", "Could not start play");
+		}
+		break;
+	case EditorPlayRequest::Pause:
+		worldSession.SetPaused(true);
+		break;
+	case EditorPlayRequest::Resume:
+		worldSession.SetPaused(false);
+		break;
+	case EditorPlayRequest::Stop:
+		worldSession.StopPlay(selection);
+		break;
 	}
 }
