@@ -136,6 +136,10 @@ void GameApplication::OnUpdate(const InputState& input, float deltaTime)
 		thirdPerson->Update(input, deltaTime, cursorCaptured && !justCaptured);
 	}
 	gameWorld->DestroyPendingGameObjects();
+	if (!gameWorld->GetPhysicsScene().Update(deltaTime))
+	{
+		Log::Write(LogLevel::Warning, "Physics", "Failed to update game physics");
+	}
 }
 
 std::optional<SceneRenderRequest> GameApplication::GetRenderRequest()

@@ -2,6 +2,8 @@
 
 #include "ThirdPersonCharacter.h"
 
+#include "Physics/JoltRuntime.h"
+
 #include <cmath>
 #include <cstdio>
 #include <memory>
@@ -88,6 +90,10 @@ namespace ThirdPersonTests
 		falling.Reset({ 0.0f, 300.0f, 0.0f }, 0.0f);
 		Simulate(falling, {}, flat, 120, 1.0f / 60.0f);
 		check(falling.IsGrounded() && std::abs(falling.GetPosition().y) < 0.2f, "gravity lands on actual floor");
+
+		// Engine::Run을 거치지 않으므로 World보다 먼저 Jolt를 초기화하고 더 늦게 종료한다.
+		JoltRuntime joltRuntime;
+		if (!joltRuntime.Initialize()) { return 1; }
 
 		// 실제 AssetManager/World/AnimationComponent를 쓰되 GPU 준비는 요청하지 않는다.
 		AssetManager assets;

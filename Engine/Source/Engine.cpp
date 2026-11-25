@@ -98,6 +98,8 @@ bool Engine::Initialize(bool enableGui)
 		return false;
 	}
 
+	if (!joltRuntime.Initialize()) { return false; }
+
 	if (!windowsApplication.Initialize()) { return false; }
 
 	int clientWidth = 0;
@@ -306,6 +308,9 @@ bool Engine::Shutdown()
 
 	// 렌더러 Finalize가 ImGui 텍스처를 정리한 뒤에 Context를 파괴한다.
 	imguiSystem.Shutdown();
+
+	// Run에서 애플리케이션 정리가 끝난 뒤 Jolt의 전역 등록을 해제한다.
+	joltRuntime.Shutdown();
 
 	return windowsApplication.Shutdown();
 }

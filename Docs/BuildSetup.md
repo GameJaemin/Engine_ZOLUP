@@ -36,7 +36,7 @@ Debug, Release의 추가 포함 디렉터리에 `$(ProjectDir)Engine\Source`와 
 
 ### vcpkg 패키지
 
-[vcpkg 매니페스트](../Engine/ThirdParty/vcpkg.json)는 렌더러와 에디터에서 사용할 패키지와 버전 기준(`builtin-baseline`)을 선언합니다. Visual Studio Installer에서 `vcpkg 패키지 관리자` 구성 요소를 설치합니다. MSBuild는 [Directory.Build.targets](../Directory.Build.targets)에서 현재 Visual Studio의 vcpkg를 불러오고, 패키지 빌드에도 같은 Visual Studio를 지정합니다. 설치 위치는 `Intermediate/vcpkg_installed/<도구 집합>/x64-windows-static-md/`입니다.
+[vcpkg 매니페스트](../Engine/ThirdParty/vcpkg.json)는 프로젝트에서 사용할 패키지와 버전 기준(`builtin-baseline`)을 선언합니다. Visual Studio Installer에서 `vcpkg 패키지 관리자` 구성 요소를 설치합니다. MSBuild는 [Directory.Build.targets](../Directory.Build.targets)에서 현재 Visual Studio의 vcpkg를 불러오고, 패키지 빌드에도 같은 Visual Studio를 지정합니다. 설치 위치는 `Intermediate/vcpkg_installed/<도구 집합>/x64-windows-static-md/`입니다.
 
 | 패키지 | 용도 |
 | --- | --- |
@@ -44,6 +44,9 @@ Debug, Release의 추가 포함 디렉터리에 `$(ProjectDir)Engine\Source`와 
 | `directx-dxc` | 렌더러 초기화 시 기본 HLSL 셰이더 컴파일 |
 | `imgui` | 에디터 UI에 사용할 Dear ImGui. `docking-experimental`, `win32-binding`, `dx12-binding` 기능을 설치 |
 | `imguizmo` | 에디터 뷰포트의 3D Transform 기즈모 |
+| `joltphysics` | 충돌 검사와 물리 시뮬레이션용 정적 라이브러리 |
+
+MSBuild는 Jolt 헤더를 사용하는 `JoltRuntime.cpp`, `JoltObjectLayers.cpp`, `JoltBroadPhaseLayers.cpp` 및 `JoltPhysicsScene.cpp`에 `JPH_OBJECT_STREAM`과 `JPH_FLOATING_POINT_EXCEPTIONS_ENABLED`를 지정합니다. 이 정의는 설치된 패키지의 `share/Jolt/JoltConfig.cmake`에 있는 공개 컴파일 정의를 따릅니다.
 
 [`vcpkg-configuration.json`](../Engine/ThirdParty/vcpkg-configuration.json)은 저장소의 ImGuizmo 오버레이 포트를 등록합니다. [오버레이 포트](../Engine/ThirdParty/vcpkg-overlays/imguizmo/portfile.cmake)는 원본 ImGuizmo 1.10에 [회전 링 패치](../Engine/ThirdParty/vcpkg-overlays/imguizmo/rotation-rings.patch)를 적용한 뒤 빌드합니다.
 

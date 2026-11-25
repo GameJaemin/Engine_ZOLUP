@@ -2,6 +2,7 @@
 
 #include "Component/AmbientLightComponent.h"
 #include "Component/AnimationComponent.h"
+#include "Component/BoxColliderComponent.h"
 #include "Component/CameraComponent.h"
 #include "Component/Component.h"
 #include "Component/DirectionalLightComponent.h"
@@ -9,6 +10,7 @@
 #include "Component/InputComponent.h"
 #include "Component/LightComponent.h"
 #include "Component/PointLightComponent.h"
+#include "Component/RigidBodyComponent.h"
 #include "Component/SkinComponent.h"
 #include "Component/SkyboxComponent.h"
 #include "Component/SpotLightComponent.h"
@@ -112,6 +114,14 @@ bool RegisterEngineComponentTypes(ComponentTypeRegistry& registry)
 
 	if (registry.Register<GravityComponent, Component>("GravityComponent") == nullptr) { return false; }
 	if (!registry.AddField<GravityComponent>("gravityEnabled", &GravityComponent::IsGravityEnabled, &GravityComponent::SetGravityEnabled)) { return false; }
+
+	if (registry.Register<BoxColliderComponent, Component>("BoxColliderComponent") == nullptr) { return false; }
+	// 객체 원점 기준의 박스 중심과 반크기다. 반크기는 setter가 양수만 받는다.
+	if (!registry.AddField<BoxColliderComponent>("localCenter", &BoxColliderComponent::GetLocalCenter, &BoxColliderComponent::SetLocalCenter, { .displayName = "Center (cm)", .dragSpeed = 1.0f })) { return false; }
+	if (!registry.AddField<BoxColliderComponent>("localHalfExtents", &BoxColliderComponent::GetLocalHalfExtents, &BoxColliderComponent::SetLocalHalfExtents, { .displayName = "Half Extents (cm)", .dragSpeed = 1.0f, .minValue = 0.1f, .maxValue = FLT_MAX })) { return false; }
+
+	if (registry.Register<RigidBodyComponent, Component>("RigidBodyComponent") == nullptr) { return false; }
+	if (!registry.AddField<RigidBodyComponent>("simulatePhysics", &RigidBodyComponent::IsSimulatingPhysics, &RigidBodyComponent::SetSimulatePhysics, { .displayName = "Simulate Physics" })) { return false; }
 
 	// 조명 4종은 부모 정보를 찾으므로 LightComponent를 먼저 등록한다. 공통 속성은 LightComponent에만 등록한다.
 	if (registry.Register<LightComponent, Component>("LightComponent") == nullptr) { return false; }

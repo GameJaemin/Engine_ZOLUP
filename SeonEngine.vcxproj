@@ -35,6 +35,18 @@
     <ClCompile Include="Engine\Source\Texture\ORMImageBuilder.cpp" />
     <ClCompile Include="Engine\Source\AssetManager.cpp" />
     <ClCompile Include="Engine\Source\Engine.cpp" />
+    <ClCompile Include="Engine\Source\Physics\JoltBroadPhaseLayers.cpp">
+      <PreprocessorDefinitions>JPH_OBJECT_STREAM;JPH_FLOATING_POINT_EXCEPTIONS_ENABLED;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Physics\JoltObjectLayers.cpp">
+      <PreprocessorDefinitions>JPH_OBJECT_STREAM;JPH_FLOATING_POINT_EXCEPTIONS_ENABLED;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Physics\JoltPhysicsScene.cpp">
+      <PreprocessorDefinitions>JPH_OBJECT_STREAM;JPH_FLOATING_POINT_EXCEPTIONS_ENABLED;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Physics\JoltRuntime.cpp">
+      <PreprocessorDefinitions>JPH_OBJECT_STREAM;JPH_FLOATING_POINT_EXCEPTIONS_ENABLED;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
     <ClCompile Include="Engine\Source\ImGuiSystem.cpp" />
     <ClCompile Include="Engine\Source\Core\FileHelper.cpp" />
     <ClCompile Include="Engine\Source\Core\FrameTimer.cpp" />
@@ -44,12 +56,14 @@
     <ClCompile Include="Engine\Source\Input\InputDispatcher.cpp" />
     <ClCompile Include="Engine\Source\Component\InputComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\AnimationComponent.cpp" />
+    <ClCompile Include="Engine\Source\Component\BoxColliderComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\CameraComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\Component.cpp" />
     <ClCompile Include="Engine\Source\Component\DirectionalLightComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\GravityComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\LightComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\PointLightComponent.cpp" />
+    <ClCompile Include="Engine\Source\Component\RigidBodyComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\SkinComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\SkyboxComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\SpotLightComponent.cpp" />
@@ -86,6 +100,10 @@
     <ClInclude Include="Engine\Source\ImageLoader.h" />
     <ClInclude Include="Engine\Source\AssetManager.h" />
     <ClInclude Include="Engine\Source\Engine.h" />
+    <ClInclude Include="Engine\Source\Physics\JoltBroadPhaseLayers.h" />
+    <ClInclude Include="Engine\Source\Physics\JoltObjectLayers.h" />
+    <ClInclude Include="Engine\Source\Physics\JoltPhysicsScene.h" />
+    <ClInclude Include="Engine\Source\Physics\JoltRuntime.h" />
     <ClInclude Include="Engine\Source\IApplication.h" />
     <ClInclude Include="Engine\Source\CursorShape.h" />
     <ClInclude Include="Engine\Source\ImGuiSystem.h" />
@@ -119,12 +137,14 @@
     <ClInclude Include="Engine\Source\Component\InputComponent.h" />
     <ClInclude Include="Engine\Source\Component\AmbientLightComponent.h" />
     <ClInclude Include="Engine\Source\Component\AnimationComponent.h" />
+    <ClInclude Include="Engine\Source\Component\BoxColliderComponent.h" />
     <ClInclude Include="Engine\Source\Component\CameraComponent.h" />
     <ClInclude Include="Engine\Source\Component\Component.h" />
     <ClInclude Include="Engine\Source\Component\DirectionalLightComponent.h" />
     <ClInclude Include="Engine\Source\Component\GravityComponent.h" />
     <ClInclude Include="Engine\Source\Component\LightComponent.h" />
     <ClInclude Include="Engine\Source\Component\PointLightComponent.h" />
+    <ClInclude Include="Engine\Source\Component\RigidBodyComponent.h" />
     <ClInclude Include="Engine\Source\Component\SkinComponent.h" />
     <ClInclude Include="Engine\Source\Component\SkyboxComponent.h" />
     <ClInclude Include="Engine\Source\Component\SpotLightComponent.h" />

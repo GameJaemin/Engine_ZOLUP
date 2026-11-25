@@ -2,6 +2,8 @@
 
 #include "AssetManager.h"
 #include "Component/AnimationComponent.h"
+#include "Component/BoxColliderComponent.h"
+#include "Component/RigidBodyComponent.h"
 #include "Component/SkinComponent.h"
 #include "Component/StaticMeshComponent.h"
 #include "Component/TransformComponent.h"
@@ -36,7 +38,7 @@ namespace
 	};
 
 	// object는 월드에 이미 등록되어 있고 삭제 예정이 아니어야 한다.
-	// 자식 생성에 실패하면 false를 반환한다. 이미 만든 자식은 모두 object 아래에 연결되어 있다.
+	// 컴포넌트 설정이나 자식 생성에 실패하면 false를 반환한다. 이미 만든 자식은 object 아래에 연결되어 있다.
 	bool ApplyPrefabObject(GameObject& object, const PrefabObject& data, PrefabInstanceLinks& links)
 	{
 		if (data.id.has_value())
@@ -51,6 +53,24 @@ namespace
 		if (data.light.has_value()) { AttachPrefabLight(object, *data.light); }
 
 		if (data.camera.has_value()) { AttachPrefabCamera(object, *data.camera); }
+
+		if (data.boxCollider.has_value())
+		{
+			std::unique_ptr<BoxColliderComponent> collider = std::make_unique<BoxColliderComponent>();
+			if (!collider->SetLocalBox(data.boxCollider->centerCm, data.boxCollider->halfExtentsCm))
+			{
+				Log::Write(LogLevel::Error, "Prefab", std::format("{}: invalid boxCollider settings", object.GetName()));
+				return false;
+			}
+			object.AddComponent(std::move(collider));
+		}
+
+		if (data.rigidBody.has_value())
+		{
+			std::unique_ptr<RigidBodyComponent> rigidBody = std::make_unique<RigidBodyComponent>();
+			rigidBody->SetSimulatePhysics(data.rigidBody->simulatePhysics);
+			object.AddComponent(std::move(rigidBody));
+		}
 
 		// 대상 객체가 아직 없을 수 있어 계층을 모두 만든 뒤 붙인다.
 		if (data.animation.has_value())

@@ -89,6 +89,8 @@ bool LoadPrefabObject(AssetManager& assets, const PrefabObjectDefinition& defini
 
 	object.light = definition.light;
 	object.camera = definition.camera;
+	object.boxCollider = definition.boxCollider;
+	object.rigidBody = definition.rigidBody;
 
 	object.children.reserve(definition.children.size());
 	for (std::size_t index = 0; index < definition.children.size(); ++index)

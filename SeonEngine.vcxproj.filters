@@ -37,6 +37,9 @@
     <Filter Include="Engine\Source\Input">
       <UniqueIdentifier>{7d3a9c41-5e2b-4f86-9a1d-c2b8e6f04a57}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Engine\Source\Physics">
+      <UniqueIdentifier>{d1982126-5fa7-4cc3-beeb-8937c0bb240d}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Engine\Source\Renderer">
       <UniqueIdentifier>{3be6eb0d-16e0-42ae-8ffb-ddf98ddda2a4}</UniqueIdentifier>
     </Filter>
@@ -123,6 +126,18 @@
     <ClCompile Include="Engine\Source\Engine.cpp">
       <Filter>Engine\Source</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Source\Physics\JoltBroadPhaseLayers.cpp">
+      <Filter>Engine\Source\Physics</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Physics\JoltObjectLayers.cpp">
+      <Filter>Engine\Source\Physics</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Physics\JoltPhysicsScene.cpp">
+      <Filter>Engine\Source\Physics</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Physics\JoltRuntime.cpp">
+      <Filter>Engine\Source\Physics</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Source\ImGuiSystem.cpp">
       <Filter>Engine\Source</Filter>
     </ClCompile>
@@ -147,6 +162,9 @@
     <ClCompile Include="Engine\Source\Component\AnimationComponent.cpp">
       <Filter>Engine\Source\Component</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Source\Component\BoxColliderComponent.cpp">
+      <Filter>Engine\Source\Component</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Source\Component\CameraComponent.cpp">
       <Filter>Engine\Source\Component</Filter>
     </ClCompile>
@@ -163,6 +181,9 @@
       <Filter>Engine\Source\Component</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Source\Component\PointLightComponent.cpp">
+      <Filter>Engine\Source\Component</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Component\RigidBodyComponent.cpp">
       <Filter>Engine\Source\Component</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Source\Component\SkinComponent.cpp">
@@ -335,6 +356,18 @@
     <ClInclude Include="Engine\Source\Engine.h">
       <Filter>Engine\Source</Filter>
     </ClInclude>
+    <ClInclude Include="Engine\Source\Physics\JoltBroadPhaseLayers.h">
+      <Filter>Engine\Source\Physics</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Physics\JoltObjectLayers.h">
+      <Filter>Engine\Source\Physics</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Physics\JoltPhysicsScene.h">
+      <Filter>Engine\Source\Physics</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Physics\JoltRuntime.h">
+      <Filter>Engine\Source\Physics</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\Source\IApplication.h">
       <Filter>Engine\Source</Filter>
     </ClInclude>
@@ -377,6 +410,9 @@
     <ClInclude Include="Engine\Source\Component\AnimationComponent.h">
       <Filter>Engine\Source\Component</Filter>
     </ClInclude>
+    <ClInclude Include="Engine\Source\Component\BoxColliderComponent.h">
+      <Filter>Engine\Source\Component</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\Source\Component\CameraComponent.h">
       <Filter>Engine\Source\Component</Filter>
     </ClInclude>
@@ -393,6 +429,9 @@
       <Filter>Engine\Source\Component</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Component\PointLightComponent.h">
+      <Filter>Engine\Source\Component</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Component\RigidBodyComponent.h">
       <Filter>Engine\Source\Component</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Component\SkinComponent.h">
