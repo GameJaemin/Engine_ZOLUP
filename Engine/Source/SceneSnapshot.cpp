@@ -1,266 +1,38 @@
 #include "SceneSnapshot.h"
 
-#include "Component/AmbientLightComponent.h"
-#include "Component/AnimationComponent.h"
 #include "Component/CameraComponent.h"
 #include "Component/Component.h"
-#include "Component/DirectionalLightComponent.h"
-#include "Component/LightComponent.h"
-#include "Component/PointLightComponent.h"
-#include "Component/SkinComponent.h"
-#include "Component/SkyboxComponent.h"
-#include "Component/SpotLightComponent.h"
-#include "Component/StaticMeshComponent.h"
-#include "Component/TransformComponent.h"
+#include "ComponentTypeRegistry.h"
 #include "Core/Log.h"
 #include "GameObject.h"
 #include "World.h"
 
-#include <cstddef>
 #include <format>
 #include <memory>
 #include <optional>
+#include <string>
 #include <typeinfo>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
 namespace
 {
-	// 참조한 컴포넌트를 가진 객체의 ID를 outID에 담는다. nullptr는 의도한 빈 참조라 무효 ID로 담는다.
-	// 부착 전 컴포넌트나 world에 등록되지 않은 객체(다른 World 포함)의 컴포넌트면 false를 반환한다.
-	bool GetReferencedObjectID(const Component* component, const World& world, ObjectID& outID)
+	/** typeInfo나 그 부모에 속성이 하나라도 있으면 true를 반환한다. */
+	bool HasAnyField(const ComponentTypeInfo& typeInfo)
 	{
-		outID = ObjectID{};
-		if (component == nullptr) { return true; }
-
-		const GameObject* owner = component->GetGameObject();
-		// 다른 World의 같은 ID 객체는 주소가 달라 ContainsGameObject에서 걸러진다.
-		if (owner == nullptr || !world.ContainsGameObject(owner)) { return false; }
-
-		outID = owner->GetObjectID();
-		return true;
-	}
-
-	// 노드가 world 밖의 객체를 가리키면 로그를 남기고 nullopt를 반환한다.
-	std::optional<AnimationSnapshot> CaptureAnimation(const AnimationComponent& animation, const World& world, const GameObject& object)
-	{
-		const std::vector<TransformComponent*>& nodeTransforms = animation.GetNodeTransforms();
-		AnimationSnapshot data;
-		data.nodeObjectIDs.resize(nodeTransforms.size());
-		for (std::size_t node = 0; node < nodeTransforms.size(); ++node)
+		const ComponentTypeInfo* current = &typeInfo;
+		while (current != nullptr)
 		{
-			if (!GetReferencedObjectID(nodeTransforms[node], world, data.nodeObjectIDs[node]))
-			{
-				Log::Write(LogLevel::Error, "Snapshot", std::format("{}: animation node {} refers to an object outside this world", object.GetName(), node));
-				return std::nullopt;
-			}
+			if (!current->fields.empty()) { return true; }
+			current = current->parent;
 		}
-		data.restPose = animation.GetRestPose();
-		return data;
+		return false;
 	}
 
-	// 노드 객체는 world에 모두 등록되어 있어야 한다. 노드 객체를 찾지 못하면 nullptr를 반환한다.
-	std::unique_ptr<AnimationComponent> CreateAnimation(const AnimationSnapshot& animation, World& world)
-	{
-		std::vector<TransformComponent*> nodeTransforms;
-		nodeTransforms.reserve(animation.nodeObjectIDs.size());
-		for (const ObjectID& nodeObjectID : animation.nodeObjectIDs)
-		{
-			if (!nodeObjectID.IsValid())
-			{
-				nodeTransforms.push_back(nullptr);
-				continue;
-			}
-			GameObject* node = world.FindGameObject(nodeObjectID);
-			if (node == nullptr) { return nullptr; }
-			nodeTransforms.push_back(node->GetComponent<TransformComponent>());
-		}
-
-		std::unique_ptr<AnimationComponent> component = std::make_unique<AnimationComponent>();
-		component->SetNodeTransforms(std::move(nodeTransforms));
-		component->SetRestPose(animation.restPose);
-		return component;
-	}
-
-	// 재생 컴포넌트가 world 밖의 객체에 있으면 로그를 남기고 nullopt를 반환한다.
-	std::optional<SkinSnapshot> CaptureSkin(const SkinComponent& skin, const World& world, const GameObject& object)
-	{
-		ObjectID animationObjectID;
-		if (!GetReferencedObjectID(skin.GetAnimation(), world, animationObjectID))
-		{
-			Log::Write(LogLevel::Error, "Snapshot", std::format("{}: skin animation refers to an object outside this world", object.GetName()));
-			return std::nullopt;
-		}
-		return SkinSnapshot{ .model = skin.GetModel(), .nodeIndex = skin.GetNodeIndex(), .animationObjectID = animationObjectID };
-	}
-
-	// Animation을 모두 붙인 뒤 호출한다. 가리키는 객체에 Animation이 없으면 nullptr를 반환한다.
-	std::unique_ptr<SkinComponent> CreateSkin(const SkinSnapshot& skin, World& world)
-	{
-		const AnimationComponent* animation = nullptr;
-		if (skin.animationObjectID.IsValid())
-		{
-			GameObject* owner = world.FindGameObject(skin.animationObjectID);
-			animation = owner != nullptr ? owner->GetComponent<AnimationComponent>() : nullptr;
-			if (animation == nullptr) { return nullptr; }
-		}
-
-		std::unique_ptr<SkinComponent> component = std::make_unique<SkinComponent>();
-		component->SetSkin(skin.model, skin.nodeIndex, animation);
-		return component;
-	}
-
-	// 참조 대상이 스냅샷 안에 있는지 확인한다. 삭제 예정이라 담지 않은 객체를 가리키면 false를 반환한다.
-	bool ValidateReferences(const SceneSnapshot& snapshot)
-	{
-		std::unordered_set<ObjectID> objectIDs;
-		std::unordered_set<ObjectID> animationOwnerIDs;
-		for (const GameObjectSnapshot& data : snapshot.objects)
-		{
-			objectIDs.insert(data.objectID);
-			if (data.animation.has_value()) { animationOwnerIDs.insert(data.objectID); }
-		}
-
-		for (const GameObjectSnapshot& data : snapshot.objects)
-		{
-			if (data.animation.has_value())
-			{
-				for (const ObjectID& nodeObjectID : data.animation->nodeObjectIDs)
-				{
-					if (nodeObjectID.IsValid() && !objectIDs.contains(nodeObjectID))
-					{
-						Log::Write(LogLevel::Error, "Snapshot", std::format("{}: animation node {} is not in the snapshot", data.name, nodeObjectID.ToString()));
-						return false;
-					}
-				}
-			}
-			if (data.skin.has_value() && data.skin->animationObjectID.IsValid() && !animationOwnerIDs.contains(data.skin->animationObjectID))
-			{
-				Log::Write(LogLevel::Error, "Snapshot", std::format("{}: skin animation {} is not in the snapshot", data.name, data.skin->animationObjectID.ToString()));
-				return false;
-			}
-		}
-		return true;
-	}
-
-	StaticMeshSnapshot CaptureStaticMesh(const StaticMeshComponent& mesh)
-	{
-		return StaticMeshSnapshot{ .mesh = mesh.GetStaticMesh(), .material = mesh.GetMaterial() };
-	}
-
-	// 재질 값이 허용 범위를 벗어나면 nullptr를 반환한다.
-	std::unique_ptr<StaticMeshComponent> CreateStaticMesh(const StaticMeshSnapshot& mesh)
-	{
-		std::unique_ptr<StaticMeshComponent> component = std::make_unique<StaticMeshComponent>();
-		component->SetStaticMesh(mesh.mesh);
-		if (!component->SetMaterial(mesh.material)) { return nullptr; }
-		return component;
-	}
-
-	SkyboxSnapshot CaptureSkybox(const SkyboxComponent& skybox)
-	{
-		return SkyboxSnapshot{ .faces = skybox.GetFaces(), .enabled = skybox.IsEnabled() };
-	}
-
-	std::unique_ptr<SkyboxComponent> CreateSkybox(const SkyboxSnapshot& skybox)
-	{
-		std::unique_ptr<SkyboxComponent> component = std::make_unique<SkyboxComponent>();
-		component->SetFaces(skybox.faces);
-		component->SetEnabled(skybox.enabled);
-		return component;
-	}
-
-	// 조명 4종 중 하나면 값을 담아 반환하고, 아니면 nullopt를 반환한다.
-	std::optional<LightSnapshot> CaptureLight(const Component& component)
-	{
-		LightSnapshot light{};
-		const std::type_info& type = typeid(component);
-		if (type == typeid(PointLightComponent))
-		{
-			light.type = LightSnapshotType::Point;
-			light.rangeCm = static_cast<const PointLightComponent&>(component).GetRange();
-		}
-		else if (type == typeid(SpotLightComponent))
-		{
-			const SpotLightComponent& spotLight = static_cast<const SpotLightComponent&>(component);
-			light.type = LightSnapshotType::Spot;
-			light.rangeCm = spotLight.GetRange();
-			light.outerConeAngleDegrees = spotLight.GetOuterConeAngleDegrees();
-		}
-		else if (type == typeid(DirectionalLightComponent)) { light.type = LightSnapshotType::Directional; }
-		else if (type == typeid(AmbientLightComponent)) { light.type = LightSnapshotType::Ambient; }
-		else { return std::nullopt; }
-
-		const LightComponent& common = static_cast<const LightComponent&>(component);
-		light.color = common.GetColor();
-		light.intensity = common.GetIntensity();
-		light.enabled = common.IsEnabled();
-		return light;
-	}
-
-	// 값이 컴포넌트의 허용 범위를 벗어나면 nullptr를 반환한다.
-	std::unique_ptr<LightComponent> CreateLight(const LightSnapshot& light)
-	{
-		std::unique_ptr<LightComponent> component;
-		switch (light.type)
-		{
-		case LightSnapshotType::Point:
-		{
-			std::unique_ptr<PointLightComponent> pointLight = std::make_unique<PointLightComponent>();
-			if (!pointLight->SetRange(light.rangeCm)) { return nullptr; }
-			component = std::move(pointLight);
-			break;
-		}
-		case LightSnapshotType::Spot:
-		{
-			std::unique_ptr<SpotLightComponent> spotLight = std::make_unique<SpotLightComponent>();
-			if (!spotLight->SetRange(light.rangeCm) || !spotLight->SetOuterConeAngleDegrees(light.outerConeAngleDegrees)) { return nullptr; }
-			component = std::move(spotLight);
-			break;
-		}
-		case LightSnapshotType::Directional:
-			component = std::make_unique<DirectionalLightComponent>();
-			break;
-		case LightSnapshotType::Ambient:
-			component = std::make_unique<AmbientLightComponent>();
-			break;
-		default:
-			return nullptr;
-		}
-
-		if (!component->SetColor(light.color) || !component->SetIntensity(light.intensity)) { return nullptr; }
-		component->SetEnabled(light.enabled);
-		return component;
-	}
-
-	CameraSnapshot CaptureCamera(const CameraComponent& camera)
-	{
-		return CameraSnapshot{
-			.projectionMode = camera.GetProjectionMode(),
-			.verticalFovDegrees = camera.GetVerticalFovDegrees(),
-			.orthographicHeight = camera.GetOrthographicHeight(),
-			.nearClipDistance = camera.GetNearClipDistance(),
-			.farClipDistance = camera.GetFarClipDistance(),
-		};
-	}
-
-	// 값이 컴포넌트의 허용 범위를 벗어나면 nullptr를 반환한다.
-	std::unique_ptr<CameraComponent> CreateCamera(const CameraSnapshot& camera)
-	{
-		std::unique_ptr<CameraComponent> component = std::make_unique<CameraComponent>();
-		component->SetProjectionMode(camera.projectionMode);
-		if (!component->SetVerticalFovDegrees(camera.verticalFovDegrees)
-			|| !component->SetOrthographicHeight(camera.orthographicHeight)
-			|| !component->SetClipDistances(camera.nearClipDistance, camera.farClipDistance))
-		{
-			return nullptr;
-		}
-		return component;
-	}
-
-	// object 하나와 그 자식 ID 목록을 담는다. 자손은 호출자가 등록 순서대로 따로 담는다. 지원하지 않는 타입을 만나면 false를 반환한다.
-	bool CaptureGameObject(const GameObject& object, const World& world, SceneSnapshot& snapshot)
+	/** object 하나를 속성 표로 담아 snapshot 끝에 더한다. 담을 수 없는 객체나 컴포넌트를 만나면 로그를 남기고 false를 반환한다. */
+	bool CaptureGameObject(const GameObject& object, SceneSnapshot& snapshot)
 	{
 		// 파생 타입은 생성자가 붙이는 컴포넌트와 자체 상태가 있어 기본 객체로 바꿔 담지 않는다.
 		if (typeid(object) != typeid(GameObject))
@@ -276,115 +48,227 @@ namespace
 			if (child->IsPendingDestroy()) { continue; }
 			data.childObjectIDs.push_back(child->GetObjectID());
 		}
-		bool hasTransform = false;
+
+		const ComponentTypeRegistry& registry = ComponentTypeRegistry::Get();
+		std::unordered_set<const ComponentTypeInfo*> capturedTypes;
 		for (const std::unique_ptr<Component>& component : object.GetComponents())
 		{
-			// 컴포넌트 종류별 저장은 여기에 모은다. 이후 단계에서 종류마다 한 칸씩 추가한다.
-			if (typeid(*component) == typeid(TransformComponent))
+			const ComponentTypeInfo* typeInfo = registry.Find(*component);
+			if (typeInfo == nullptr)
 			{
-				if (hasTransform)
-				{
-					Log::Write(LogLevel::Error, "Snapshot", std::format("{}: duplicate TransformComponent", object.GetName()));
-					return false;
-				}
-				hasTransform = true;
-				data.localTransform = static_cast<const TransformComponent&>(*component).GetTransform();
-				continue;
+				Log::Write(LogLevel::Error, "Snapshot", std::format("{}: unregistered component {}", object.GetName(), typeid(*component).name()));
+				return false;
 			}
-			if (typeid(*component) == typeid(StaticMeshComponent))
+			if (!typeInfo->create)
 			{
-				if (data.staticMesh.has_value())
-				{
-					Log::Write(LogLevel::Error, "Snapshot", std::format("{}: duplicate StaticMeshComponent", object.GetName()));
-					return false;
-				}
-				data.staticMesh = CaptureStaticMesh(static_cast<const StaticMeshComponent&>(*component));
-				continue;
+				Log::Write(LogLevel::Error, "Snapshot", std::format("{}: component {} cannot be created", object.GetName(), typeInfo->name));
+				return false;
 			}
-			if (typeid(*component) == typeid(SkyboxComponent))
+			// 속성이 없는 타입은 상태를 옮길 수 없으므로 빈 컴포넌트로 바꿔 담지 않는다.
+			if (!HasAnyField(*typeInfo))
 			{
-				if (data.skybox.has_value())
-				{
-					Log::Write(LogLevel::Error, "Snapshot", std::format("{}: duplicate SkyboxComponent", object.GetName()));
-					return false;
-				}
-				data.skybox = CaptureSkybox(static_cast<const SkyboxComponent&>(*component));
-				continue;
+				Log::Write(LogLevel::Error, "Snapshot", std::format("{}: component {} has no fields", object.GetName(), typeInfo->name));
+				return false;
 			}
-			if (std::optional<LightSnapshot> light = CaptureLight(*component))
+			// 컴포넌트 참조는 "같은 객체에 같은 타입은 하나"라는 규칙에 기대므로 중복을 거부한다.
+			if (!capturedTypes.insert(typeInfo).second)
 			{
-				if (data.light.has_value())
-				{
-					Log::Write(LogLevel::Error, "Snapshot", std::format("{}: duplicate light component", object.GetName()));
-					return false;
-				}
-				data.light = *light;
-				continue;
-			}
-			if (typeid(*component) == typeid(CameraComponent))
-			{
-				if (data.camera.has_value())
-				{
-					Log::Write(LogLevel::Error, "Snapshot", std::format("{}: duplicate CameraComponent", object.GetName()));
-					return false;
-				}
-				data.camera = CaptureCamera(static_cast<const CameraComponent&>(*component));
-				continue;
-			}
-			if (typeid(*component) == typeid(AnimationComponent))
-			{
-				if (data.animation.has_value())
-				{
-					Log::Write(LogLevel::Error, "Snapshot", std::format("{}: duplicate AnimationComponent", object.GetName()));
-					return false;
-				}
-				data.animation = CaptureAnimation(static_cast<const AnimationComponent&>(*component), world, object);
-				if (!data.animation.has_value()) { return false; }
-				continue;
-			}
-			if (typeid(*component) == typeid(SkinComponent))
-			{
-				if (data.skin.has_value())
-				{
-					Log::Write(LogLevel::Error, "Snapshot", std::format("{}: duplicate SkinComponent", object.GetName()));
-					return false;
-				}
-				data.skin = CaptureSkin(static_cast<const SkinComponent&>(*component), world, object);
-				if (!data.skin.has_value()) { return false; }
-				continue;
+				Log::Write(LogLevel::Error, "Snapshot", std::format("{}: duplicate {}", object.GetName(), typeInfo->name));
+				return false;
 			}
 
-			Log::Write(LogLevel::Error, "Snapshot", std::format("{}: unsupported component {}", object.GetName(), typeid(*component).name()));
-			return false;
+			ComponentSnapshot componentData{ .typeName = typeInfo->name };
+			ComponentTypeRegistry::ForEachField(*typeInfo, [&componentData, &component](const ComponentFieldInfo& field)
+			{
+				componentData.fields.emplace_back(field.name, field.get(*component));
+			});
+			data.components.push_back(std::move(componentData));
 		}
+
 		snapshot.objects.push_back(std::move(data));
 		return true;
 	}
-}
 
-std::optional<SceneSnapshot> CaptureWorld(const World& world)
-{
-	SceneSnapshot snapshot;
-	// 등록 순서가 Tick 순서이므로 계층이 아니라 World 목록 순서대로 담는다.
-	for (const std::unique_ptr<GameObject>& object : world.GetGameObjects())
+	// 스냅샷 안의 객체를 ID로 찾는 표다. 값은 스냅샷 안 객체의 주소라 스냅샷이 살아 있는 동안만 쓴다.
+	using ObjectSnapshotMap = std::unordered_map<ObjectID, const GameObjectSnapshot*>;
+
+	/** 스냅샷의 객체를 ID로 찾는 표를 만든다. */
+	ObjectSnapshotMap MapObjectsByID(const SceneSnapshot& snapshot)
 	{
-		if (object->IsPendingDestroy()) { continue; }
-		if (!CaptureGameObject(*object, world, snapshot)) { return std::nullopt; }
+		ObjectSnapshotMap objectsByID;
+		for (const GameObjectSnapshot& object : snapshot.objects) { objectsByID.emplace(object.objectID, &object); }
+		return objectsByID;
 	}
-	if (!ValidateReferences(snapshot)) { return std::nullopt; }
 
-	if (const CameraComponent* camera = world.GetActiveCamera())
+	/** typeName 타입이 required 타입이거나 그 파생이면 true를 반환한다. 등록부의 부모 연결을 따라 올라가며 확인한다. */
+	bool IsTypeOrDerived(const std::string& typeName, const ComponentTypeInfo& required)
 	{
-		const GameObject* owner = camera->GetGameObject();
-		// 삭제 예정 객체는 담지 않으므로 그 카메라도 활성으로 담지 않는다.
-		if (!owner->IsPendingDestroy()) { snapshot.activeCameraObjectID = owner->GetObjectID(); }
+		const ComponentTypeInfo* current = ComponentTypeRegistry::Get().FindByName(typeName);
+		while (current != nullptr)
+		{
+			if (current == &required) { return true; }
+			current = current->parent;
+		}
+		return false;
 	}
-	return snapshot;
-}
 
-namespace
-{
-	// 빈 World에 객체를 만든다. 실패하면 이미 만든 객체를 남긴 채 false를 반환하며 정리는 호출자가 한다.
+	/** reference가 가리키지 않거나, 스냅샷 안의 객체이며 그 객체에 해당 타입 컴포넌트가 있으면 true를 반환한다. */
+	bool IsReferenceInSnapshot(const ComponentReference& reference, const ObjectSnapshotMap& objectsByID)
+	{
+		if (!reference.objectID.IsValid()) { return true; }
+
+		const auto foundObject = objectsByID.find(reference.objectID);
+		const ComponentTypeInfo* required = ComponentTypeRegistry::Get().FindByType(reference.componentType);
+		if (foundObject == objectsByID.end() || required == nullptr) { return false; }
+
+		for (const ComponentSnapshot& component : foundObject->second->components)
+		{
+			if (IsTypeOrDerived(component.typeName, *required)) { return true; }
+		}
+		return false;
+	}
+
+	/** value 안의 컴포넌트 참조가 모두 스냅샷 안을 가리키면 true를 반환한다. 목록이면 원소마다 확인하고, 참조가 아니면 true다. */
+	bool AreReferencesInSnapshot(const ComponentFieldValue& value, const ObjectSnapshotMap& objectsByID)
+	{
+		if (const ComponentReference* reference = std::get_if<ComponentReference>(&value))
+		{
+			return IsReferenceInSnapshot(*reference, objectsByID);
+		}
+
+		const ComponentFieldList* list = std::get_if<ComponentFieldList>(&value);
+		if (list == nullptr) { return true; }
+
+		for (const ComponentFieldScalar& element : list->elements)
+		{
+			const ComponentReference* reference = std::get_if<ComponentReference>(&element);
+			if (reference != nullptr && !IsReferenceInSnapshot(*reference, objectsByID)) { return false; }
+		}
+		return true;
+	}
+
+	/**
+	 * 모든 속성 값 안의 컴포넌트 참조가 스냅샷 안을 가리키는지 확인한다. 아니면 로그를 남기고 false를 반환한다.
+	 * 참조는 ID로 담겨 원래 World를 알 수 없으므로, 같은 ID를 쓰는 다른 World의 컴포넌트를 가리킨 경우는 걸러 내지 못한다.
+	 */
+	bool ValidateReferences(const SceneSnapshot& snapshot)
+	{
+		const ObjectSnapshotMap objectsByID = MapObjectsByID(snapshot);
+
+		for (const GameObjectSnapshot& object : snapshot.objects)
+		{
+			for (const ComponentSnapshot& component : object.components)
+			{
+				for (const std::pair<std::string, ComponentFieldValue>& field : component.fields)
+				{
+					if (AreReferencesInSnapshot(field.second, objectsByID)) { continue; }
+
+					Log::Write(LogLevel::Error, "Snapshot", std::format("{}: {}.{} refers to a component outside the snapshot", object.name, component.typeName, field.first));
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+
+	/** typeInfo와 그 부모에서 fieldName 속성을 찾는다. 등록부가 타입과 조상, 자손 사이의 이름 중복을 막으므로 결과는 하나다. 없으면 nullptr을 반환한다. */
+	const ComponentFieldInfo* FindField(const ComponentTypeInfo& typeInfo, const std::string& fieldName)
+	{
+		const ComponentTypeInfo* current = &typeInfo;
+		while (current != nullptr)
+		{
+			for (const ComponentFieldInfo& field : current->fields)
+			{
+				if (field.name == fieldName) { return &field; }
+			}
+			current = current->parent;
+		}
+		return nullptr;
+	}
+
+	/** 컴포넌트 참조이거나 컴포넌트 참조의 목록이면 true다. 이런 속성은 모든 컴포넌트를 붙인 뒤에 쓴다. */
+	bool IsDeferredField(const ComponentFieldInfo& field, const ComponentFieldValue& value)
+	{
+		if (std::holds_alternative<ComponentReference>(value)) { return true; }
+		// 빈 목록은 원소로 타입을 알 수 없으므로 원소 기본값의 종류를 본다.
+		return field.elementPrototype.has_value() && std::holds_alternative<ComponentReference>(*field.elementPrototype);
+	}
+
+	/** object에 이미 붙은 컴포넌트 중 실제 타입이 typeInfo인 것을 찾는다. 생성자가 붙인 Transform처럼 새로 만들면 중복되는 경우에 쓴다. 없으면 nullptr을 반환한다. */
+	Component* FindAttachedComponent(GameObject& object, const ComponentTypeInfo& typeInfo)
+	{
+		const ComponentTypeRegistry& registry = ComponentTypeRegistry::Get();
+		for (const std::unique_ptr<Component>& component : object.GetComponents())
+		{
+			if (registry.Find(*component) == &typeInfo) { return component.get(); }
+		}
+		return nullptr;
+	}
+
+	/**
+	 * object에 컴포넌트 하나를 복원한다. 이미 같은 타입이 붙어 있으면 그것에 쓰고, 아니면 만들어서 속성을 쓴 뒤 붙인다.
+	 * 컴포넌트 참조 속성은 건너뛰며, 모든 컴포넌트를 붙인 뒤 따로 쓴다. 실패하면 로그를 남기고 false를 반환한다.
+	 */
+	bool RestoreComponent(GameObject& object, const ComponentSnapshot& data)
+	{
+		const ComponentTypeInfo* typeInfo = ComponentTypeRegistry::Get().FindByName(data.typeName);
+		if (typeInfo == nullptr || !typeInfo->create)
+		{
+			Log::Write(LogLevel::Error, "Snapshot", std::format("{}: cannot create component {}", object.GetName(), data.typeName));
+			return false;
+		}
+
+		// 생성자가 이미 붙인 Transform처럼 같은 타입이 있으면 새로 만들지 않는다.
+		Component* target = FindAttachedComponent(object, *typeInfo);
+		std::unique_ptr<Component> created;
+		if (target == nullptr)
+		{
+			created = typeInfo->create();
+			target = created.get();
+		}
+
+		for (const std::pair<std::string, ComponentFieldValue>& field : data.fields)
+		{
+			const ComponentFieldInfo* fieldInfo = FindField(*typeInfo, field.first);
+			if (fieldInfo == nullptr)
+			{
+				Log::Write(LogLevel::Error, "Snapshot", std::format("{}: {} has no field {}", object.GetName(), data.typeName, field.first));
+				return false;
+			}
+			if (IsDeferredField(*fieldInfo, field.second)) { continue; }
+			if (!fieldInfo->set(*target, field.second))
+			{
+				Log::Write(LogLevel::Error, "Snapshot", std::format("{}: {}.{} rejected the value", object.GetName(), data.typeName, field.first));
+				return false;
+			}
+		}
+
+		// 붙이기 전에 값을 채워, 붙일 때 호출되는 OnRegister가 완성된 값을 보게 한다.
+		if (created != nullptr) { object.AddComponent(std::move(created)); }
+		return true;
+	}
+
+	/** object에 이미 붙은 컴포넌트에 컴포넌트 참조 속성만 쓴다. 모든 컴포넌트를 붙인 뒤 부른다. 실패하면 로그를 남기고 false를 반환한다. */
+	bool RestoreDeferredFields(GameObject& object, const ComponentSnapshot& data)
+	{
+		// RestoreComponent가 같은 이름으로 타입과 속성을 찾고 컴포넌트를 붙인 뒤에만 부르므로 셋 다 있다.
+		const ComponentTypeInfo& typeInfo = *ComponentTypeRegistry::Get().FindByName(data.typeName);
+		Component& target = *FindAttachedComponent(object, typeInfo);
+
+		for (const std::pair<std::string, ComponentFieldValue>& field : data.fields)
+		{
+			const ComponentFieldInfo& fieldInfo = *FindField(typeInfo, field.first);
+			if (!IsDeferredField(fieldInfo, field.second)) { continue; }
+			if (!fieldInfo.set(target, field.second))
+			{
+				Log::Write(LogLevel::Error, "Snapshot", std::format("{}: {}.{} could not connect the reference", object.GetName(), data.typeName, field.first));
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/** 빈 World에 객체와 컴포넌트를 만든다. 실패하면 이미 만든 객체를 남긴 채 false를 반환하며 정리는 호출자가 한다. */
 	bool RestoreObjects(const SceneSnapshot& snapshot, World& world)
 	{
 		// 1) 모든 객체를 배열 순서대로 만들고 저장된 ID로 등록한다. 등록 순서가 원본과 같아진다.
@@ -393,8 +277,6 @@ namespace
 		{
 			std::unique_ptr<GameObject> object = std::make_unique<GameObject>(world);
 			object->SetName(data.name);
-			// 생성자가 붙인 TransformComponent에 값을 채운다.
-			object->GetComponent<TransformComponent>()->SetTransform(data.localTransform);
 			if (world.AddGameObject(std::move(object), data.objectID) == nullptr)
 			{
 				Log::Write(LogLevel::Error, "Snapshot", std::format("{}: could not register ObjectID {}", data.name, data.objectID.ToString()));
@@ -418,73 +300,27 @@ namespace
 			}
 		}
 
-		// 3) 컴포넌트를 붙인다. 순서는 프리팹과 같이 StaticMesh, Skybox, 조명, 카메라 순으로 고정한다.
+		// 3) 컴포넌트를 담긴 순서(원본 객체의 컴포넌트 순서)대로 복원한다. 컴포넌트 참조 속성은 아직 쓰지 않는다.
 		for (const GameObjectSnapshot& data : snapshot.objects)
 		{
 			GameObject& object = *world.FindGameObject(data.objectID);
-			if (data.staticMesh.has_value())
+			for (const ComponentSnapshot& component : data.components)
 			{
-				std::unique_ptr<StaticMeshComponent> mesh = CreateStaticMesh(*data.staticMesh);
-				if (mesh == nullptr)
-				{
-					Log::Write(LogLevel::Error, "Snapshot", std::format("{}: invalid material values", data.name));
-					return false;
-				}
-				object.AddComponent(std::move(mesh));
-			}
-			if (data.skybox.has_value())
-			{
-				object.AddComponent(CreateSkybox(*data.skybox));
-			}
-			if (data.light.has_value())
-			{
-				std::unique_ptr<LightComponent> light = CreateLight(*data.light);
-				if (light == nullptr)
-				{
-					Log::Write(LogLevel::Error, "Snapshot", std::format("{}: invalid light values", data.name));
-					return false;
-				}
-				object.AddComponent(std::move(light));
-			}
-			if (data.camera.has_value())
-			{
-				std::unique_ptr<CameraComponent> camera = CreateCamera(*data.camera);
-				if (camera == nullptr)
-				{
-					Log::Write(LogLevel::Error, "Snapshot", std::format("{}: invalid camera values", data.name));
-					return false;
-				}
-				object.AddComponent(std::move(camera));
+				if (!RestoreComponent(object, component)) { return false; }
 			}
 		}
 
-		// 다른 객체를 가리키는 컴포넌트는 프리팹과 같이 Animation, Skin 순으로 붙인다. Skin이 가리키는 Animation이 먼저 있어야 한다.
+		// 4) 모든 컴포넌트를 붙인 뒤 컴포넌트 참조 속성을 쓴다. 가리킬 컴포넌트가 이제 모두 있다.
 		for (const GameObjectSnapshot& data : snapshot.objects)
 		{
-			if (!data.animation.has_value()) { continue; }
-
-			std::unique_ptr<AnimationComponent> animation = CreateAnimation(*data.animation, world);
-			if (animation == nullptr)
+			GameObject& object = *world.FindGameObject(data.objectID);
+			for (const ComponentSnapshot& component : data.components)
 			{
-				Log::Write(LogLevel::Error, "Snapshot", std::format("{}: animation node object was not found", data.name));
-				return false;
+				if (!RestoreDeferredFields(object, component)) { return false; }
 			}
-			world.FindGameObject(data.objectID)->AddComponent(std::move(animation));
-		}
-		for (const GameObjectSnapshot& data : snapshot.objects)
-		{
-			if (!data.skin.has_value()) { continue; }
-
-			std::unique_ptr<SkinComponent> skin = CreateSkin(*data.skin, world);
-			if (skin == nullptr)
-			{
-				Log::Write(LogLevel::Error, "Snapshot", std::format("{}: skin animation object was not found", data.name));
-				return false;
-			}
-			world.FindGameObject(data.objectID)->AddComponent(std::move(skin));
 		}
 
-		// 4) World 상태
+		// 5) World 상태
 		if (snapshot.activeCameraObjectID.IsValid())
 		{
 			GameObject* owner = world.FindGameObject(snapshot.activeCameraObjectID);
@@ -497,6 +333,26 @@ namespace
 		}
 		return true;
 	}
+}
+
+std::optional<SceneSnapshot> CaptureWorld(const World& world)
+{
+	SceneSnapshot snapshot;
+	// 등록 순서가 Tick 순서이므로 계층이 아니라 World 목록 순서대로 담는다.
+	for (const std::unique_ptr<GameObject>& object : world.GetGameObjects())
+	{
+		if (object->IsPendingDestroy()) { continue; }
+		if (!CaptureGameObject(*object, snapshot)) { return std::nullopt; }
+	}
+	if (!ValidateReferences(snapshot)) { return std::nullopt; }
+
+	if (const CameraComponent* camera = world.GetActiveCamera())
+	{
+		const GameObject* owner = camera->GetGameObject();
+		// 삭제 예정 객체는 담지 않으므로 그 카메라도 활성으로 담지 않는다.
+		if (!owner->IsPendingDestroy()) { snapshot.activeCameraObjectID = owner->GetObjectID(); }
+	}
+	return snapshot;
 }
 
 bool RestoreWorld(const SceneSnapshot& snapshot, World& world)
