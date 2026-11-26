@@ -1,6 +1,6 @@
 #pragma once
 
-#include "CameraViewInfo.h"
+#include "Camera/CameraViewInfo.h"
 #include "Component.h"
 
 /** 원근 또는 직교 투영 카메라의 설정값을 보관한다. 위치와 회전은 같은 객체의 TransformComponent를 따른다. */
@@ -49,6 +49,12 @@ public:
 
 	/** 먼 쪽 그리기 경계까지의 거리이며 단위는 cm다. */
 	float GetFarClipDistance() const { return farClipDistance; }
+
+	/** near만 설정한다. 0 < near < 현재 far일 때만 받고, 아니면 기존 값을 유지하고 false를 반환한다. */
+	bool SetNearClipDistance(float newNearClipDistance);
+
+	/** far만 설정한다. 현재 near < far일 때만 받고, 아니면 기존 값을 유지하고 false를 반환한다. */
+	bool SetFarClipDistance(float newFarClipDistance);
 
 	/**
 	 * near와 far를 함께 설정한다. 0 < near < far일 때만 받고,

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "CameraViewInfo.h"
+#include "Camera/CameraViewInfo.h"
 
 /** 에디터 시점의 월드 위치, 회전 및 투영 설정을 보관한다. */
 class EditorCamera

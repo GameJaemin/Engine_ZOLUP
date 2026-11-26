@@ -39,6 +39,21 @@ void SkinComponent::SetSkin(std::shared_ptr<const Model> newModel, std::size_t n
 	animation = newAnimation;
 }
 
+void SkinComponent::SetModel(std::shared_ptr<const Model> newModel)
+{
+	model = std::move(newModel);
+}
+
+void SkinComponent::SetNodeIndex(std::size_t newNodeIndex)
+{
+	nodeIndex = newNodeIndex;
+}
+
+void SkinComponent::SetAnimation(const AnimationComponent* newAnimation)
+{
+	animation = newAnimation;
+}
+
 bool SkinComponent::CalculateBoneMatrices(std::vector<Matrix4x4>& outBoneMatrices) const
 {
 	if (model == nullptr || nodeIndex >= model->sceneNodes.size()) { return false; }

@@ -1,7 +1,9 @@
 #pragma once
 
 #include "AssetManager.h"
+#include "Component/ComponentTypeRegistry.h"
 #include "ImGuiSystem.h"
+#include "Physics/JoltRuntime.h"
 #include "WindowsApplication.h"
 
 #include "DataHub_Interface.h"
@@ -16,7 +18,7 @@ namespace Hakko
 class IApplication;
 
 /**
- * 창, 렌더러와 AssetManager를 소유하고 메인 스레드에서 공통 프레임 순서를 실행한다.
+ * 창, 렌더러, AssetManager, ComponentTypeRegistry 및 JoltRuntime을 소유하고 메인 스레드에서 공통 프레임 순서를 실행한다.
  */
 class Engine
 {
@@ -55,7 +57,7 @@ public:
 
 private:
 	/**
-	 * 창, (enableGui면 ImGui), DataHub와 렌더러를 순서대로 준비하고 방향광 섀도 맵을 등록한다.
+	 * 엔진 컴포넌트 타입과 Jolt를 초기화한 뒤 창, (enableGui면 ImGui), DataHub와 렌더러를 준비하고 방향광 섀도 맵을 등록한다.
 	 * enableGui면 렌더러가 ImGui 출력 백엔드를 등록했는지까지 확인한다.
 	 */
 	bool Initialize(bool enableGui);
@@ -70,6 +72,11 @@ private:
 	ImGuiSystem imguiSystem;
 
 	AssetManager assetManager;
+
+	// 창, ImGui와 렌더러에 의존하지 않으므로 기존 소멸 순서 제약과 무관하다.
+	ComponentTypeRegistry componentTypeRegistry;
+
+	JoltRuntime joltRuntime;
 
 	// 초기화에 성공한 렌더러만 소유한다. nullptr이면 Finalize할 렌더러가 없다.
 	std::unique_ptr<Hakko::D3D12Renderer> renderer;

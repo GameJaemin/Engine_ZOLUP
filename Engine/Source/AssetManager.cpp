@@ -1,12 +1,12 @@
 #include "AssetManager.h"
 
 #include "Core/Log.h"
-#include "GLTFLoader.h"
-#include "Image.h"
-#include "ImageLoader.h"
+#include "GLTF/GLTFLoader.h"
+#include "Image/Image.h"
+#include "Image/ImageLoader.h"
 #include "Mesh/StaticMesh.h"
 #include "Paths.h"
-#include "Prefab.h"
+#include "Prefab/Prefab.h"
 #include "Prefab/PrefabComponents.h"
 #include "Renderer/Material.h"
 #include "Texture/ORMImageBuilder.h"
@@ -89,6 +89,8 @@ bool LoadPrefabObject(AssetManager& assets, const PrefabObjectDefinition& defini
 
 	object.light = definition.light;
 	object.camera = definition.camera;
+	object.boxCollider = definition.boxCollider;
+	object.rigidBody = definition.rigidBody;
 
 	object.children.reserve(definition.children.size());
 	for (std::size_t index = 0; index < definition.children.size(); ++index)

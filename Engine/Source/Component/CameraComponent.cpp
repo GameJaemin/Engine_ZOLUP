@@ -1,6 +1,6 @@
 #include "CameraComponent.h"
 
-#include "CameraViewInfo.h"
+#include "Camera/CameraViewInfo.h"
 #include "Component/TransformComponent.h"
 #include "Core/Math/Transform.h"
 #include "GameObject.h"
@@ -32,6 +32,16 @@ bool CameraComponent::SetOrthographicHeight(float newOrthographicHeight)
 
 	orthographicHeight = newOrthographicHeight;
 	return true;
+}
+
+bool CameraComponent::SetNearClipDistance(float newNearClipDistance)
+{
+	return SetClipDistances(newNearClipDistance, farClipDistance);
+}
+
+bool CameraComponent::SetFarClipDistance(float newFarClipDistance)
+{
+	return SetClipDistances(nearClipDistance, newFarClipDistance);
 }
 
 bool CameraComponent::SetClipDistances(float newNearClipDistance, float newFarClipDistance)

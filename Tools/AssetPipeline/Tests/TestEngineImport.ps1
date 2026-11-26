@@ -18,7 +18,7 @@ if (-not $VsDevCmd -or -not (Test-Path -LiteralPath $VsDevCmd)) { throw 'Visual 
 $buildDirectory = Join-Path $repositoryRoot 'Intermediate/AssetPipeline/EngineProbe'
 New-Item -ItemType Directory -Path $buildDirectory -Force | Out-Null
 $engineSource = Join-Path $repositoryRoot 'Engine/Source'
-$sources = @('GLTFLoader.cpp', 'Asset.cpp', 'Animation/AnimationClip.cpp', 'Mesh/StaticMesh.cpp', 'Core/FileHelper.cpp', 'Core/Log.cpp', 'Core/Math/Matrix4x4.cpp', 'Core/Math/Transform.cpp', 'Core/Math/Quaternion.cpp', 'Core/Math/Vector3.cpp')
+$sources = @('GLTF/GLTFLoader.cpp', 'Asset.cpp', 'Animation/AnimationClip.cpp', 'Mesh/StaticMesh.cpp', 'Core/FileHelper.cpp', 'Core/Log.cpp', 'Core/Math/Matrix4x4.cpp', 'Core/Math/Transform.cpp', 'Core/Math/Quaternion.cpp', 'Core/Math/Vector3.cpp')
 $arguments = @('/nologo', '/std:c++20', '/EHsc', '/utf-8', '/O2', '/DNOMINMAX', "/I`"$engineSource`"", "/I`"$(Join-Path $repositoryRoot 'Engine/ThirdParty/RapidJSON/include')`"", "/Fe:`"$(Join-Path $buildDirectory 'LoadAssetProbe.exe')`"")
 $arguments += $sources | ForEach-Object { '"' + (Join-Path $engineSource $_) + '"' }
 $arguments += '"' + (Join-Path $PSScriptRoot 'LoadAssetProbe.cpp') + '"'

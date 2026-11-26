@@ -2,6 +2,7 @@
 
 #include "Input/InputDispatcher.h"
 #include "ObjectID.h"
+#include "Physics/JoltPhysicsScene.h"
 #include "Renderer/RenderScene.h"
 
 #include <cstdint>
@@ -29,6 +30,7 @@ class World
 {
 	// 생성과 소멸
 public:
+	/** 렌더 씬과 물리 씬을 생성한다. JoltRuntime 초기화 후 생성하고 런타임 종료 전에 소멸해야 한다. */
 	World();
 	~World();
 
@@ -54,6 +56,15 @@ public:
 private:
 	// gameObjects보다 먼저 선언해 더 늦게 파괴한다. 이후 소멸하는 렌더 컴포넌트가 자신을 해제할 수 있게 하기 위해서다.
 	RenderScene renderScene;
+
+	// 물리
+public:
+	/** 이 월드의 물리 씬을 빌려준다. 월드 수명 동안 유효하다. */
+	JoltPhysicsScene& GetPhysicsScene();
+
+private:
+	// 충돌 컴포넌트가 소멸 중에도 바디를 해제할 수 있도록 gameObjects보다 먼저 선언한다.
+	JoltPhysicsScene physicsScene;
 
 	// 카메라
 public:

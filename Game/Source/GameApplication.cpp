@@ -11,7 +11,7 @@
 #include "Input/InputDispatcher.h"
 #include "Input/InputState.h"
 #include "Input/Key.h"
-#include "LevelLoader.h"
+#include "Scene/LevelLoader.h"
 #include "Paths.h"
 #include "Renderer/RenderScene.h"
 #include "ThirdPerson/ThirdPersonCharacter.h"
@@ -136,6 +136,10 @@ void GameApplication::OnUpdate(const InputState& input, float deltaTime)
 		thirdPerson->Update(input, deltaTime, cursorCaptured && !justCaptured);
 	}
 	gameWorld->DestroyPendingGameObjects();
+	if (!gameWorld->GetPhysicsScene().Update(deltaTime))
+	{
+		Log::Write(LogLevel::Warning, "Physics", "Failed to update game physics");
+	}
 }
 
 std::optional<SceneRenderRequest> GameApplication::GetRenderRequest()

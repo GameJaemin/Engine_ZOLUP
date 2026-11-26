@@ -1,6 +1,6 @@
 #include "Prefab/PrefabComponents.h"
 
-#include "CameraViewInfo.h"
+#include "Camera/CameraViewInfo.h"
 #include "Component/CameraComponent.h"
 #include "Core/Log.h"
 #include "GameObject.h"

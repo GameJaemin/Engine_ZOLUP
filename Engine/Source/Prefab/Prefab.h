@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Math/Transform.h"
+#include "Core/Math/Vector3.h"
 
 #include <array>
 #include <cstddef>
@@ -40,6 +41,19 @@ struct PrefabCameraDefinition
 	// JSON에서 생략하면 CameraComponent 기본값이 들어간다. 단위는 cm다.
 	float nearClipCm;
 	float farClipCm;
+};
+
+struct PrefabBoxColliderDefinition
+{
+	// 객체 로컬 좌표이며 단위는 cm다. 반크기는 축마다 양수여야 한다.
+	Vector3 centerCm;
+	Vector3 halfExtentsCm;
+};
+
+struct PrefabRigidBodyDefinition
+{
+	// 생략하면 RigidBodyComponent 기본값과 같은 true다.
+	bool simulatePhysics = true;
 };
 
 struct PrefabSkybox
@@ -93,6 +107,8 @@ struct PrefabObject
 	// 에셋이 없어 읽은 값을 그대로 쓴다.
 	std::optional<PrefabLightDefinition> light;
 	std::optional<PrefabCameraDefinition> camera;
+	std::optional<PrefabBoxColliderDefinition> boxCollider;
+	std::optional<PrefabRigidBodyDefinition> rigidBody;
 	std::vector<PrefabObject> children;
 };
 
@@ -162,6 +178,8 @@ struct PrefabObjectDefinition
 	std::optional<PrefabSkinDefinition> skin;
 	std::optional<PrefabLightDefinition> light;
 	std::optional<PrefabCameraDefinition> camera;
+	std::optional<PrefabBoxColliderDefinition> boxCollider;
+	std::optional<PrefabRigidBodyDefinition> rigidBody;
 	std::vector<PrefabObjectDefinition> children;
 };
 

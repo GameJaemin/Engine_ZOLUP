@@ -1,6 +1,6 @@
 #include "ViewportPanel.h"
 
-#include "CameraViewInfo.h"
+#include "Camera/CameraViewInfo.h"
 #include "Component/TransformComponent.h"
 #include "Core/Math/Matrix4x4.h"
 #include "Core/Math/Quaternion.h"

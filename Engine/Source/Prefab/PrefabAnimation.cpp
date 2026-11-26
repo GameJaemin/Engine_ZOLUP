@@ -6,7 +6,7 @@
 #include "Core/Log.h"
 #include "Core/Math/Transform.h"
 #include "GameObject.h"
-#include "GLTFLoader.h"
+#include "GLTF/GLTFLoader.h"
 
 #include <algorithm>
 #include <cstddef>

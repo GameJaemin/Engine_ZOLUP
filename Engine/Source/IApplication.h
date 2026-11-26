@@ -41,6 +41,7 @@ public:
 	/**
 	 * 렌더 가능한 프레임에서 OnGui 이후 호출한다.
 	 * nullopt면 장면을 그리지 않는다. 반환한 참조와 포인터는 같은 프레임에 소비한다.
+	 * 요청한 scene에 등록된 캡처 컴포넌트도 같은 프레임에 각자의 타깃에 그린다.
 	 */
 	virtual std::optional<SceneRenderRequest> GetRenderRequest() = 0;
 

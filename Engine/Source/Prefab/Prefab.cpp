@@ -2,7 +2,7 @@
 
 #include "Core/FileHelper.h"
 #include "Core/Log.h"
-#include "Prefab/PrefabComponents.h"
+#include "PrefabComponents.h"
 
 #include "rapidjson/document.h"
 #include "rapidjson/error/en.h"
@@ -52,6 +52,56 @@ bool IsPrefabFiniteFloat(const rapidjson::Value& value)
 
 namespace
 {
+	template <std::size_t Size>
+	bool ReadFloatArray(const rapidjson::Value& fields, const char* name, std::string_view context, std::array<float, Size>& out)
+	{
+		const auto member = fields.FindMember(name);
+		if (member != fields.MemberEnd() && member->value.IsArray() && member->value.Size() == Size)
+		{
+			std::size_t index = 0;
+			for (const rapidjson::Value& entry : member->value.GetArray())
+			{
+				if (!IsPrefabFiniteFloat(entry)) { break; }
+				out[index++] = entry.GetFloat();
+			}
+			if (index == Size) { return true; }
+		}
+
+		Log::Write(LogLevel::Error, "Prefab", std::format("{}.{} must contain {} finite floats", context, name, Size));
+		return false;
+	}
+
+	bool ReadBoxColliderProperties(const rapidjson::Value& properties, std::string_view context, PrefabBoxColliderDefinition& out)
+	{
+		std::array<float, 3> centerCm;
+		std::array<float, 3> halfExtentsCm;
+		if (!ReadFloatArray(properties, "centerCm", context, centerCm)) { return false; }
+		if (!ReadFloatArray(properties, "halfExtentsCm", context, halfExtentsCm)) { return false; }
+		if (halfExtentsCm[0] <= 0.0f || halfExtentsCm[1] <= 0.0f || halfExtentsCm[2] <= 0.0f)
+		{
+			Log::Write(LogLevel::Error, "Prefab", std::format("{}.halfExtentsCm must be positive on every axis", context));
+			return false;
+		}
+
+		out.centerCm = { centerCm[0], centerCm[1], centerCm[2] };
+		out.halfExtentsCm = { halfExtentsCm[0], halfExtentsCm[1], halfExtentsCm[2] };
+		return true;
+	}
+
+	bool ReadRigidBodyProperties(const rapidjson::Value& properties, std::string_view context, PrefabRigidBodyDefinition& out)
+	{
+		const auto simulate = properties.FindMember("simulatePhysics");
+		if (simulate == properties.MemberEnd()) { return true; }
+		if (!simulate->value.IsBool())
+		{
+			Log::Write(LogLevel::Error, "Prefab", std::format("{}.simulatePhysics must be a boolean", context));
+			return false;
+		}
+
+		out.simulatePhysics = simulate->value.GetBool();
+		return true;
+	}
+
 	/** 한 객체에 같은 종류의 컴포넌트가 두 번 나오면 실패한다. 처음이면 slot에 initial을 넣은 뒤 read로 채운다. */
 	template <typename Definition>
 	bool ReadComponentOnce(std::optional<Definition>& slot, bool (*read)(const rapidjson::Value&, std::string_view, Definition&), std::string_view typeName, const rapidjson::Value& properties, const std::string& context, Definition initial = {})
@@ -106,6 +156,8 @@ namespace
 			else if (typeName == "animation") { isRead = ReadComponentOnce(definition.animation, &ReadAnimationProperties, typeName, properties->value, context); }
 			else if (typeName == "skin") { isRead = ReadComponentOnce(definition.skin, &ReadSkinProperties, typeName, properties->value, context); }
 			else if (typeName == "camera") { isRead = ReadComponentOnce(definition.camera, &ReadCameraProperties, typeName, properties->value, context); }
+			else if (typeName == "boxCollider") { isRead = ReadComponentOnce(definition.boxCollider, &ReadBoxColliderProperties, typeName, properties->value, context); }
+			else if (typeName == "rigidBody") { isRead = ReadComponentOnce(definition.rigidBody, &ReadRigidBodyProperties, typeName, properties->value, context); }
 			else if (const std::optional<PrefabLightType> lightType = FindPrefabLightType(typeName); lightType.has_value())
 			{
 				// 조명 4종은 한 칸을 쓴다. 중복 오류는 "duplicate light component"로 나온다.
@@ -119,26 +171,14 @@ namespace
 			if (!isRead) { return false; }
 		}
 
-		return true;
-	}
-
-	template <std::size_t Size>
-	bool ReadTransformArray(const rapidjson::Value& fields, const char* name, std::string_view context, std::array<float, Size>& out)
-	{
-		const auto member = fields.FindMember(name);
-		if (member != fields.MemberEnd() && member->value.IsArray() && member->value.Size() == Size)
+		// RigidBody는 같은 객체의 박스로 바디를 만들므로 콜라이더 없이는 동작하지 않는다.
+		if (definition.rigidBody.has_value() && !definition.boxCollider.has_value())
 		{
-			std::size_t index = 0;
-			for (const rapidjson::Value& entry : member->value.GetArray())
-			{
-				if (!IsPrefabFiniteFloat(entry)) { break; }
-				out[index++] = entry.GetFloat();
-			}
-			if (index == Size) { return true; }
+			Log::Write(LogLevel::Error, "Prefab", std::format("{}.components: rigidBody requires boxCollider", objectContext));
+			return false;
 		}
 
-		Log::Write(LogLevel::Error, "Prefab", std::format("{}.{} must contain {} finite floats", context, name, Size));
-		return false;
+		return true;
 	}
 
 	bool ReadLocalTransform(const rapidjson::Value& fields, std::string_view context, Transform& out)
@@ -152,9 +192,9 @@ namespace
 		std::array<float, 3> position;
 		std::array<float, 4> rotation;
 		std::array<float, 3> scale;
-		if (!ReadTransformArray(fields, "position", context, position)) { return false; }
-		if (!ReadTransformArray(fields, "rotation", context, rotation)) { return false; }
-		if (!ReadTransformArray(fields, "scale", context, scale)) { return false; }
+		if (!ReadFloatArray(fields, "position", context, position)) { return false; }
+		if (!ReadFloatArray(fields, "rotation", context, rotation)) { return false; }
+		if (!ReadFloatArray(fields, "scale", context, scale)) { return false; }
 
 		// 맵과 같은 허용 오차를 써서 반올림된 단위 쿼터니언을 읽는다.
 		constexpr double UnitLengthTolerance = 0.0001;

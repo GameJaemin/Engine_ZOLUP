@@ -36,6 +36,11 @@ RenderScene& World::GetRenderScene()
 	return renderScene;
 }
 
+JoltPhysicsScene& World::GetPhysicsScene()
+{
+	return physicsScene;
+}
+
 GameObject* World::AddGameObject(std::unique_ptr<GameObject> newGameObject)
 {
 	for (int attempt = 0; attempt < MaxObjectIDGenerateAttempts; ++attempt)

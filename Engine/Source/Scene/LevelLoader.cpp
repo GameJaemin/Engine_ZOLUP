@@ -5,7 +5,7 @@
 #include "Core/Log.h"
 #include "Core/Math/Transform.h"
 #include "GameObject.h"
-#include "Prefab.h"
+#include "Prefab/Prefab.h"
 #include "Prefab/PrefabComponents.h"
 #include "World.h"
 

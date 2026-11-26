@@ -2,6 +2,7 @@
 
 #include "Core/FrameTimer.h"
 #include "Core/Log.h"
+#include "Component/EngineComponentTypes.h"
 #include "IApplication.h"
 #include "Renderer/RenderScene.h"
 #include "Renderer/SceneRenderRequest.h"
@@ -16,35 +17,88 @@
 #include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
 namespace
 {
-	void ConfigureDefaultRenderPasses()
+	// 후처리 슬롯 0에 ACES 톤매핑을 설정한다. saturation은 0이면 흑백, 1이면 기본 채도다.
+	void ConfigureTonemap(std::uint8_t layer, float saturation)
+	{
+		Hakko::DataHub::RTB_SetTonemap tonemap{};
+		tonemap.ppSlot = 0;
+		tonemap.mode = Hakko::DataHub::Tonemap_Mode_ACES;
+		tonemap.saturation = saturation;
+		Hakko::DataHub::SendRTB(tonemap, layer);
+	}
+
+	// 후처리 설정은 레이어마다 따로 저장되므로 새로 만든 레이어에도 같은 설정을 보낸다.
+	void ConfigureDefaultRenderPasses(std::uint8_t layer)
 	{
 		// 포워드 SSAO가 읽을 불투명 깊이를 먼저 만든다.
-		Hakko::DataHub::SetLayerEarlyZ(true);
+		Hakko::DataHub::SetLayerEarlyZ(true, layer);
 
 		// 반경 25 cm, 깊이 바이어스 1 cm를 초깃값으로 사용한다.
 		Hakko::DataHub::RTB_SetSSAO ambientOcclusion{};
 		ambientOcclusion.radiusScale = 50.0f;
 		ambientOcclusion.intensity = 0.7f;
 		ambientOcclusion.biasScale = 40.0f;
-		Hakko::DataHub::SendRTB(ambientOcclusion);
+		Hakko::DataHub::SendRTB(ambientOcclusion, layer);
 
 		// 기준 픽셀과 카메라 공간 깊이 차이가 4 cm 미만인 샘플을 평균에 포함한다.
 		Hakko::DataHub::RTB_SetAOBlur ambientOcclusionBlur{};
 		ambientOcclusionBlur.depthThresholdScale = 16.0f;
-		Hakko::DataHub::SendRTB(ambientOcclusionBlur);
+		Hakko::DataHub::SendRTB(ambientOcclusionBlur, layer);
 
 		// 슬롯 순서에 따라 톤매핑 결과에 FXAA를 적용한다.
-		Hakko::DataHub::RTB_SetTonemap tonemap{};
-		tonemap.ppSlot = 0;
-		tonemap.mode = Hakko::DataHub::Tonemap_Mode_ACES;
-		Hakko::DataHub::SendRTB(tonemap);
+		ConfigureTonemap(layer, 1.0f);
 
 		Hakko::DataHub::RTB_SetFXAA antialiasing{};
 		antialiasing.ppSlot = 1;
-		Hakko::DataHub::SendRTB(antialiasing);
+		Hakko::DataHub::SendRTB(antialiasing, layer);
+	}
+
+	// 레이어 0은 메인 화면이라 항상 유지한다. 새로 생긴 레이어에는 0번과 같은 기본 패스를 설정한다.
+	void ResizeRenderLayers(std::size_t layerCount)
+	{
+		const std::size_t oldCount = Hakko::DataHub::LayerList.size();
+		Hakko::DataHub::LayerList.resize(layerCount);
+		for (std::size_t layer = oldCount; layer < layerCount; ++layer)
+		{
+			ConfigureDefaultRenderPasses(static_cast<std::uint8_t>(layer));
+		}
+	}
+
+	FramePreparationResult PrepareRenderRequest(const SceneRenderRequest& request, const ViewportRect& renderArea, const Hakko::DataHub::ShadowAtlas& shadowAtlas, std::uint8_t layer)
+	{
+		float projectionAspectRatio = renderArea.width / renderArea.height;
+		Hakko::DataHub::ViewTarget output{};
+
+		if (request.target != nullptr)
+		{
+			const TextureRenderTarget2D& target = *request.target;
+			const std::uint32_t outputWidth = target.GetWidth();
+			const std::uint32_t outputHeight = target.GetHeight();
+			const bool hasValidSize = outputWidth > 0 && outputHeight > 0;
+			const bool isRegistered = !target.GetName().empty() && target.FindTextureID() != 0;
+
+			if (!hasValidSize || !isRegistered)
+			{
+				Log::Write(LogLevel::Error, "Engine", "Invalid scene render target");
+				return FramePreparationResult::Failed;
+			}
+
+			projectionAspectRatio = static_cast<float>(outputWidth) / static_cast<float>(outputHeight);
+			output = Hakko::DataHub::ViewTarget{ target.GetName(), outputWidth, outputHeight };
+		}
+
+		RenderScene& scene = request.scene.get();
+		const FramePreparationResult result = scene.PrepareFrame(request.camera, renderArea, projectionAspectRatio, shadowAtlas, layer);
+		if (result == FramePreparationResult::Ready)
+		{
+			Hakko::DataHub::SetLayerCompositeTarget(output, layer);
+		}
+
+		return result;
 	}
 }
 
@@ -91,6 +145,14 @@ void Engine::SetCursorVisible(bool visible)
 
 bool Engine::Initialize(bool enableGui)
 {
+	if (!RegisterEngineComponentTypes(componentTypeRegistry))
+	{
+		Log::Write(LogLevel::Error, "Engine", "Component type registration failed");
+		return false;
+	}
+
+	if (!joltRuntime.Initialize()) { return false; }
+
 	if (!windowsApplication.Initialize()) { return false; }
 
 	int clientWidth = 0;
@@ -154,7 +216,7 @@ bool Engine::Initialize(bool enableGui)
 		return false;
 	}
 
-	ConfigureDefaultRenderPasses();
+	ConfigureDefaultRenderPasses(0U);
 
 	return true;
 }
@@ -239,38 +301,47 @@ int Engine::RunFrameLoop(IApplication& application)
 		const std::optional<SceneRenderRequest> request = application.GetRenderRequest();
 		if (request.has_value())
 		{
-			std::uint32_t outputWidth = static_cast<std::uint32_t>(clientWidth);
-			std::uint32_t outputHeight = static_cast<std::uint32_t>(clientHeight);
-			Hakko::DataHub::ViewTarget output{};
+			const FramePreparationResult result = PrepareRenderRequest(*request, renderArea, directionalShadowAtlas, 0U);
+			if (result == FramePreparationResult::Failed) { return 1; }
+			// 채도는 요청마다 다를 수 있어 매 프레임 그 요청이 쓰는 레이어에 보낸다.
+			if (result == FramePreparationResult::Ready) { ConfigureTonemap(0U, request->saturation); }
+		}
 
-			if (request->target != nullptr)
+		// 메인 요청이 그리는 World의 캡처를 함께 그린다. 게임과 에디터 Play가 같은 경로를 쓴다.
+		std::vector<SceneRenderRequest> captureRequests;
+		if (request.has_value())
+		{
+			request->scene.get().CollectCaptureRequests(captureRequests);
+		}
+
+		// 준비에 성공한 캡처만 1번부터 빈칸 없이 채운다. 건너뛴 요청이 쓰던 칸은 다음 요청이 덮거나 아래 축소로 사라진다.
+		std::uint8_t nextLayer = 1U;
+		for (const SceneRenderRequest& capture : captureRequests)
+		{
+			if (nextLayer >= RENDER_LAYER_MAX)
 			{
-				const TextureRenderTarget2D& target = *request->target;
-				const bool hasValidSize = target.GetWidth() > 0 && target.GetHeight() > 0;
-				const bool isRegistered = !target.GetName().empty() && target.FindTextureID() != 0;
-
-				if (!hasValidSize || !isRegistered)
-				{
-					Log::Write(LogLevel::Error, "Engine", "Invalid scene render target");
-					return 1;
-				}
-
-				outputWidth = target.GetWidth();
-				outputHeight = target.GetHeight();
-				output = Hakko::DataHub::ViewTarget{ target.GetName(), outputWidth, outputHeight };
+				Log::Write(LogLevel::Warning, "Engine", "Too many scene capture requests");
+				break;
+			}
+			if (capture.target == nullptr)
+			{
+				Log::Write(LogLevel::Error, "Engine", "Scene capture request has no render target");
+				continue;
 			}
 
-			const float projectionAspectRatio = static_cast<float>(outputWidth) / static_cast<float>(outputHeight);
-			RenderScene& scene = request->scene.get();
-			const FramePreparationResult result = scene.PrepareFrame(request->camera, renderArea, projectionAspectRatio, directionalShadowAtlas);
-
+			ResizeRenderLayers(nextLayer + 1U);
+			const FramePreparationResult result = PrepareRenderRequest(capture, renderArea, directionalShadowAtlas, nextLayer);
 			if (result == FramePreparationResult::Failed) { return 1; }
-
 			if (result == FramePreparationResult::Ready)
 			{
-				Hakko::DataHub::SetLayerCompositeTarget(output);
+				// 레이어 번호를 올리기 전에 보내야 방금 준비한 레이어에 들어간다.
+				ConfigureTonemap(nextLayer, capture.saturation);
+				++nextLayer;
 			}
 		}
+
+		// 이번 프레임에 쓰지 않은 캡처 레이어를 없애 이전 영상이 백버퍼에 합성되지 않게 한다.
+		ResizeRenderLayers(nextLayer);
 
 		// 장면이 없어도 같은 프레임의 자원 요청과 GUI를 처리한다.
 		renderer->Sketch();
@@ -299,6 +370,9 @@ bool Engine::Shutdown()
 
 	// 렌더러 Finalize가 ImGui 텍스처를 정리한 뒤에 Context를 파괴한다.
 	imguiSystem.Shutdown();
+
+	// Run에서 애플리케이션 정리가 끝난 뒤 Jolt의 전역 등록을 해제한다.
+	joltRuntime.Shutdown();
 
 	return windowsApplication.Shutdown();
 }
