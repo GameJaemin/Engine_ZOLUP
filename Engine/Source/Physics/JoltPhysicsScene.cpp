@@ -14,6 +14,7 @@
 #include <Jolt/Physics/Body/BodyInterface.h>
 #include <Jolt/Physics/Collision/BroadPhase/ObjectVsBroadPhaseLayerFilterTable.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
+#include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 #include <Jolt/Physics/EPhysicsUpdateError.h>
 #include <Jolt/Physics/PhysicsSettings.h>
 #include <Jolt/Physics/PhysicsSystem.h>
@@ -27,6 +28,30 @@ namespace
 	bool IsFinite(const Vector3& value)
 	{
 		return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+	}
+
+	/** 입력이 유효하면 바디 원점에 회전과 중심 오프셋을 적용한 박스 바디 설정을 만든다. 아니면 nullopt다. */
+	std::optional<JPH::BodyCreationSettings> MakeBoxCreationSettings(
+		const BoxBodySettings& settings, JPH::EMotionType motionType, JPH::ObjectLayer layer)
+	{
+		constexpr float CmToMeters = 0.01f;
+		const Vector3 position = settings.positionCm * CmToMeters;
+		const Vector3 boxCenter = settings.boxCenterCm * CmToMeters;
+		const Vector3 halfExtents = settings.halfExtentsCm * CmToMeters;
+		if (!IsFinite(position) || !IsFinite(boxCenter) || !IsFinite(halfExtents)) { return std::nullopt; }
+		if (halfExtents.x <= 0.0f || halfExtents.y <= 0.0f || halfExtents.z <= 0.0f) { return std::nullopt; }
+
+		const JPH::Quat rotation(settings.rotation.x, settings.rotation.y, settings.rotation.z, settings.rotation.w);
+		const float rotationLength = rotation.Length();
+		if (!std::isfinite(rotationLength) || rotationLength <= 0.0f) { return std::nullopt; }
+
+		const JPH::RefConst<JPH::Shape> box = new JPH::BoxShape(JPH::Vec3(halfExtents.x, halfExtents.y, halfExtents.z));
+		// 바디 원점은 객체 원점에 두고, 박스는 원점에서 중심 오프셋만큼 옮긴 모양으로 감싼다.
+		const JPH::RefConst<JPH::Shape> shape = new JPH::RotatedTranslatedShape(
+			JPH::Vec3(boxCenter.x, boxCenter.y, boxCenter.z), JPH::Quat::sIdentity(), box);
+		// 행렬에서 분해한 회전은 길이가 1에서 조금 벗어날 수 있고, Jolt는 단위 쿼터니언을 요구한다.
+		return JPH::BodyCreationSettings(
+			shape.GetPtr(), JPH::RVec3(position.x, position.y, position.z), rotation / rotationLength, motionType, layer);
 	}
 
 	DynamicBoxPose ReadDynamicBoxPose(const JPH::BodyInterface& bodies, const JPH::BodyID& bodyID)
@@ -131,15 +156,8 @@ bool JoltPhysicsScene::PrepareStaticBodies()
 	bool allBodiesReady = true;
 	for (BoxColliderComponent* collider : state->boxColliderComponents)
 	{
-		if (collider->HasStaticBody()) { continue; }
-
-		const GameObject* owner = collider->GetGameObject();
-		// 부착은 월드 등록보다 먼저 일어날 수 있으므로 준비된 객체만 처리한다.
-		if (owner == nullptr || owner->IsPendingDestroy() || !owner->GetWorld().ContainsGameObject(owner)) { continue; }
-		const RigidBodyComponent* rigidBody = owner->GetComponent<RigidBodyComponent>();
-		if (rigidBody != nullptr && rigidBody->IsSimulatingPhysics()) { continue; }
-
-		if (!collider->RegisterStaticBody())
+		// 등록 대상 판단과 변경 감지는 콜라이더가 맡는다.
+		if (!collider->SyncStaticBody())
 		{
 			allBodiesReady = false;
 		}
@@ -199,21 +217,16 @@ bool JoltPhysicsScene::Update(float deltaTime)
 	return prepared;
 }
 
-std::optional<StaticBoxID> JoltPhysicsScene::AddStaticBox(const Vector3& centerCm, const Vector3& halfExtentsCm)
+std::optional<StaticBoxID> JoltPhysicsScene::AddStaticBox(const BoxBodySettings& settings)
 {
 	if (state->nextStaticBoxID == 0) { return std::nullopt; }
 
-	constexpr float CmToMeters = 0.01f;
-	const Vector3 centerMeters = centerCm * CmToMeters;
-	const Vector3 halfExtentsMeters = halfExtentsCm * CmToMeters;
-	if (!IsFinite(centerMeters) || !IsFinite(halfExtentsMeters)) { return std::nullopt; }
-	if (halfExtentsMeters.x <= 0.0f || halfExtentsMeters.y <= 0.0f || halfExtentsMeters.z <= 0.0f) { return std::nullopt; }
+	const std::optional<JPH::BodyCreationSettings> creationSettings = MakeBoxCreationSettings(settings, JPH::EMotionType::Static, JoltObjectLayers::Static);
+	if (!creationSettings.has_value()) { return std::nullopt; }
 
-	const JPH::RefConst<JPH::Shape> shape = new JPH::BoxShape(JPH::Vec3(halfExtentsMeters.x, halfExtentsMeters.y, halfExtentsMeters.z));
-	const JPH::BodyCreationSettings settings(shape.GetPtr(), JPH::RVec3(centerMeters.x, centerMeters.y, centerMeters.z), JPH::Quat::sIdentity(), JPH::EMotionType::Static, JoltObjectLayers::Static);
 	JPH::BodyInterface& bodies = state->physicsSystem.GetBodyInterface();
 	// 정적 바디는 활성화할 필요가 없고, DontActivate로 추가해도 충돌 검색에 등록된다.
-	const JPH::BodyID bodyID = bodies.CreateAndAddBody(settings, JPH::EActivation::DontActivate);
+	const JPH::BodyID bodyID = bodies.CreateAndAddBody(*creationSettings, JPH::EActivation::DontActivate);
 	if (bodyID.IsInvalid()) { return std::nullopt; }
 
 	const StaticBoxID boxID{ state->nextStaticBoxID };
@@ -236,27 +249,21 @@ void JoltPhysicsScene::RemoveStaticBox(StaticBoxID boxID)
 	state->staticBoxes.pop_back();
 }
 
-std::optional<DynamicBoxID> JoltPhysicsScene::AddDynamicBox(const Vector3& centerCm, const Vector3& halfExtentsCm)
+std::optional<DynamicBoxID> JoltPhysicsScene::AddDynamicBox(const BoxBodySettings& settings)
 {
-	return CreateDynamicBox(centerCm, halfExtentsCm, nullptr);
+	return CreateDynamicBox(settings, nullptr);
 }
 
-std::optional<DynamicBoxID> JoltPhysicsScene::CreateDynamicBox(
-	const Vector3& centerCm, const Vector3& halfExtentsCm, RigidBodyComponent* component)
+std::optional<DynamicBoxID> JoltPhysicsScene::CreateDynamicBox(const BoxBodySettings& settings, RigidBodyComponent* component)
 {
 	if (state->nextDynamicBoxID == 0) { return std::nullopt; }
 
-	constexpr float CmToMeters = 0.01f;
-	const Vector3 centerMeters = centerCm * CmToMeters;
-	const Vector3 halfExtentsMeters = halfExtentsCm * CmToMeters;
-	if (!IsFinite(centerMeters) || !IsFinite(halfExtentsMeters)) { return std::nullopt; }
-	if (halfExtentsMeters.x <= 0.0f || halfExtentsMeters.y <= 0.0f || halfExtentsMeters.z <= 0.0f) { return std::nullopt; }
+	const std::optional<JPH::BodyCreationSettings> creationSettings = MakeBoxCreationSettings(settings, JPH::EMotionType::Dynamic, JoltObjectLayers::Dynamic);
+	if (!creationSettings.has_value()) { return std::nullopt; }
 
-	const JPH::RefConst<JPH::Shape> shape = new JPH::BoxShape(JPH::Vec3(halfExtentsMeters.x, halfExtentsMeters.y, halfExtentsMeters.z));
-	const JPH::BodyCreationSettings settings(shape.GetPtr(), JPH::RVec3(centerMeters.x, centerMeters.y, centerMeters.z), JPH::Quat::sIdentity(), JPH::EMotionType::Dynamic, JoltObjectLayers::Dynamic);
 	JPH::BodyInterface& bodies = state->physicsSystem.GetBodyInterface();
 	// 동적 바디를 활성화해 이후 첫 물리 스텝에서 바로 시뮬레이션할 수 있게 한다.
-	const JPH::BodyID bodyID = bodies.CreateAndAddBody(settings, JPH::EActivation::Activate);
+	const JPH::BodyID bodyID = bodies.CreateAndAddBody(*creationSettings, JPH::EActivation::Activate);
 	if (bodyID.IsInvalid()) { return std::nullopt; }
 
 	const DynamicBoxID boxID{ state->nextDynamicBoxID };

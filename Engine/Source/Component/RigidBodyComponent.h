@@ -12,7 +12,7 @@ public:
 
 	/**
 	 * 배치를 마친 루트 객체의 BoxColliderComponent로 동적 바디를 등록한다.
-	 * 콜라이더는 하나여야 하며 로컬 중심과 초기 회전은 각각 원점과 항등 회전이어야 한다.
+	 * 콜라이더는 하나여야 한다. 바디 원점은 객체 원점이고 질량 중심은 박스 중심이다.
 	 * 시뮬레이션이 꺼져 있거나 이미 등록된 정적 또는 동적 바디가 있거나 등록에 실패하면 false다.
 	 */
 	[[nodiscard]] bool RegisterDynamicBody();
@@ -20,8 +20,8 @@ public:
 	/** 동적 바디로 시뮬레이션할지 반환한다. 기본값은 true다. */
 	bool IsSimulatingPhysics() const { return simulatePhysics; }
 
-	/** 시뮬레이션 여부를 저장한다. 이미 등록한 바디에는 영향이 없고 다음 등록부터 적용된다. */
-	void SetSimulatePhysics(bool enabled) { simulatePhysics = enabled; }
+	/** 시뮬레이션 여부를 저장한다. 값이 바뀌면 기존 동적 바디를 해제하고 다음 물리 갱신에서 맞는 바디를 다시 만든다. */
+	void SetSimulatePhysics(bool enabled);
 
 	/** 이 컴포넌트가 등록한 동적 바디가 있는지 반환한다. */
 	bool HasDynamicBody() const { return bodyID.has_value(); }

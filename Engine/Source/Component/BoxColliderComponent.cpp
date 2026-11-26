@@ -2,7 +2,7 @@
 
 #include "Component/RigidBodyComponent.h"
 #include "Component/TransformComponent.h"
-#include "Core/Math/Matrix4x4.h"
+#include "Core/Math/Transform.h"
 #include "GameObject.h"
 #include "World.h"
 
@@ -15,11 +15,18 @@ namespace
 		return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
 	}
 
-	bool HasOnlyAxisScaleAndTranslation(const Matrix4x4& matrix)
+	bool IsSameVector(const Vector3& a, const Vector3& b)
 	{
-		return matrix.m[0][1] == 0.0f && matrix.m[0][2] == 0.0f &&
-			matrix.m[1][0] == 0.0f && matrix.m[1][2] == 0.0f &&
-			matrix.m[2][0] == 0.0f && matrix.m[2][1] == 0.0f;
+		return a.x == b.x && a.y == b.y && a.z == b.z;
+	}
+
+	/** 같은 Transform에서 계산한 설정은 같은 값이 나오므로 성분을 정확히 비교한다. */
+	bool IsSameSettings(const BoxBodySettings& a, const BoxBodySettings& b)
+	{
+		return IsSameVector(a.positionCm, b.positionCm) &&
+			a.rotation.x == b.rotation.x && a.rotation.y == b.rotation.y && a.rotation.z == b.rotation.z && a.rotation.w == b.rotation.w &&
+			IsSameVector(a.boxCenterCm, b.boxCenterCm) &&
+			IsSameVector(a.halfExtentsCm, b.halfExtentsCm);
 	}
 }
 
@@ -43,42 +50,53 @@ void BoxColliderComponent::OnRegister()
 	registeredPhysicsScene = &scene;
 }
 
-bool BoxColliderComponent::RegisterStaticBody()
+bool BoxColliderComponent::SyncStaticBody()
 {
 	GameObject* owner = GetGameObject();
-	if (owner == nullptr || registeredPhysicsScene == nullptr || registeredBoxID.has_value()) { return false; }
+	if (owner == nullptr || registeredPhysicsScene == nullptr) { return true; }
+	// 부착은 월드 등록보다 먼저 일어날 수 있고, 삭제 예정 객체는 실제 소멸 때 바디를 해제한다.
+	if (owner->IsPendingDestroy() || !owner->GetWorld().ContainsGameObject(owner)) { return true; }
 
-	World& world = owner->GetWorld();
-	if (!world.ContainsGameObject(owner) || owner->IsPendingDestroy()) { return false; }
 	const RigidBodyComponent* rigidBody = owner->GetComponent<RigidBodyComponent>();
-	if (rigidBody != nullptr && rigidBody->IsSimulatingPhysics()) { return false; }
+	if (rigidBody != nullptr && rigidBody->IsSimulatingPhysics())
+	{
+		// 이 박스는 동적 바디가 쓰므로 정적 바디를 비워 둔다.
+		UnregisterStaticBody();
+		return true;
+	}
 
-	const TransformComponent* transform = owner->GetComponent<TransformComponent>();
-	const Matrix4x4 worldMatrix = transform->GetWorldMatrix();
-	// 정적 박스 등록 API는 월드 축 정렬 박스만 만들므로 축이 섞인 변환은 거절한다.
-	if (!HasOnlyAxisScaleAndTranslation(worldMatrix)) { return false; }
+	const BoxBodySettings settings = MakeBodySettings(owner->GetComponent<TransformComponent>()->GetWorldTransform());
+	// 바디가 있거나 이미 실패한 입력이면 다시 시도하지 않는다.
+	if (lastStaticBodySettings.has_value() && IsSameSettings(*lastStaticBodySettings, settings)) { return true; }
 
-	const Vector3 worldCenterCm{
-		localCenter.x * worldMatrix.m[0][0] + worldMatrix.m[3][0],
-		localCenter.y * worldMatrix.m[1][1] + worldMatrix.m[3][1],
-		localCenter.z * worldMatrix.m[2][2] + worldMatrix.m[3][2]
-	};
-	// 음수 배율은 중심 오프셋의 방향을 뒤집지만 반크기는 거리다.
-	const Vector3 worldHalfExtentsCm{
-		localHalfExtents.x * std::abs(worldMatrix.m[0][0]),
-		localHalfExtents.y * std::abs(worldMatrix.m[1][1]),
-		localHalfExtents.z * std::abs(worldMatrix.m[2][2])
-	};
-
-	const std::optional<StaticBoxID> boxID = registeredPhysicsScene->AddStaticBox(worldCenterCm, worldHalfExtentsCm);
+	UnregisterStaticBody();
+	lastStaticBodySettings = settings;
+	const std::optional<StaticBoxID> boxID = registeredPhysicsScene->AddStaticBox(settings);
 	if (!boxID.has_value()) { return false; }
 
 	registeredBoxID = boxID;
 	return true;
 }
 
+BoxBodySettings BoxColliderComponent::MakeBodySettings(const Transform& bodyTransform) const
+{
+	const Vector3& scale = bodyTransform.scale;
+	return BoxBodySettings{
+		.positionCm = bodyTransform.position,
+		.rotation = bodyTransform.rotation,
+		// 음수 배율은 중심 오프셋의 방향을 뒤집지만 반크기는 거리다.
+		.boxCenterCm = { localCenter.x * scale.x, localCenter.y * scale.y, localCenter.z * scale.z },
+		.halfExtentsCm = {
+			localHalfExtents.x * std::abs(scale.x),
+			localHalfExtents.y * std::abs(scale.y),
+			localHalfExtents.z * std::abs(scale.z)
+		}
+	};
+}
+
 void BoxColliderComponent::UnregisterStaticBody()
 {
+	lastStaticBodySettings.reset();
 	if (!registeredBoxID.has_value()) { return; }
 
 	registeredPhysicsScene->RemoveStaticBox(*registeredBoxID);

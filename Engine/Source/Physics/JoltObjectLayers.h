@@ -11,7 +11,7 @@ namespace JoltObjectLayers
 	inline constexpr JPH::uint Count = 3;
 }
 
-/** JoltRuntime 초기화 뒤 생성한다. Static은 Character 및 Dynamic과 충돌 검사한다. */
+/** JoltRuntime 초기화 뒤 생성한다. Static은 Character 및 Dynamic과, Dynamic은 Dynamic과 충돌 검사한다. */
 class JoltObjectLayerPairFilter final : public JPH::ObjectLayerPairFilterTable
 {
 public:

@@ -6,6 +6,8 @@
 
 #include <optional>
 
+struct Transform;
+
 class BoxColliderComponent final : public Component
 {
 public:
@@ -15,16 +17,20 @@ public:
 	void OnRegister() override;
 
 	/**
-	 * 소속 World에 등록된 객체의 배치를 끝낸 뒤 호출한다. 배율과 이동을 월드 박스에 반영한다.
-	 * 시뮬레이션이 켜진 RigidBodyComponent가 붙어 있거나 이미 바디가 있거나 월드 행렬의 선형 부분이 대각선이 아니거나 바디 등록에 실패하면 false다.
-	 * 바디는 등록 시점의 배치와 로컬 박스 값으로 유지된다.
+	 * 정적 바디를 객체의 현재 월드 위치, 회전, 배율과 로컬 박스에 맞춘다. 매 프레임 호출해도 된다.
+	 * 월드 미등록, 삭제 예정이거나 시뮬레이션이 켜진 RigidBodyComponent가 있으면 바디를 해제하고 true다.
+	 * 입력이 마지막 시도와 같으면 아무것도 하지 않고 true다. 바뀌었으면 다시 만들고, 새 시도가 실패하면 false다.
+	 * 부모 배율이 축마다 다르고 자식이 회전해 월드 행렬이 기울어지면 박스는 근삿값이 된다.
 	 */
-	[[nodiscard]] bool RegisterStaticBody();
+	[[nodiscard]] bool SyncStaticBody();
+
+	/** 바디 원점의 Transform(위치 cm)에 이 박스를 배율과 함께 적용한 바디 설정을 반환한다. */
+	BoxBodySettings MakeBodySettings(const Transform& bodyTransform) const;
 
 	/** 이 컴포넌트가 등록한 정적 바디의 ID가 있는지 반환한다. */
 	bool HasStaticBody() const { return registeredBoxID.has_value(); }
 
-	/** 등록한 바디를 해제한다. 바디가 없으면 바로 반환하며, 해제 뒤 다시 등록할 수 있다. */
+	/** 등록한 바디를 해제하고 마지막 시도 기록을 지운다. 다음 SyncStaticBody에서 다시 등록할 수 있다. */
 	void UnregisterStaticBody();
 
 	/** 로컬 중심을 cm 단위로 설정한다. 비유한 값은 거절하고 기존 박스를 유지한다. */
@@ -50,4 +56,6 @@ private:
 	JoltPhysicsScene* registeredPhysicsScene = nullptr;
 	// 바디 등록에 성공한 경우에만 이 씬에서 발급한 ID가 있다.
 	std::optional<StaticBoxID> registeredBoxID;
+	// 마지막으로 정적 바디 등록을 시도한 설정이다. 성공과 실패 모두 기록해 같은 입력은 다시 시도하지 않는다.
+	std::optional<BoxBodySettings> lastStaticBodySettings;
 };

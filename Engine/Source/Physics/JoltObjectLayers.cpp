@@ -5,4 +5,5 @@ JoltObjectLayerPairFilter::JoltObjectLayerPairFilter()
 {
 	EnableCollision(JoltObjectLayers::Static, JoltObjectLayers::Character);
 	EnableCollision(JoltObjectLayers::Static, JoltObjectLayers::Dynamic);
+	EnableCollision(JoltObjectLayers::Dynamic, JoltObjectLayers::Dynamic);
 }

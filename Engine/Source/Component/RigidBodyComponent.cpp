@@ -6,8 +6,6 @@
 #include "GameObject.h"
 #include "World.h"
 
-#include <cmath>
-
 RigidBodyComponent::~RigidBodyComponent()
 {
 	UnregisterDynamicBody();
@@ -31,28 +29,25 @@ bool RigidBodyComponent::RegisterDynamicBody()
 	}
 	if (box == nullptr) { return false; }
 
-	// 동적 박스 등록 API는 객체 원점에 회전 없이 바디를 생성한다.
-	const Vector3 localCenter = box->GetLocalCenter();
-	if (localCenter.x != 0.0f || localCenter.y != 0.0f || localCenter.z != 0.0f) { return false; }
-
+	// 루트 객체이므로 부모 기준 Transform이 곧 월드 Transform이다.
 	const Transform transform = owner->GetComponent<TransformComponent>()->GetTransform();
-	const Quaternion& rotation = transform.rotation;
-	if (rotation.x != 0.0f || rotation.y != 0.0f || rotation.z != 0.0f || std::abs(rotation.w) != 1.0f) { return false; }
-
-	const Vector3 localHalfExtentsCm = box->GetLocalHalfExtents();
-	const Vector3 halfExtentsCm{
-		localHalfExtentsCm.x * std::abs(transform.scale.x),
-		localHalfExtentsCm.y * std::abs(transform.scale.y),
-		localHalfExtentsCm.z * std::abs(transform.scale.z)
-	};
-
 	JoltPhysicsScene& scene = world.GetPhysicsScene();
-	const std::optional<DynamicBoxID> id = scene.CreateDynamicBox(transform.position, halfExtentsCm, this);
+	const std::optional<DynamicBoxID> id = scene.CreateDynamicBox(box->MakeBodySettings(transform), this);
 	if (!id.has_value()) { return false; }
 
 	registeredScene = &scene;
 	bodyID = id;
 	return true;
+}
+
+void RigidBodyComponent::SetSimulatePhysics(bool enabled)
+{
+	if (simulatePhysics == enabled) { return; }
+
+	simulatePhysics = enabled;
+	// 켤 때는 콜라이더의 정적 바디를, 끌 때는 이 동적 바디를 비워야 다음 갱신에서 맞는 종류로 만든다.
+	// 정적 바디는 BoxColliderComponent::SyncStaticBody가 해제한다.
+	UnregisterDynamicBody();
 }
 
 void RigidBodyComponent::UnregisterDynamicBody()
