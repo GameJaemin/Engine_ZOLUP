@@ -64,10 +64,11 @@ BabyDollApplication::~BabyDollApplication() = default;
 
 GameObject* BabyDollApplication::Box(const std::string& name, const Vector3& center, const Vector3& size, const Vector3& color, GameObject* parent, bool collides)
 {
-	std::shared_ptr<Material> material = std::make_shared<Material>();
-	material->baseColor = color;
-	material->metallic = 0.05f;
-	material->roughness = 0.72f;
+	MaterialParameters parameters;
+	parameters.baseColor = color;
+	parameters.metallic = 0.05f;
+	parameters.roughness = 0.72f;
+	const std::shared_ptr<const Material> material = std::make_shared<const Material>(name, std::string(), std::move(parameters));
 	Prefab prefab;
 	prefab.model = boxModel;
 	prefab.meshMaterialOverrides = { material };
@@ -270,11 +271,12 @@ bool BabyDollApplication::OnInitialize(Engine& inEngine)
 	Box("Ribbon", { 0.0f, 74.0f, -25.0f }, { 35.0f, 12.0f, 6.0f }, { 0.8f, 0.08f, 0.13f }, playerVisual, false);
 	Prefab ring;
 	ring.model = ringModel;
-	std::shared_ptr<Material> ringMaterial = std::make_shared<Material>();
-	ringMaterial->baseColor = { 0.25f, 0.8f, 0.8f };
-	ringMaterial->alphaMode = MaterialAlphaMode::Blend;
-	ringMaterial->baseColorAlpha = 0.6f;
-	ringMaterial->metallic = 0.0f;
+	MaterialParameters ringParameters;
+	ringParameters.baseColor = { 0.25f, 0.8f, 0.8f };
+	ringParameters.alphaMode = MaterialAlphaMode::Blend;
+	ringParameters.baseColorAlpha = 0.6f;
+	ringParameters.metallic = 0.0f;
+	const std::shared_ptr<const Material> ringMaterial = std::make_shared<const Material>("SoundRing", std::string(), std::move(ringParameters));
 	ring.meshMaterialOverrides = { ringMaterial };
 	soundRing = world->InstantiatePrefab(ring, { std::string("Sound radius"), Transform{} });
 	if (!physicsProps.Initialize(*world, boxModel, space, config)) { return false; }

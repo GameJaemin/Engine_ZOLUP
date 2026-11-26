@@ -64,7 +64,7 @@ bool LoadPrefabStaticMesh(AssetManager& assets, const PrefabStaticMeshDefinition
 	std::shared_ptr<const Material> material = model->meshMaterials[definition.meshIndex];
 	if (definition.baseColorTexturePath.has_value())
 	{
-		material = LoadMaterialWithBaseColorTexture(assets, *material, *definition.baseColorTexturePath);
+		material = assets.LoadMaterialWithBaseColorTexture(*material, *definition.baseColorTexturePath);
 		if (material == nullptr)
 		{
 			Log::Write(LogLevel::Error, "AssetManager", std::format("{}: staticMesh could not load baseColorTexture {}", context, *definition.baseColorTexturePath));

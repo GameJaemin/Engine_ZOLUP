@@ -252,9 +252,9 @@ bool HakkoResources::PrepareTextureProp(const Material* material, Hakko::DataHub
 	// 색상 텍스처가 없으면 흰색을 곱해 재질의 기본 색상 계수를 그대로 적용한다.
 	Hakko::DataHub::TexID baseColorTextureID = RESERVED_TEX_NONE_DIFFUSE_ID;
 	std::string name = "__DEFAULT_BASE_COLOR";
-	if (material->baseColorTexture != nullptr)
+	if (material->parameters.baseColorTexture != nullptr)
 	{
-		const Texture& texture = *material->baseColorTexture;
+		const Texture& texture = *material->parameters.baseColorTexture;
 		if (!PrepareTexture(texture, baseColorTextureID)) { return false; }
 		if (!MakeTexturePropNamePart(texture, name)) { return false; }
 	}
@@ -262,9 +262,9 @@ bool HakkoResources::PrepareTextureProp(const Material* material, Hakko::DataHub
 	// 노멀 텍스처가 없으면 평평한 기본 노멀을 쓰고 조합 이름도 색 텍스처 조각만 쓴다.
 	// 있으면 이름에 노멀 조각을 더해, 색이 같고 노멀만 다른 재질이 같은 조합을 쓰지 않게 한다.
 	Hakko::DataHub::TexID normalTextureID = RESERVED_TEX_NONE_NORMAL_ID;
-	if (material->normalTexture != nullptr)
+	if (material->parameters.normalTexture != nullptr)
 	{
-		const Texture& normalTexture = *material->normalTexture;
+		const Texture& normalTexture = *material->parameters.normalTexture;
 		if (!PrepareTexture(normalTexture, normalTextureID)) { return false; }
 
 		std::string normalName;
@@ -276,9 +276,9 @@ bool HakkoResources::PrepareTextureProp(const Material* material, Hakko::DataHub
 	// 있으면 이름에 ORM 조각을 더해, 색과 노멀이 같고 ORM만 다른 재질이 같은 조합을 쓰지 않게 한다.
 	// 노멀과 ORM 조각은 형식이 같을 수 있어 N=, O= 표시로 자리를 구분한다.
 	Hakko::DataHub::TexID ormTextureID = RESERVED_TEX_NONE_DIFFUSE_ID;
-	if (material->ormTexture != nullptr)
+	if (material->parameters.ormTexture != nullptr)
 	{
-		const Texture& ormTexture = *material->ormTexture;
+		const Texture& ormTexture = *material->parameters.ormTexture;
 		if (!PrepareTexture(ormTexture, ormTextureID)) { return false; }
 
 		std::string ormName;
@@ -287,9 +287,9 @@ bool HakkoResources::PrepareTextureProp(const Material* material, Hakko::DataHub
 	}
 
 	Hakko::DataHub::TexID emissiveTextureID = RESERVED_TEX_NONE_EMISSION_ID;
-	if (material->emissiveTexture != nullptr)
+	if (material->parameters.emissiveTexture != nullptr)
 	{
-		const Texture& emissiveTexture = *material->emissiveTexture;
+		const Texture& emissiveTexture = *material->parameters.emissiveTexture;
 		if (!PrepareTexture(emissiveTexture, emissiveTextureID)) { return false; }
 
 		std::string emissiveName;

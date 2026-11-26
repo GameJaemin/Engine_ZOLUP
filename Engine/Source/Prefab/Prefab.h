@@ -11,8 +11,8 @@
 #include <string>
 #include <vector>
 
-struct Material;
-struct Model;
+class Material;
+class Model;
 class StaticMesh;
 class Texture;
 enum class CameraProjectionMode : unsigned char;

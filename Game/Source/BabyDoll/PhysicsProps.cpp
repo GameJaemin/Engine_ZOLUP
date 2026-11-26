@@ -8,15 +8,18 @@
 #include "Renderer/Material.h"
 #include "World.h"
 
+#include <utility>
+
 bool PhysicsProps::Initialize(World& world, std::shared_ptr<const Model> box, GameplaySpace& space, const PrototypeConfig& config)
 {
 	bindings.clear();
 	for (int index = 0; index < 3; ++index)
 	{
-		std::shared_ptr<Material> material = std::make_shared<Material>();
-		material->baseColor = index % 2 == 0 ? Vector3{ 0.48f, 0.23f, 0.12f } : Vector3{ 0.1f, 0.4f, 0.45f };
-		material->metallic = 0.0f;
-		material->roughness = 0.85f;
+		MaterialParameters parameters;
+		parameters.baseColor = index % 2 == 0 ? Vector3{ 0.48f, 0.23f, 0.12f } : Vector3{ 0.1f, 0.4f, 0.45f };
+		parameters.metallic = 0.0f;
+		parameters.roughness = 0.85f;
+		const std::shared_ptr<const Material> material = std::make_shared<const Material>("Jolt crate", std::string(), std::move(parameters));
 		Prefab prefab;
 		prefab.model = box;
 		prefab.meshMaterialOverrides = { material };

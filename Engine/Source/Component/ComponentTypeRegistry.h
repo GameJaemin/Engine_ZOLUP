@@ -1,5 +1,6 @@
 #pragma once
 
+#include "AssetReference.h"
 #include "Component/Component.h"
 #include "Core/Math/EulerAngles.h"
 #include "Core/Math/Quaternion.h"
@@ -22,13 +23,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-
-/** 에셋 하나를 가리키는 공유 참조다. 어떤 에셋 타입인지는 type으로 구분하며, asset이 nullptr면 지정하지 않은 상태다. */
-struct AssetReference
-{
-	std::type_index type = typeid(void);
-	std::shared_ptr<const void> asset;
-};
 
 /**
  * 다른 객체의 컴포넌트를 가리키는 참조다. 주소 대신 소유 객체의 ID와 컴포넌트 타입으로 담아 다른 World에서도 다시 찾을 수 있다.
@@ -54,13 +48,13 @@ using ComponentFieldValue = std::variant<bool, int, float, Vector2, Vector3, Eul
 
 static_assert(std::variant_size_v<ComponentFieldValue> == std::variant_size_v<ComponentFieldScalar> + 1, "ComponentFieldValue must list every ComponentFieldScalar type plus ComponentFieldList.");
 
-// Value가 shared_ptr<const 에셋>이면 true다. 이런 getter와 setter는 AssetReference로 감싸 등록한다.
-// AddField는 typeid로 에셋 타입을 구분하므로, 호출하는 곳에서 에셋 타입의 전체 정의가 보여야 한다.
+// Value가 shared_ptr<const T>이고 T가 Asset을 상속하면 true다. 이런 getter와 setter는 AssetReference로 감싸 등록한다.
+// Asset 상속 여부와 typeid를 판단하므로, 호출하는 곳에서 에셋 타입의 전체 정의가 보여야 한다.
 template <typename Value>
 inline constexpr bool IsAssetPointer = false;
 
-template <typename Asset>
-inline constexpr bool IsAssetPointer<std::shared_ptr<const Asset>> = true;
+template <typename AssetType>
+inline constexpr bool IsAssetPointer<std::shared_ptr<const AssetType>> = std::is_base_of_v<Asset, AssetType>;
 
 // Value가 컴포넌트 포인터(const 여부 무관)면 true다. 이런 getter와 setter는 ComponentReference로 감싸 등록한다.
 template <typename Value>
@@ -414,7 +408,7 @@ std::optional<FieldStoredType<Value>> ComponentTypeRegistry::ToStoredValue(const
 {
 	if constexpr (IsAssetPointer<Value>)
 	{
-		return AssetReference{ std::type_index(typeid(typename Value::element_type)), value };
+		return AssetReference(value);
 	}
 	else if constexpr (IsComponentPointer<Value>)
 	{
@@ -439,8 +433,8 @@ std::optional<Value> ComponentTypeRegistry::FromStoredValue(const FieldStoredTyp
 	if constexpr (IsAssetPointer<Value>)
 	{
 		// 다른 에셋 타입의 참조면 되돌릴 수 없으므로 거부한다. 같은 타입이면 static_pointer_cast가 안전하다.
-		if (stored.type != std::type_index(typeid(typename Value::element_type))) { return std::nullopt; }
-		return std::static_pointer_cast<typename Value::element_type>(stored.asset);
+		if (stored.GetType() != std::type_index(typeid(typename Value::element_type))) { return std::nullopt; }
+		return std::static_pointer_cast<typename Value::element_type>(stored.GetAsset());
 	}
 	else if constexpr (IsComponentPointer<Value>)
 	{

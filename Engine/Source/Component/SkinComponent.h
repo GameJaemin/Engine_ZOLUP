@@ -8,7 +8,7 @@
 #include <memory>
 #include <vector>
 
-struct Model;
+class Model;
 struct Transform;
 class AnimationComponent;
 class World;

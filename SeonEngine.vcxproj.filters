@@ -372,6 +372,9 @@
     <ClInclude Include="Engine\Source\Asset.h">
       <Filter>Engine\Source</Filter>
     </ClInclude>
+    <ClInclude Include="Engine\Source\AssetReference.h">
+      <Filter>Engine\Source</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\Source\Image\Image.h">
       <Filter>Engine\Source\Image</Filter>
     </ClInclude>

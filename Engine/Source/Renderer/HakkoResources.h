@@ -7,7 +7,7 @@
 
 class StaticMesh;
 class Texture;
-struct Material;
+class Material;
 
 namespace HakkoResources
 {

@@ -24,7 +24,7 @@ class OrbitCameraComponent;
 class PoseAnimatorComponent;
 class RearCameraComponent;
 class ProximityLightComponent;
-struct Model;
+class Model;
 
 struct PrototypeCheckpoint
 {
