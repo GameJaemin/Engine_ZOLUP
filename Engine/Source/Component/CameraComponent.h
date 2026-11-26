@@ -25,7 +25,7 @@ public:
 	/** 세로 시야각이며 단위는 도다. */
 	float GetVerticalFovDegrees() const { return verticalFovDegrees; }
 
-	/** 0보다 크고 180보다 작은 값만 받는다. 범위를 벗어나면 기존 값을 유지하고 false를 반환한다. */
+	/** 유한하며 0보다 크고 180보다 작은 값만 받는다. 조건을 벗어나면 기존 값을 유지하고 false를 반환한다. */
 	bool SetVerticalFovDegrees(float newVerticalFovDegrees);
 
 private:
@@ -36,7 +36,7 @@ public:
 	/** 보이는 영역의 전체 세로 길이이며 단위는 cm다. 가로는 이 값 * 화면 비율이다. */
 	float GetOrthographicHeight() const { return orthographicHeight; }
 
-	/** 0보다 큰 값만 받는다. 아니면 기존 값을 유지하고 false를 반환한다. */
+	/** 유한하며 0보다 큰 값만 받는다. 조건을 벗어나면 기존 값을 유지하고 false를 반환한다. */
 	bool SetOrthographicHeight(float newOrthographicHeight);
 
 private:
@@ -50,15 +50,15 @@ public:
 	/** 먼 쪽 그리기 경계까지의 거리이며 단위는 cm다. */
 	float GetFarClipDistance() const { return farClipDistance; }
 
-	/** near만 설정한다. 0 < near < 현재 far일 때만 받고, 아니면 기존 값을 유지하고 false를 반환한다. */
+	/** 현재 far와 함께 SetClipDistances로 검사하고 near만 설정한다. */
 	bool SetNearClipDistance(float newNearClipDistance);
 
-	/** far만 설정한다. 현재 near < far일 때만 받고, 아니면 기존 값을 유지하고 false를 반환한다. */
+	/** 현재 near와 함께 SetClipDistances로 검사하고 far만 설정한다. */
 	bool SetFarClipDistance(float newFarClipDistance);
 
 	/**
-	 * near와 far를 함께 설정한다. 0 < near < far일 때만 받고,
-	 * 아니면 기존 값을 유지하고 false를 반환한다.
+	 * near와 far를 함께 설정한다. 둘 다 유한하며 0 < near < far일 때만 받고,
+	 * 조건을 벗어나면 기존 값을 유지하고 false를 반환한다.
 	 */
 	bool SetClipDistances(float newNearClipDistance, float newFarClipDistance);
 

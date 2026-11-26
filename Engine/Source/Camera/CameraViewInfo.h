@@ -13,6 +13,18 @@ enum class CameraProjectionMode : unsigned char
 	Orthographic
 };
 
+namespace CameraProjection
+{
+	/** 유한한 세로 시야각이며 0도보다 크고 180도보다 작은지 검사한다. */
+	bool IsValidVerticalFovDegrees(float degrees);
+
+	/** 유한한 직교 세로 길이(cm)이며 0보다 큰지 검사한다. */
+	bool IsValidOrthographicHeight(float height);
+
+	/** near와 far(cm)가 모두 유한하며 0 < near < far인지 검사한다. */
+	bool AreValidClipDistances(float nearDistance, float farDistance);
+}
+
 /**
  * 한 카메라 시점의 원본 값 사본이다. 위치와 회전은 월드 기준이다.
  * 뷰 행렬과 투영 행렬은 여기서 계산하며 카메라 컴포넌트와 렌더러 어느 쪽에도 묶이지 않는다.
@@ -35,8 +47,8 @@ struct CameraViewInfo
 
 	/**
 	 * 화면 비율(가로를 세로로 나눈 값)과 투영 모드에 맞는 투영 행렬을 계산한다.
-	 * 화면 비율이 0 이하이거나, near와 far 또는 현재 모드의 시야각이나 직교 높이가
-	 * 허용 범위를 벗어나면 출력값을 유지하고 false를 반환한다.
+	 * 화면 비율은 유한한 양수여야 한다. near와 far 및 현재 모드의 시야각 또는 직교 높이는
+	 * CameraProjection의 검사 조건을 따른다. 조건을 벗어나면 출력값을 유지하고 false를 반환한다.
 	 */
 	bool CalculateProjectionMatrix(float aspectRatio, Matrix4x4& outProjectionMatrix) const;
 };

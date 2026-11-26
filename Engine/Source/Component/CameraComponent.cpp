@@ -20,7 +20,7 @@ CameraComponent::~CameraComponent()
 
 bool CameraComponent::SetVerticalFovDegrees(float newVerticalFovDegrees)
 {
-	if (newVerticalFovDegrees <= 0.0f || newVerticalFovDegrees >= 180.0f) { return false; }
+	if (!CameraProjection::IsValidVerticalFovDegrees(newVerticalFovDegrees)) { return false; }
 
 	verticalFovDegrees = newVerticalFovDegrees;
 	return true;
@@ -28,7 +28,7 @@ bool CameraComponent::SetVerticalFovDegrees(float newVerticalFovDegrees)
 
 bool CameraComponent::SetOrthographicHeight(float newOrthographicHeight)
 {
-	if (newOrthographicHeight <= 0.0f) { return false; }
+	if (!CameraProjection::IsValidOrthographicHeight(newOrthographicHeight)) { return false; }
 
 	orthographicHeight = newOrthographicHeight;
 	return true;
@@ -46,7 +46,7 @@ bool CameraComponent::SetFarClipDistance(float newFarClipDistance)
 
 bool CameraComponent::SetClipDistances(float newNearClipDistance, float newFarClipDistance)
 {
-	if (newNearClipDistance <= 0.0f || newFarClipDistance <= newNearClipDistance) { return false; }
+	if (!CameraProjection::AreValidClipDistances(newNearClipDistance, newFarClipDistance)) { return false; }
 
 	nearClipDistance = newNearClipDistance;
 	farClipDistance = newFarClipDistance;
