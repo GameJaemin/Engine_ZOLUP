@@ -217,7 +217,13 @@ namespace
 	/** field의 현재 값을 값 종류에 맞는 입력 칸으로 그리고, 바뀌면 set으로 쓴다. setter가 거부하면 다음 프레임에 원래 값이 보인다. */
 	void DrawFieldEditor(const ComponentFieldInfo& field, Component& component)
 	{
-		const ComponentFieldValue value = field.get(component);
+		const std::optional<ComponentFieldValue> value = field.get(component);
+		if (!value.has_value())
+		{
+			// 다른 World나 등록되지 않은 객체의 컴포넌트를 가리키는 참조다. 빈 참조(None)와 구분해 보여 주고 편집하지 않는다.
+			ImGui::TextDisabled("Invalid");
+			return;
+		}
 
 		std::visit([&field, &component](const auto& current)
 		{
@@ -237,7 +243,7 @@ namespace
 			}
 
 			if (changed) { field.set(component, ComponentFieldValue(edited)); }
-		}, value);
+		}, *value);
 	}
 
 	/** component가 SceneCapture2DComponent면 캡처 결과를 확인할 수 있게 렌더 타깃을 Inspector 폭에 맞춰 그린다. 타깃 생성 전이면 그리지 않는다. */

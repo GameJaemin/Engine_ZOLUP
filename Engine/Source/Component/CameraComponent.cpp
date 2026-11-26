@@ -53,6 +53,11 @@ bool CameraComponent::SetClipDistances(float newNearClipDistance, float newFarCl
 	return true;
 }
 
+bool CameraComponent::SetClipDistances(const Vector2& newClipDistances)
+{
+	return SetClipDistances(newClipDistances.x, newClipDistances.y);
+}
+
 bool CameraComponent::GetCameraViewInfo(CameraViewInfo& outCameraViewInfo) const
 {
 	const GameObject* owner = GetGameObject();

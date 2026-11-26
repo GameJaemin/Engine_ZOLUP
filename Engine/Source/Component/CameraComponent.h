@@ -2,6 +2,7 @@
 
 #include "Camera/CameraViewInfo.h"
 #include "Component.h"
+#include "Core/Math/Vector2.h"
 
 /** 원근 또는 직교 투영 카메라의 설정값을 보관한다. 위치와 회전은 같은 객체의 TransformComponent를 따른다. */
 class CameraComponent : public Component
@@ -61,6 +62,12 @@ public:
 	 * 조건을 벗어나면 기존 값을 유지하고 false를 반환한다.
 	 */
 	bool SetClipDistances(float newNearClipDistance, float newFarClipDistance);
+
+	/** near와 far를 x, y(cm)로 함께 읽는다. */
+	Vector2 GetClipDistances() const { return Vector2{ nearClipDistance, farClipDistance }; }
+
+	/** x를 near, y를 far로 함께 설정한다. 검사와 실패 시 동작은 SetClipDistances(near, far)와 같다. */
+	bool SetClipDistances(const Vector2& newClipDistances);
 
 private:
 	float nearClipDistance = 10.0f;

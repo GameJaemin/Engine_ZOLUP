@@ -88,14 +88,19 @@ bool RegisterEngineComponentTypes(ComponentTypeRegistry& registry)
 {
 	if (registry.Register<TransformComponent, Component>("TransformComponent") == nullptr) { return false; }
 	if (!registry.AddField<TransformComponent>("position", &TransformComponent::GetPosition, &TransformComponent::SetPosition, { .dragSpeed = 1.0f })) { return false; }
-	if (!registry.AddField<TransformComponent>("rotation", &TransformComponent::GetRotation, &TransformComponent::SetRotation, { .dragSpeed = 0.5f })) { return false; }
+	// 저장과 Play 복제는 내부 값인 쿼터니언을 그대로 옮기고, Inspector는 오일러 각으로 편집한다. 각도를 거쳐 저장하면 변환 오차가 생긴다.
+	if (!registry.AddField<TransformComponent>("rotationQuaternion", &TransformComponent::GetRotationQuaternion, &TransformComponent::SetRotationQuaternion, { .visibility = ComponentFieldVisibility::Hidden })) { return false; }
+	if (!registry.AddField<TransformComponent>("rotation", &TransformComponent::GetRotation, &TransformComponent::SetRotation, { .dragSpeed = 0.5f }, true)) { return false; }
 	if (!registry.AddField<TransformComponent>("scale", &TransformComponent::GetScale, &TransformComponent::SetScale, { .dragSpeed = 0.01f })) { return false; }
 
 	if (registry.Register<CameraComponent, Component>("CameraComponent") == nullptr) { return false; }
 	if (!registry.AddField<CameraComponent>("verticalFovDegrees", &CameraComponent::GetVerticalFovDegrees, &CameraComponent::SetVerticalFovDegrees, { .displayName = "Vertical FOV (deg)", .dragSpeed = 0.5f, .minValue = 1.0f, .maxValue = 179.0f })) { return false; }
 	if (!registry.AddField<CameraComponent>("orthographicHeight", &CameraComponent::GetOrthographicHeight, &CameraComponent::SetOrthographicHeight, { .displayName = "Orthographic Height (cm)", .dragSpeed = 10.0f, .minValue = 1.0f, .maxValue = FLT_MAX })) { return false; }
-	if (!registry.AddField<CameraComponent>("nearClipDistance", &CameraComponent::GetNearClipDistance, &CameraComponent::SetNearClipDistance, { .displayName = "Near Clip (cm)", .dragSpeed = 0.1f, .minValue = 0.01f, .maxValue = FLT_MAX })) { return false; }
-	if (!registry.AddField<CameraComponent>("farClipDistance", &CameraComponent::GetFarClipDistance, &CameraComponent::SetFarClipDistance, { .displayName = "Far Clip (cm)", .dragSpeed = 100.0f })) { return false; }
+	// near와 far는 0 < near < far를 함께 검사하므로, 저장과 Play 복제는 한 번에 쓰는 clipDistances로 하고 Inspector는 near와 far를 따로 편집한다.
+	// SetClipDistances는 (near, far)와 Vector2 두 가지가 있어 Vector2를 받는 것을 지정한다.
+	if (!registry.AddField<CameraComponent>("clipDistances", &CameraComponent::GetClipDistances, static_cast<bool (CameraComponent::*)(const Vector2&)>(&CameraComponent::SetClipDistances), { .visibility = ComponentFieldVisibility::Hidden })) { return false; }
+	if (!registry.AddField<CameraComponent>("nearClipDistance", &CameraComponent::GetNearClipDistance, &CameraComponent::SetNearClipDistance, { .displayName = "Near Clip (cm)", .dragSpeed = 0.1f, .minValue = 0.01f, .maxValue = FLT_MAX }, true)) { return false; }
+	if (!registry.AddField<CameraComponent>("farClipDistance", &CameraComponent::GetFarClipDistance, &CameraComponent::SetFarClipDistance, { .displayName = "Far Clip (cm)", .dragSpeed = 100.0f }, true)) { return false; }
 	if (!registry.AddField<CameraComponent>("projectionMode", &GetCameraProjectionMode, &SetCameraProjectionMode, { .enumNames = { "Perspective", "Orthographic" } })) { return false; }
 
 	if (registry.Register<SceneCapture2DComponent, Component>("SceneCapture2DComponent") == nullptr) { return false; }

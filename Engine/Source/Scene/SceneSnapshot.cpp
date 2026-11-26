@@ -19,13 +19,16 @@
 
 namespace
 {
-	/** typeInfo나 그 부모에 속성이 하나라도 있으면 true를 반환한다. */
-	bool HasAnyField(const ComponentTypeInfo& typeInfo)
+	/** typeInfo나 그 부모에 저장되는 속성(isTransient가 아닌 속성)이 하나라도 있으면 true를 반환한다. */
+	bool HasSavedField(const ComponentTypeInfo& typeInfo)
 	{
 		const ComponentTypeInfo* current = &typeInfo;
 		while (current != nullptr)
 		{
-			if (!current->fields.empty()) { return true; }
+			for (const ComponentFieldInfo& field : current->fields)
+			{
+				if (!field.isTransient) { return true; }
+			}
 			current = current->parent;
 		}
 		return false;
@@ -64,10 +67,10 @@ namespace
 				Log::Write(LogLevel::Error, "Snapshot", std::format("{}: component {} cannot be created", object.GetName(), typeInfo->name));
 				return false;
 			}
-			// 속성이 없는 타입은 상태를 옮길 수 없으므로 빈 컴포넌트로 바꿔 담지 않는다.
-			if (!HasAnyField(*typeInfo))
+			// 저장되는 속성이 없는 타입은 상태를 옮길 수 없으므로 빈 컴포넌트로 바꿔 담지 않는다.
+			if (!HasSavedField(*typeInfo))
 			{
-				Log::Write(LogLevel::Error, "Snapshot", std::format("{}: component {} has no fields", object.GetName(), typeInfo->name));
+				Log::Write(LogLevel::Error, "Snapshot", std::format("{}: component {} has no saved fields", object.GetName(), typeInfo->name));
 				return false;
 			}
 			// 컴포넌트 참조는 "같은 객체에 같은 타입은 하나"라는 규칙에 기대므로 중복을 거부한다.
@@ -78,10 +81,23 @@ namespace
 			}
 
 			ComponentSnapshot componentData{ .typeName = typeInfo->name };
-			ComponentTypeRegistry::ForEachField(*typeInfo, [&componentData, &component](const ComponentFieldInfo& field)
+			bool allFieldsCaptured = true;
+			ComponentTypeRegistry::ForEachField(*typeInfo, [&](const ComponentFieldInfo& field)
 			{
-				componentData.fields.emplace_back(field.name, field.get(*component));
+				// 편집 전용 속성의 상태는 저장되는 다른 속성에 담겨 있으므로 담지 않는다.
+				if (!allFieldsCaptured || field.isTransient) { return; }
+
+				// 비어 있으면 다른 World나 등록되지 않은 객체의 컴포넌트를 가리키는 참조가 있다. 빈 참조로 바꿔 담지 않는다.
+				std::optional<ComponentFieldValue> value = field.get(*component);
+				if (!value.has_value())
+				{
+					Log::Write(LogLevel::Error, "Snapshot", std::format("{}: {}.{} refers to a component outside this world", object.GetName(), typeInfo->name, field.name));
+					allFieldsCaptured = false;
+					return;
+				}
+				componentData.fields.emplace_back(field.name, std::move(*value));
 			});
+			if (!allFieldsCaptured) { return false; }
 			data.components.push_back(std::move(componentData));
 		}
 
@@ -149,7 +165,7 @@ namespace
 
 	/**
 	 * 모든 속성 값 안의 컴포넌트 참조가 스냅샷 안을 가리키는지 확인한다. 아니면 로그를 남기고 false를 반환한다.
-	 * 참조는 ID로 담겨 원래 World를 알 수 없으므로, 같은 ID를 쓰는 다른 World의 컴포넌트를 가리킨 경우는 걸러 내지 못한다.
+	 * 다른 World나 등록되지 않은 객체를 가리킨 참조는 속성을 담을 때(field.get) 이미 걸러진다.
 	 */
 	bool ValidateReferences(const SceneSnapshot& snapshot)
 	{
