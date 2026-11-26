@@ -3814,7 +3814,7 @@ bool D3D12Renderer::CreateTextureResource(const DataHub::Texture& src, DX12_Text
 		}
 
 
-		vector<D3D12_SUBRESOURCE_DATA> subResData(numSubresources, {});
+		vector<D3D12_SUBRESOURCE_DATA> subResData(numSubresources);
 
 		const std::byte* base = src.rawData.data();
 		for (size_t i = 0; i < numSubresources; ++i)

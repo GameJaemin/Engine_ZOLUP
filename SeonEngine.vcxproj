@@ -277,6 +277,9 @@
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
+  <!-- VS 2022의 설치 기본 MSVC를 사용해 최신 vcpkg 라이브러리와 STL 버전을 맞춘다. -->
+  <Import Project="$(VsInstallRoot)\VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.props"
+          Condition="'$(VisualStudioVersion)' == '17.0' and '$(VCToolsVersion)' == '' and Exists('$(VsInstallRoot)\VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.props')" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
   </ImportGroup>
@@ -355,4 +358,31 @@
       <Output TaskParameter="CopiedFiles" ItemName="FileWrites" />
     </Copy>
   </Target>
+  <ItemGroup>
+    <ClCompile Include="Game\Source\BabyDoll\AgentMovement.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\AgentMovement.h" />
+    <ClCompile Include="Game\Source\BabyDoll\BabyDollApplication.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\BabyDollApplication.h" />
+    <ClCompile Include="Game\Source\BabyDoll\BabyDollHud.cpp" />
+    <ClCompile Include="Game\Source\BabyDoll\GameplaySpace.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\GameplaySpace.h" />
+    <ClCompile Include="Game\Source\BabyDoll\HearingComponent.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\HearingComponent.h" />
+    <ClCompile Include="Game\Source\BabyDoll\HeartComponent.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\HeartComponent.h" />
+    <ClCompile Include="Game\Source\BabyDoll\HideTableComponent.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\HideTableComponent.h" />
+    <ClCompile Include="Game\Source\BabyDoll\OrbitCameraComponent.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\OrbitCameraComponent.h" />
+    <ClCompile Include="Game\Source\BabyDoll\PlayerMoveComponent.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\PlayerMoveComponent.h" />
+    <ClCompile Include="Game\Source\BabyDoll\PoseAnimatorComponent.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\PoseAnimatorComponent.h" />
+    <ClInclude Include="Game\Source\BabyDoll\PrototypeTests.h" />
+    <ClCompile Include="Game\Source\BabyDoll\PrototypeTypes.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\PrototypeInputAdapter.h" />
+    <ClInclude Include="Game\Source\BabyDoll\PrototypeTypes.h" />
+    <ClCompile Include="Game\Source\BabyDoll\StitchBrainComponent.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\StitchBrainComponent.h" />
+  </ItemGroup>
 </Project>

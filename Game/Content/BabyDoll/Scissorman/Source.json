@@ -1,0 +1,7 @@
+{
+  "author": "Goth Scarecrow",
+  "source": "https://goth-scarecrow.itch.io/scissorman",
+  "license": "CC0",
+  "originalSHA256": "78e591f5cb49f3bcbada7bd66ddce126c62002f51085e66d4fbe53f8267879b5",
+  "preparation": "External PNG/bin extraction; STEP sampled with hold at 30Hz; LINEAR resampling"
+}
