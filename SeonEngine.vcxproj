@@ -323,4 +323,31 @@
       <Output TaskParameter="CopiedFiles" ItemName="FileWrites" />
     </Copy>
   </Target>
+  <ItemGroup>
+    <ClCompile Include="Game\Source\BabyDoll\AgentMovement.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\AgentMovement.h" />
+    <ClCompile Include="Game\Source\BabyDoll\BabyDollApplication.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\BabyDollApplication.h" />
+    <ClCompile Include="Game\Source\BabyDoll\BabyDollHud.cpp" />
+    <ClCompile Include="Game\Source\BabyDoll\GameplaySpace.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\GameplaySpace.h" />
+    <ClCompile Include="Game\Source\BabyDoll\HearingComponent.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\HearingComponent.h" />
+    <ClCompile Include="Game\Source\BabyDoll\HeartComponent.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\HeartComponent.h" />
+    <ClCompile Include="Game\Source\BabyDoll\HideTableComponent.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\HideTableComponent.h" />
+    <ClCompile Include="Game\Source\BabyDoll\OrbitCameraComponent.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\OrbitCameraComponent.h" />
+    <ClCompile Include="Game\Source\BabyDoll\PlayerMoveComponent.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\PlayerMoveComponent.h" />
+    <ClCompile Include="Game\Source\BabyDoll\PoseAnimatorComponent.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\PoseAnimatorComponent.h" />
+    <ClInclude Include="Game\Source\BabyDoll\PrototypeTests.h" />
+    <ClCompile Include="Game\Source\BabyDoll\PrototypeTypes.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\PrototypeInputAdapter.h" />
+    <ClInclude Include="Game\Source\BabyDoll\PrototypeTypes.h" />
+    <ClCompile Include="Game\Source\BabyDoll\StitchBrainComponent.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\StitchBrainComponent.h" />
+  </ItemGroup>
 </Project>

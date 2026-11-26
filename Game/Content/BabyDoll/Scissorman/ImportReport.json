@@ -1,0 +1,73 @@
+{
+  "status": "passed",
+  "classification": "skeletal",
+  "meshes": [
+    {
+      "index": 0,
+      "name": "Cylinder",
+      "kind": "skeletal"
+    }
+  ],
+  "vertices": 3859,
+  "triangles": 1321,
+  "skins": 1,
+  "jointCounts": [
+    29
+  ],
+  "animations": [
+    {
+      "name": "Scissorman_ChargeAttack",
+      "durationSeconds": 2.625,
+      "channels": 87
+    },
+    {
+      "name": "Scissorman_Dead",
+      "durationSeconds": 2.0416667461395264,
+      "channels": 87
+    },
+    {
+      "name": "Scissorman_Defense",
+      "durationSeconds": 3.0,
+      "channels": 87
+    },
+    {
+      "name": "Scissorman_Hit",
+      "durationSeconds": 1.75,
+      "channels": 87
+    },
+    {
+      "name": "Scissorman_Idle",
+      "durationSeconds": 2.0,
+      "channels": 87
+    },
+    {
+      "name": "Scissorman_ReactPlayer",
+      "durationSeconds": 3.25,
+      "channels": 87
+    },
+    {
+      "name": "Scissorman_Run",
+      "durationSeconds": 0.9166666865348816,
+      "channels": 87
+    },
+    {
+      "name": "Scissorman_SimplesAttack",
+      "durationSeconds": 1.6666666269302368,
+      "channels": 87
+    },
+    {
+      "name": "Scissorman_SimplesAttack2",
+      "durationSeconds": 1.4166666269302368,
+      "channels": 87
+    },
+    {
+      "name": "Scissorman_Walk",
+      "durationSeconds": 2.0,
+      "channels": 87
+    }
+  ],
+  "warnings": [
+    "m_1ad608cc-8504-ef53-54b6-d95dc4a89114: doubleSided is not represented by the engine material",
+    "m_1ad608cc-8504-ef53-54b6-d95dc4a89114: optional material extensions are not represented by the engine material"
+  ]
+}

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
+    <Filter Include="Game\Source\BabyDoll"><UniqueIdentifier>{db267647-4237-4ddb-8cd2-2a8205d629ae}</UniqueIdentifier></Filter>
     <Filter Include="Engine">
       <UniqueIdentifier>{f8b23e92-c7f9-412a-ace9-3c42c08fa714}</UniqueIdentifier>
     </Filter>
@@ -688,4 +689,30 @@
       <Filter>Engine\Renderer</Filter>
     </ClInclude>
   </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Game\Source\BabyDoll\BabyDollApplication.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile>
+    <ClInclude Include="Game\Source\BabyDoll\BabyDollApplication.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+    <ClCompile Include="Game\Source\BabyDoll\BabyDollHud.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile>
+    <ClCompile Include="Game\Source\BabyDoll\GameplaySpace.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile>
+    <ClInclude Include="Game\Source\BabyDoll\GameplaySpace.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+    <ClCompile Include="Game\Source\BabyDoll\HearingComponent.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile>
+    <ClInclude Include="Game\Source\BabyDoll\HearingComponent.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+    <ClCompile Include="Game\Source\BabyDoll\HeartComponent.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile>
+    <ClInclude Include="Game\Source\BabyDoll\HeartComponent.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+    <ClCompile Include="Game\Source\BabyDoll\HideTableComponent.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile>
+    <ClInclude Include="Game\Source\BabyDoll\HideTableComponent.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+    <ClCompile Include="Game\Source\BabyDoll\OrbitCameraComponent.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile>
+    <ClInclude Include="Game\Source\BabyDoll\OrbitCameraComponent.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+    <ClCompile Include="Game\Source\BabyDoll\PlayerMoveComponent.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile>
+    <ClInclude Include="Game\Source\BabyDoll\PlayerMoveComponent.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+    <ClCompile Include="Game\Source\BabyDoll\PoseAnimatorComponent.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile>
+    <ClInclude Include="Game\Source\BabyDoll\PoseAnimatorComponent.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+    <ClInclude Include="Game\Source\BabyDoll\PrototypeTests.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+    <ClCompile Include="Game\Source\BabyDoll\PrototypeTypes.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile>
+    <ClInclude Include="Game\Source\BabyDoll\PrototypeInputAdapter.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+    <ClInclude Include="Game\Source\BabyDoll\PrototypeTypes.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+    <ClCompile Include="Game\Source\BabyDoll\StitchBrainComponent.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile>
+    <ClInclude Include="Game\Source\BabyDoll\StitchBrainComponent.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+  </ItemGroup>
+  <ItemGroup><ClCompile Include="Game\Source\BabyDoll\AgentMovement.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile><ClInclude Include="Game\Source\BabyDoll\AgentMovement.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude></ItemGroup>
 </Project>
