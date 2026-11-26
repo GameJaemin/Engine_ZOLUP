@@ -45,8 +45,11 @@ Debug, Release의 추가 포함 디렉터리에 `$(ProjectDir)Engine\Source`와 
 | `imgui` | 에디터 UI에 사용할 Dear ImGui. `docking-experimental`, `win32-binding`, `dx12-binding` 기능을 설치 |
 | `imguizmo` | 에디터 뷰포트의 3D Transform 기즈모 |
 | `joltphysics` | 충돌 검사와 물리 시뮬레이션용 정적 라이브러리 |
+| `miniaudio` | 오디오 출력 장치와 소리 파일 재생. 헤더만 설치됨 |
 
 MSBuild는 Jolt 헤더를 사용하는 `JoltRuntime.cpp`, `JoltObjectLayers.cpp`, `JoltBroadPhaseLayers.cpp` 및 `JoltPhysicsScene.cpp`에 `JPH_OBJECT_STREAM`과 `JPH_FLOATING_POINT_EXCEPTIONS_ENABLED`를 지정합니다. 이 정의는 설치된 패키지의 `share/Jolt/JoltConfig.cmake`에 있는 공개 컴파일 정의를 따릅니다.
+
+miniaudio 패키지는 `.lib` 없이 `miniaudio.h`만 설치합니다. 함수 구현은 [MiniaudioImplementation.cpp](../Engine/Source/Audio/MiniaudioImplementation.cpp)에서 `MINIAUDIO_IMPLEMENTATION`을 정의한 뒤 헤더를 포함해 한 번만 컴파일합니다. 다른 파일에서는 이 매크로 없이 헤더만 포함합니다. Windows 오디오 DLL은 실행 중에 불러오므로 추가 링크 설정은 없습니다.
 
 [`vcpkg-configuration.json`](../Engine/ThirdParty/vcpkg-configuration.json)은 저장소의 ImGuizmo 오버레이 포트를 등록합니다. [오버레이 포트](../Engine/ThirdParty/vcpkg-overlays/imguizmo/portfile.cmake)는 원본 ImGuizmo 1.10에 [회전 링 패치](../Engine/ThirdParty/vcpkg-overlays/imguizmo/rotation-rings.patch)를 적용한 뒤 빌드합니다.
 

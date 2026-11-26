@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AssetManager.h"
+#include "Audio/AudioSystem.h"
 #include "Component/ComponentTypeRegistry.h"
 #include "ImGuiSystem.h"
 #include "Physics/JoltRuntime.h"
@@ -18,7 +19,7 @@ namespace Hakko
 class IApplication;
 
 /**
- * 창, 렌더러, AssetManager, ComponentTypeRegistry 및 JoltRuntime을 소유하고 메인 스레드에서 공통 프레임 순서를 실행한다.
+ * 창, 렌더러, AssetManager, ComponentTypeRegistry, JoltRuntime 및 AudioSystem을 소유하고 메인 스레드에서 공통 프레임 순서를 실행한다.
  */
 class Engine
 {
@@ -57,7 +58,8 @@ public:
 
 private:
 	/**
-	 * 엔진 컴포넌트 타입과 Jolt를 초기화한 뒤 창, (enableGui면 ImGui), DataHub와 렌더러를 준비하고 방향광 섀도 맵을 등록한다.
+	 * 엔진 컴포넌트 타입, Jolt 및 오디오를 초기화한 뒤 창, (enableGui면 ImGui), DataHub와 렌더러를 준비하고 방향광 섀도 맵을 등록한다.
+	 * 오디오 초기화에 실패하면 경고를 남기고 소리 없이 계속한다.
 	 * enableGui면 렌더러가 ImGui 출력 백엔드를 등록했는지까지 확인한다.
 	 */
 	bool Initialize(bool enableGui);
@@ -77,6 +79,9 @@ private:
 	ComponentTypeRegistry componentTypeRegistry;
 
 	JoltRuntime joltRuntime;
+
+	// 장치를 열지 못해도 엔진은 계속 실행하므로 초기화 상태와 무관하게 Shutdown을 호출할 수 있다.
+	AudioSystem audioSystem;
 
 	// 초기화에 성공한 렌더러만 소유한다. nullptr이면 Finalize할 렌더러가 없다.
 	std::unique_ptr<Hakko::D3D12Renderer> renderer;

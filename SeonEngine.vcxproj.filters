@@ -151,6 +151,9 @@
     <ClCompile Include="Engine\Source\Audio\AudioSystem.cpp">
       <Filter>Engine\Source\Audio</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Source\Audio\MiniaudioImplementation.cpp">
+      <Filter>Engine\Source\Audio</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Source\Physics\JoltBroadPhaseLayers.cpp">
       <Filter>Engine\Source\Physics</Filter>
     </ClCompile>

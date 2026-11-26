@@ -38,6 +38,7 @@
     <ClCompile Include="Engine\Source\AssetManager.cpp" />
     <ClCompile Include="Engine\Source\Engine.cpp" />
     <ClCompile Include="Engine\Source\Audio\AudioSystem.cpp" />
+    <ClCompile Include="Engine\Source\Audio\MiniaudioImplementation.cpp" />
     <ClCompile Include="Engine\Source\Physics\JoltBroadPhaseLayers.cpp">
       <PreprocessorDefinitions>JPH_OBJECT_STREAM;JPH_FLOATING_POINT_EXCEPTIONS_ENABLED;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
