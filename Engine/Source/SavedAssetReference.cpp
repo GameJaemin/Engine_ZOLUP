@@ -3,11 +3,15 @@
 #include "AssetManager.h"
 #include "Core/Log.h"
 #include "Mesh/StaticMesh.h"
+#include "Paths.h"
 #include "Renderer/Material.h"
 
 #include <array>
 #include <format>
 #include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
 #include <typeindex>
 #include <typeinfo>
 #include <utility>
@@ -20,9 +24,6 @@ namespace
 		std::type_index type;
 		// 파일에 적는 이름이다. typeid의 이름은 컴파일러마다 달라 직접 정한다.
 		std::string_view name;
-		// 경로가 파일 안의 번호로 가리키는 타입이면 true다. 에셋 이름을 저장하고 불러올 때 비교한다.
-		// 파일 경로로 가리키는 타입은 이름도 파일 이름에서 나오므로 비교할 것이 없다.
-		bool checksName;
 		AssetReference (*load)(AssetManager& assets, const SavedAssetReference& saved);
 	};
 
@@ -30,10 +31,10 @@ namespace
 	const std::array<SavedAssetType, 4>& GetSavedAssetTypes()
 	{
 		static const std::array<SavedAssetType, 4> types = { {
-			{ typeid(StaticMesh), "StaticMesh", true, [](AssetManager& assets, const SavedAssetReference& saved) { return AssetReference(assets.LoadStaticMesh(saved.path)); } },
-			{ typeid(Material), "Material", true, [](AssetManager& assets, const SavedAssetReference& saved) { return AssetReference(assets.LoadMaterial(saved.path)); } },
-			{ typeid(Texture), "Texture", false, [](AssetManager& assets, const SavedAssetReference& saved) { return AssetReference(assets.LoadTexture(saved.path, saved.textureFormat)); } },
-			{ typeid(Model), "Model", false, [](AssetManager& assets, const SavedAssetReference& saved) { return AssetReference(assets.LoadModel(saved.path)); } },
+			{ typeid(StaticMesh), "StaticMesh", [](AssetManager& assets, const SavedAssetReference& saved) { return AssetReference(assets.LoadStaticMesh(saved.path)); } },
+			{ typeid(Material), "Material", [](AssetManager& assets, const SavedAssetReference& saved) { return AssetReference(assets.LoadMaterial(saved.path)); } },
+			{ typeid(Texture), "Texture", [](AssetManager& assets, const SavedAssetReference& saved) { return AssetReference(assets.LoadTexture(saved.path, saved.textureFormat)); } },
+			{ typeid(Model), "Model", [](AssetManager& assets, const SavedAssetReference& saved) { return AssetReference(assets.LoadModel(saved.path)); } },
 		} };
 		return types;
 	}
@@ -60,6 +61,17 @@ namespace
 	{
 		Log::Write(LogLevel::Error, "AssetReference", std::format("{}: {}", context, reason));
 	}
+
+	/** 에셋 경로의 파일 부분을 디스크 표기로 바꾸고 하위 이름은 그대로 둔다. 파일이 디스크에 없으면 nullopt를 반환한다. */
+	std::optional<std::string> FindDiskAssetPath(std::string_view path)
+	{
+		const std::optional<std::pair<std::string_view, std::string_view>> parts = Paths::SplitSubAssetPath(path);
+		if (!parts.has_value()) { return Paths::FindDiskPath(path); }
+
+		const std::optional<std::string> filePath = Paths::FindDiskPath(parts->first);
+		if (!filePath.has_value()) { return std::nullopt; }
+		return Paths::MakeSubAssetPath(*filePath, parts->second);
+	}
 }
 
 std::optional<SavedAssetReference> SaveAssetReference(const AssetReference& reference, AssetManager& assets, std::string_view context)
@@ -85,8 +97,19 @@ std::optional<SavedAssetReference> SaveAssetReference(const AssetReference& refe
 		return std::nullopt;
 	}
 
-	saved.path = path;
-	if (assetType->checksName) { saved.name = asset->GetName(); }
+	// 에셋에 남은 경로는 처음 요청한 표기일 수 있어, 파일에는 디스크를 조회한 실제 표기를 기록한다(PathConvention).
+	// 아래의 다시 얻기 확인은 캐시만 보므로 지워진 파일도 통과한다. 여기서 파일이 실제로 있는지도 함께 확인된다.
+	const std::optional<std::string> diskPath = FindDiskAssetPath(path);
+	if (!diskPath.has_value())
+	{
+		LogFailure(context, std::format("{} '{}' has no file on disk for '{}'", assetType->name, asset->GetName(), path));
+		return std::nullopt;
+	}
+	saved.path = *diskPath;
+
+	// 파일 안의 번호로 가리키는 에셋만 이름을 남겨, 다시 내보낸 파일에서 번호가 바뀐 것을 알아챈다.
+	// 파일 하나가 에셋 하나면 이름이 파일 이름에서 나오므로 남기지 않는다.
+	if (Paths::SplitSubAssetPath(saved.path).has_value()) { saved.name = asset->GetName(); }
 	if (assetType->type == std::type_index(typeid(Texture)))
 	{
 		// AssetReference 생성자가 보장하므로 type이 Texture면 asset도 Texture다.
@@ -94,7 +117,7 @@ std::optional<SavedAssetReference> SaveAssetReference(const AssetReference& refe
 	}
 
 	// 경로 모양으로 추측하지 않고, 저장한 정보로 실제로 다시 얻어 같은 객체인지 확인한다.
-	// 합성 텍스처처럼 파일을 가리키지 않는 경로나 AssetManager가 만들지 않은 객체는 여기서 걸러진다.
+	// 경로만 같고 AssetManager가 만들지 않은 객체는 여기서 걸러진다.
 	// 저장된 에셋은 이미 캐시에 있으므로 보통은 캐시 조회 비용만 든다.
 	const AssetReference reloaded = assetType->load(assets, saved);
 	if (reloaded.GetAsset() != asset)
@@ -132,7 +155,7 @@ std::optional<AssetReference> LoadAssetReference(const SavedAssetReference& save
 	}
 
 	// 번호로 가리키는 경로는 glTF를 다시 내보내 순서가 바뀌어도 오류 없이 다른 에셋을 얻을 수 있어 이름으로 한 번 더 확인한다.
-	if (assetType->checksName && asset->GetName() != saved.name)
+	if (Paths::SplitSubAssetPath(saved.path).has_value() && asset->GetName() != saved.name)
 	{
 		LogFailure(context, std::format("{} '{}' name mismatch: saved '{}', loaded '{}'", saved.type, saved.path, saved.name, asset->GetName()));
 		return std::nullopt;
