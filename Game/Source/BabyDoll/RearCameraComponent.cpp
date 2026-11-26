@@ -41,10 +41,11 @@ bool RearCameraComponent::Step(bool chasing, bool preview, const Vector3& player
 		camera->SetClipDistances(5.0f, 8000.0f);
 		cameraObject->AddComponent(std::move(camera));
 		std::unique_ptr<SceneCapture2DComponent> capture = std::make_unique<SceneCapture2DComponent>();
-		if (!capture->SetWidth(static_cast<std::uint32_t>(config.rearWidth)) || !capture->SetHeight(static_cast<std::uint32_t>(config.rearHeight)) || !capture->SetSaturation(config.rearSaturation)) { Clear(); return false; }
+		if (!capture->SetWidth(static_cast<std::uint32_t>(config.rearWidth)) || !capture->SetHeight(static_cast<std::uint32_t>(config.rearHeight))) { Clear(); return false; }
 		cameraObject->AddComponent(std::move(capture));
 	}
-	GetCapture()->SetSaturation(config.rearSaturation);
+	CameraComponent* camera = cameraObject->GetComponent<CameraComponent>();
+	if (!camera || !camera->SetSaturation(config.rearSaturation)) { Clear(); return false; }
 	Vector3 direction = player - monster;
 	direction.y = 0.0f;
 	const float distance = PrototypeMath::Length(direction);
@@ -85,6 +86,6 @@ bool RearCameraComponent::Step(bool chasing, bool preview, const Vector3& player
 	TransformComponent* transform = cameraObject->GetComponent<TransformComponent>();
 	transform->SetPosition(cameraPosition);
 	transform->SetRotation({ -std::atan2(look.y, (std::max)(0.01f, std::sqrt(look.x * look.x + look.z * look.z))) * 57.2957795f, std::atan2(look.x, look.z) * 57.2957795f, 0.0f });
-	cameraObject->GetComponent<CameraComponent>()->SetVerticalFovDegrees(cameraFov);
+	camera->SetVerticalFovDegrees(cameraFov);
 	return true;
 }
