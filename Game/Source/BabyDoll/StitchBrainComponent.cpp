@@ -87,7 +87,8 @@ void StitchBrainComponent::Step(const StitchObservation& observation, float delt
 			BeginAction(StitchAction::Listening);
 		}
 	}
-	if (state == StitchState::Suspicious && observation.hidden)
+	// 숨기는 이미 들은 소리를 지우지 않는다. 목적지 조사 후에만 심박으로 수색 종료를 판단한다.
+	if (state == StitchState::Suspicious && observation.hidden && action != StitchAction::Moving)
 	{
 		if (observation.heartBPM < 100.0f) { ChangeState(StitchState::Patrol); }
 		else { movement.Stop(deltaTime, config, space); BeginAction(StitchAction::Listening); return; }

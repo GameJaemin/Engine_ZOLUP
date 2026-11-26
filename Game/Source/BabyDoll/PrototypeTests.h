@@ -105,6 +105,33 @@ namespace PrototypeTests
 		observation.sound.reset();
 		brain.Step(observation, 1.0f / 120.0f, config, flat);
 		check(brain.GetState() == StitchState::Suspicious, "lost sound changes chase to suspicion");
+		// Space 소리는 한 틱만 들린다. 숨기와 심박 진정이 마지막 소리 위치 조사를 취소하면 안 된다.
+		for (float hiddenBPM : { 72.0f, 150.0f })
+		{
+			brain.Reset({ 0.0f, 0.0f, 1500.0f });
+			StitchObservation noise;
+			noise.sound = SoundStimulus{ {}, 4500.0f, SoundKind::Mistake };
+			brain.Step(noise, 1.0f / 120.0f, config, flat);
+			noise.sound.reset();
+			noise.hidden = true;
+			noise.heartBPM = hiddenBPM;
+			// 소리 후 다른 곳에 숨더라도 AI는 실제 플레이어 위치 대신 들은 지점을 확인한다.
+			noise.playerPosition = { 600.0f, 0.0f, 0.0f };
+			bool reachedNoise = false;
+			bool keptNoiseDestination = true;
+			for (int index = 0; index < 1440 && !reachedNoise; ++index)
+			{
+				brain.Step(noise, 1.0f / 120.0f, config, flat);
+				reachedNoise = PrototypeMath::Distance(brain.GetPosition(), {}) < 25.0f;
+				keptNoiseDestination = keptNoiseDestination && PrototypeMath::Distance(brain.GetDestination(), {}) < 0.01f;
+			}
+			check(reachedNoise && keptNoiseDestination, hiddenBPM < 100.0f
+				? "distant Space noise is investigated even after immediate quiet hiding"
+				: "distant Space noise is investigated before listening to a hidden player");
+			for (int index = 0; index < 180; ++index) { brain.Step(noise, 1.0f / 120.0f, config, flat); }
+			check(hiddenBPM < 100.0f ? brain.GetState() == StitchState::Patrol : brain.GetState() == StitchState::Suspicious,
+				"hidden heart state is evaluated after investigating the remembered noise");
+		}
 		brain.Reset({ 0.0f, 0.0f, 200.0f });
 		brain.ChangeState(StitchState::Chase);
 		observation.hidden = true;
