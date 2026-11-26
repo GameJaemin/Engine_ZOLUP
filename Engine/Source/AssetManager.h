@@ -89,6 +89,19 @@ public:
 	std::shared_ptr<const Model> LoadModel(std::string_view relativePath);
 
 	/**
+	 * "모델경로#번호" 경로의 메시를 돌려준다. 모델을 아직 불러오지 않았으면 불러온다.
+	 * 모델을 불러오지 못하거나, 경로 형식이 틀리거나, 번호가 범위를 벗어나면 로그를 남기고 nullptr를 반환한다.
+	 */
+	[[nodiscard]] std::shared_ptr<const StaticMesh> LoadStaticMesh(std::string_view path);
+
+	/**
+	 * "모델경로#번호", "모델경로#default" 또는 그 뒤에 "|baseColorTexture=텍스처경로"가 붙은 경로의 재질을 돌려준다.
+	 * 모델이나 텍스처를 아직 불러오지 않았으면 불러온다.
+	 * 모델이나 텍스처를 불러오지 못하거나, 경로 형식이 틀리거나, 번호가 범위를 벗어나거나, 기본 재질을 쓰는 메시가 없으면 로그를 남기고 nullptr를 반환한다.
+	 */
+	[[nodiscard]] std::shared_ptr<const Material> LoadMaterial(std::string_view path);
+
+	/**
 	 * baseMaterial의 값을 복사해 기본 색 텍스처만 바꾼 재질을 돌려준다. 텍스처를 읽지 못하면 nullptr를 반환한다.
 	 * baseMaterial이 이미 불러온 모델의 재질이면 경로는 "기본재질경로|baseColorTexture=텍스처경로"이고, 같은 요청에 같은 객체를 재사용한다.
 	 * 경로가 없거나, 이미 교체한 재질이거나, 경로만 같은 다른 객체면 경로 없이 매번 새로 만든다.

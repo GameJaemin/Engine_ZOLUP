@@ -271,6 +271,69 @@ std::shared_ptr<const Model> AssetManager::LoadModel(std::string_view relativePa
 	return result;
 }
 
+std::shared_ptr<const StaticMesh> AssetManager::LoadStaticMesh(std::string_view path)
+{
+	const std::optional<std::pair<std::string_view, std::string_view>> parts = SplitSubAssetPath(path);
+	if (!parts.has_value())
+	{
+		Log::Write(LogLevel::Error, "AssetManager", "Mesh path has no '#': " + std::string(path));
+		return nullptr;
+	}
+
+	// 실패하면 LoadModel이 로그를 남긴다.
+	const std::shared_ptr<const Model> model = LoadModel(parts->first);
+	if (model == nullptr) { return nullptr; }
+
+	const std::optional<std::size_t> index = ParseSubAssetIndex(parts->second);
+	if (!index.has_value() || *index >= model->meshes.size())
+	{
+		Log::Write(LogLevel::Error, "AssetManager", "Invalid mesh path: " + std::string(path));
+		return nullptr;
+	}
+
+	return model->meshes[*index];
+}
+
+std::shared_ptr<const Material> AssetManager::LoadMaterial(std::string_view path)
+{
+	// '|'가 있으면 교체본이다. '|'는 Windows 파일 이름에 쓸 수 없어 첫 '|'로 기본 재질 경로와 바꿀 내용을 나눌 수 있다.
+	// 기본 재질을 먼저 얻은 뒤 교체본 함수를 부르면 캐시에 걸려 처음 만든 객체가 돌아온다.
+	const std::size_t overrideSeparator = path.find('|');
+	if (overrideSeparator != std::string_view::npos)
+	{
+		constexpr std::string_view textureKey = "baseColorTexture=";
+		const std::string_view change = path.substr(overrideSeparator + 1);
+		if (!change.starts_with(textureKey))
+		{
+			Log::Write(LogLevel::Error, "AssetManager", "Unsupported material change: " + std::string(path));
+			return nullptr;
+		}
+
+		const std::shared_ptr<const Material> baseMaterial = LoadMaterial(path.substr(0, overrideSeparator));
+		if (baseMaterial == nullptr) { return nullptr; }
+		return LoadMaterialWithBaseColorTexture(*baseMaterial, change.substr(textureKey.size()));
+	}
+
+	const std::optional<std::pair<std::string_view, std::string_view>> parts = SplitSubAssetPath(path);
+	if (!parts.has_value())
+	{
+		Log::Write(LogLevel::Error, "AssetManager", "Material path has no '#': " + std::string(path));
+		return nullptr;
+	}
+
+	// 실패하면 LoadModel이 로그를 남긴다.
+	const std::shared_ptr<const Model> model = LoadModel(parts->first);
+	if (model == nullptr) { return nullptr; }
+
+	std::shared_ptr<const Material> material = SelectModelMaterial(*model, parts->second);
+	if (material == nullptr)
+	{
+		const std::string_view reason = parts->second == "default" ? "Model has no default material: " : "Invalid material path: ";
+		Log::Write(LogLevel::Error, "AssetManager", std::string(reason) + std::string(path));
+	}
+	return material;
+}
+
 std::shared_ptr<const Material> AssetManager::FindLoadedMaterial(std::string_view path) const
 {
 	const std::optional<std::pair<std::string_view, std::string_view>> parts = SplitSubAssetPath(path);

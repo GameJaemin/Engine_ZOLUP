@@ -124,6 +124,9 @@
     <ClCompile Include="Engine\Source\Asset.cpp">
       <Filter>Engine\Source</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Source\SavedAssetReference.cpp">
+      <Filter>Engine\Source</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Source\Animation\AnimationClip.cpp">
       <Filter>Engine\Source\Animation</Filter>
     </ClCompile>
@@ -373,6 +376,9 @@
       <Filter>Engine\Source</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\AssetReference.h">
+      <Filter>Engine\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\SavedAssetReference.h">
       <Filter>Engine\Source</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Image\Image.h">
