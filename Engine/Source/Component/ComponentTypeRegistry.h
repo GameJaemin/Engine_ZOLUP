@@ -152,6 +152,9 @@ struct ComponentFieldInfo
 	ComponentFieldDisplay display;
 	// true면 저장과 Play 복제에서 빼고 Inspector 편집에만 쓴다. 이 속성이 바꾸는 상태는 저장되는 다른 속성에도 담겨 있어야 한다.
 	bool isTransient = false;
+	// 값 하나의 기본값이다. 담긴 타입이 값의 종류이며, 에셋 참조면 에셋 타입, 컴포넌트 참조면 가리키는 타입도 알려 준다.
+	// 목록 속성이면 빈 ComponentFieldList이고, 원소 종류는 elementPrototype이 알려 준다.
+	ComponentFieldValue valuePrototype;
 	// 목록 속성일 때 원소 하나의 기본값이다. 원소 타입을 알려 주며, 원소를 추가할 때 처음 값으로 쓴다. 목록이 아니면 비어 있다.
 	std::optional<ComponentFieldScalar> elementPrototype;
 };
@@ -161,6 +164,8 @@ struct ComponentTypeInfo
 {
 	// 등록부 안에서 유일한 타입 이름이다. 클래스 이름을 쓴다.
 	std::string name;
+	// 등록한 C++ 타입이다. 파일에서 읽은 타입 이름을 컴포넌트 참조의 타입으로 바꿀 때 쓴다.
+	std::type_index type = typeid(void);
 	// 부모 타입의 정보다. Component를 직접 상속하면 nullptr이다. 같은 등록부가 소유한다.
 	const ComponentTypeInfo* parent = nullptr;
 	// 기본 생성자가 공개되지 않아 직접 만들 수 없는 타입이면 비어 있다.
@@ -332,8 +337,14 @@ bool ComponentTypeRegistry::AddField(std::string_view fieldName, Getter getter, 
 	{
 		static_assert(!IsFieldVector<Element>, "Nested vectors are not supported.");
 		static_assert(IsVariantAlternative<FieldStoredType<Element>, ComponentFieldScalar>, "Vector element must be a ComponentFieldScalar type, shared_ptr<const Asset> or const Component*.");
+		field.valuePrototype = ComponentFieldList{};
 		// 기본값의 참조는 nullptr라 담을 컴포넌트가 필요 없고 항상 성공한다.
 		field.elementPrototype = ComponentFieldScalar(*ToStoredValue<Element>(Element{}, nullptr));
+	}
+	else
+	{
+		// 기본값의 참조는 nullptr라 담을 컴포넌트가 필요 없고 항상 성공한다.
+		field.valuePrototype = ComponentFieldValue(*ToStoredValue<Value>(Value{}, nullptr));
 	}
 
 	// T 이상의 타입에만 등록되므로 넘어온 component는 실제로 T이거나 T의 파생이다.
