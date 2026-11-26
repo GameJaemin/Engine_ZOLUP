@@ -7,6 +7,7 @@
 #include "PrototypeInputAdapter.h"
 #include "StitchBrainComponent.h"
 #include "ProximityLightComponent.h"
+#include "EscapeScenarioTests.h"
 
 #include "Component/BoxColliderComponent.h"
 #include "Component/ComponentTypeRegistry.h"
@@ -187,7 +188,7 @@ namespace PrototypeTests
 		patrol.Reset({ 0.0f, 0.0f, 850.0f });
 		StitchObservation quiet;
 		quiet.playerPosition = { 10000.0f, 0.0f, 10000.0f };
-		const Vector3 patrolPoints[]{ { -1300.0f, 0.0f, 1000.0f }, { 1300.0f, 0.0f, 1000.0f }, { 1300.0f, 0.0f, -1000.0f }, { -1300.0f, 0.0f, -1000.0f } };
+		const auto& patrolPoints = StitchBrainComponent::PatrolRoute;
 		int visited = 0;
 		bool patrolClear = true;
 		for (int index = 0; index < 10800; ++index)
@@ -263,6 +264,7 @@ namespace PrototypeTests
 				check(copiedLamp && copiedLamp->GetDarkRadius() == 500.0f && copiedLamp->GetBaseIntensity() == 3.0f, "registered game fields survive snapshot restoration");
 			}
 		}
+		RunEscapeScenarioTests(check);
 		std::printf("BabyDoll: %d failure(s)\n", failures);
 		return failures ? 1 : 0;
 	}

@@ -4,6 +4,7 @@
 #include "HideTableComponent.h"
 #include "PrototypeInputAdapter.h"
 #include "PhysicsProps.h"
+#include "EscapeScenario.h"
 
 #include "IApplication.h"
 #include "ObjectID.h"
@@ -32,6 +33,7 @@ struct PrototypeCheckpoint
 	Vector3 monsterPosition;
 	std::array<HideTableSnapshot, 2> tables;
 	bool valid = false;
+	EscapeProgress progress;
 };
 
 /** 조립과 실행 순서만 담당한다. 컴포넌트는 World 소유이며 이 앱이 World보다 먼저 참조를 비운다. */
@@ -53,6 +55,9 @@ private:
 	bool BuildMonster();
 	void SetCaptured(bool captured);
 	void ResetRun();
+	void RestoreCheckpoint();
+	void ApplyProgressVisuals();
+	int FindObjectiveInteraction() const;
 	void Simulate(const PrototypeCommand& command, float deltaTime);
 	void Present(float deltaTime);
 	void Interact();
@@ -90,6 +95,16 @@ private:
 	std::array<HideTableComponent*, 2> tables{};
 	std::array<GameObject*, 2> tableVisuals{};
 	PrototypeCheckpoint checkpoint;
+	EscapeLayout layout;
+	EscapeProgress progress;
+	GameObject* keyVisual = nullptr;
+	GameObject* carriedKeyVisual = nullptr;
+	GameObject* doorVisual = nullptr;
+	GameObject* escapeVisual = nullptr;
+	std::size_t doorObstacle = 0;
+	int deaths = 0;
+	float clearTime = 0.0f;
+	float soundPulseTime = 0.0f;
 	PrototypeCommand pending;
 	Vector3 exitStart;
 	Vector3 exitDestination;
@@ -116,7 +131,7 @@ private:
 	bool captured = false;
 	bool justCaptured = false;
 	bool freeMove = false;
-	bool soloControls = true;
+	bool soloControls = false;
 	bool previewRear = false;
 	bool lightsEnabled = true;
 	bool leftFootDown = false;

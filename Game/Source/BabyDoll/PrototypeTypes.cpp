@@ -1,4 +1,5 @@
 #include "PrototypeTypes.h"
+#include "EscapeScenario.h"
 
 #include "Core/Log.h"
 #include "Paths.h"
@@ -42,6 +43,17 @@ bool LoadPrototypeConfig(PrototypeConfig& config)
 		{ "monsterVisualYawOffset", &candidate.monsterVisualYawOffset, -180.0f, 180.0f },
 		{ "catchDistance", &candidate.catchDistance, 1.0f, 300.0f },
 		{ "calmTime", &candidate.calmTime, 0.1f, 20.0f },
+		{ "hideSuspicionRadius", &candidate.hideSuspicionRadius, 100.0f, 600.0f },
+		{ "hideSuspicionTime", &candidate.hideSuspicionTime, 0.1f, 20.0f },
+		{ "searchTimeout", &candidate.searchTimeout, 0.1f, 30.0f },
+		{ "smashTime", &candidate.smashTime, 0.1f, 10.0f },
+		{ "roarTime", &candidate.roarTime, 0.1f, 10.0f },
+		{ "listenTime", &candidate.listenTime, 0.1f, 10.0f },
+		{ "lookTime", &candidate.lookTime, 0.1f, 10.0f },
+		{ "patrolWait", &candidate.patrolWait, 0.1f, 10.0f },
+		{ "hideExitTime", &candidate.hideExitTime, 0.1f, 5.0f },
+		{ "wrongSoundRadius", &candidate.wrongSoundRadius, 100.0f, 10000.0f },
+		{ "chaseStartDistance", &candidate.chaseStartDistance, 100.0f, 5000.0f },
 		{ "mouseSensitivity", &candidate.mouseSensitivity, 0.01f, 1.0f },
 		{ "cameraDistance", &candidate.cameraDistance, 100.0f, 1200.0f },
 		{ "runningCameraDistance", &candidate.runningCameraDistance, 100.0f, 1400.0f },
@@ -83,5 +95,36 @@ bool LoadPrototypeConfig(PrototypeConfig& config)
 	if (std::floor(candidate.rearWidth) != candidate.rearWidth || std::floor(candidate.rearHeight) != candidate.rearHeight) { return false; }
 	config = candidate;
 	Log::Write(LogLevel::Info, "BabyDoll", "Loaded prototype tuning");
+	return true;
+}
+
+bool LoadEscapeLayout(EscapeLayout& layout)
+{
+	std::filesystem::path path;
+	if (!Paths::GetAbsolutePath("Game/Content/BabyDoll/Config/Escape.json", path)) { return false; }
+	std::ifstream file(path);
+	if (!file) { return false; }
+	const std::string json((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+	rapidjson::Document document;
+	document.Parse(json.c_str());
+	if (document.HasParseError() || !document.IsObject()) { return false; }
+	EscapeLayout candidate = layout;
+	struct Field { const char* name; float* value; float minimum; float maximum; };
+	const Field fields[]{
+		{ "keyX", &candidate.keyPosition.x, -2000.0f, -1100.0f },
+		{ "keyZ", &candidate.keyPosition.z, 800.0f, 1500.0f },
+		{ "escapeX", &candidate.escapePosition.x, 1200.0f, 2000.0f },
+		{ "escapeZ", &candidate.escapePosition.z, -1300.0f, -900.0f },
+		{ "interactionDistance", &candidate.interactionDistance, 100.0f, 280.0f },
+		{ "escapeRadius", &candidate.escapeRadius, 80.0f, 250.0f }
+	};
+	for (const Field& field : fields)
+	{
+		if (!document.HasMember(field.name)) { continue; }
+		const auto& value = document[field.name];
+		if (!value.IsNumber() || !std::isfinite(value.GetFloat()) || value.GetFloat() < field.minimum || value.GetFloat() > field.maximum) { return false; }
+		*field.value = value.GetFloat();
+	}
+	layout = candidate;
 	return true;
 }

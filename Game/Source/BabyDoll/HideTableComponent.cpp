@@ -17,7 +17,7 @@ void HideTableComponent::Restore(const HideTableSnapshot& snapshot)
 	breakableOccupancy = false;
 }
 
-bool HideTableComponent::FindExit(float viewYaw, const Vector3& monster, const GameplaySpace& space, Vector3& exit) const
+bool HideTableComponent::FindExit(float viewYaw, const Vector3& monster, const GameplaySpace& space, Vector3& exit, bool forced) const
 {
 	Vector3 away = center - monster;
 	away.y = 0.0f;
@@ -34,5 +34,6 @@ bool HideTableComponent::FindExit(float viewYaw, const Vector3& monster, const G
 		}
 		if (clear) { exit = candidate; return true; }
 	}
+	if (forced && broken && space.IsFree(center, 30.0f, 120.0f)) { exit = center; return true; }
 	return false;
 }

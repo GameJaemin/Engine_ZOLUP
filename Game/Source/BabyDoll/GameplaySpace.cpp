@@ -67,11 +67,13 @@ Vector3 GameplaySpace::Move(const Vector3& position, const Vector3& displacement
 	return result;
 }
 
-float GameplaySpace::CameraDistance(const Vector3& origin, const Vector3& direction, float distance, float radius) const
+float GameplaySpace::CameraDistance(const Vector3& origin, const Vector3& direction, float distance, float radius, std::optional<std::size_t> ignoredObstacle) const
 {
 	float available = distance;
-	for (const PrototypeObstacle& obstacle : obstacles)
+	for (std::size_t index = 0; index < obstacles.size(); ++index)
 	{
+		if (ignoredObstacle && *ignoredObstacle == index) { continue; }
+		const PrototypeObstacle& obstacle = obstacles[index];
 		if (!obstacle.enabled) { continue; }
 		float nearTime = 0.0f;
 		float farTime = available;

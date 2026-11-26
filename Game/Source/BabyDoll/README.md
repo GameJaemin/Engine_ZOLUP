@@ -1,10 +1,16 @@
 # BabyDoll 프로토타입: 코드와 플레이 흐름 보고서
 
-2026-11-26 엔진 업데이트 기준. Engine/Renderer 소스와 기획 원본 PDF/XLSX는 수정하지 않았다. Game 코드, 게임 설정, 프로젝트의 게임 파일 등록만 변경했다. 이 문서는 구현 보고서이며 원본 기획의 변경안이 아니다.
+2026-11-26 엔진 업데이트 기준. 이번 탈출 프로토타입 작업은 Game 코드와 게임 설정/문서만 변경했다. Engine/Renderer/Editor, 프로젝트 파일, 기획 원본 PDF/XLSX는 수정하지 않았다. 이 문서는 구현 보고서이며 원본 기획의 변경안이 아니다.
+
+검증: Debug x64(v143 14.44, PDB 포함) 빌드 성공. BabyDoll 74개와 ThirdPerson 14개 검사 통과. 문 표면/가장자리 접근, 추격 중 열쇠 사용, 다른 벽에 의한 가림도 검사한다. 탈출 경로 검사는 실제 교대 발 입력과 PlayerMoveComponent 충돌을 사용하며, 전시대/테이블/칸막이/잠긴 문이 포함된 배치에서 키 획득 → 귀환 → 문 개방 → 클리어를 검사한다. 잠긴 문 상태의 괴물 순찰, 포효 중 단발 소리 기억, 원격 테이블 파괴 방지, 파괴 후 막힌 출구도 회귀 검사한다. 실제 창에서는 시작 화면과 목표/조작 안내의 렌더링을 확인했다. 사람의 협동 완주와 난이도/재미 평가는 별도 플레이 테스트가 필요하다.
 
 ## 이번 개선
 
-- 기본 모드는 1인용이며 S(왼발) / D(오른발)를 번갈아 눌러 이동한다. 시작 화면의 Play mode에서 협동 S/마침표 모드도 선택할 수 있다. 입력 순서를 유지하고 OS 키 반복을 걸음에서 제외한다. 양쪽 키의 눌림 상태를 분홍/청록 안내로 표시한다. 1인용과 협동은 동일한 이동 규칙을 사용한다.
+- 시작부터 클리어까지 이어지는 한 층 탈출 구간이다. 전시홀 입구 → 북쪽 금색 기둥 사이로 창고 진입 → 황동 열쇠 획득 → 전시홀로 귀환 → 남동쪽 빨간 문 해제 → 초록 탈출 표식 도달 → 결과 화면/다시 플레이 순서다. 이 배치는 프로토타입용이며 원안의 2층 엘리베이터 챕터를 대체 확정하지 않는다.
+- 기본 모드는 협동 S(왼발) / 마침표(오른발)다. 개발용 Single player에서는 S/D를 쓴다. 양쪽 모두 동일한 이동 규칙이며 키 반복을 걸음에서 제외한다. T(솔로 우클릭)는 열쇠 획득, 출구 해제, 숨기/나오기에 사용한다.
+- 잡히면 1.6초 후 입구 체크포인트로 돌아온다. 열쇠/문/테이블 수명과 잔해/괴물/심박/물리 상자는 시작 상태로 함께 초기화한다. 중간 체크포인트나 디스크 저장은 제공하지 않는다. 총 플레이 시간과 잡힌 횟수는 완주 결과에 표시한다.
+- 청각 판정은 기존 게임 로직을 유지한다. 실제 음원 재생은 연결하지 않는다. 실수 소리 알림, 소리 링, 심박, 위협 상태, 조명, CCTV가 시각 단서다. 목표 거리/방향을 표시하며 키와 열린 출구는 월드의 금색/초록색 표식으로 찾는다.
+- 일반 포효/테이블 파괴 중 들은 소리는 기억해 종료 후 평가한다. 접근할 수 없는 숨기 지점의 수색 시간 초과는 의심으로 전환하며, 테이블 파괴는 가까이에서 정해진 관찰 시간을 채웠을 때만 시작한다. 파괴 후 출구가 모두 막혀도 Hidden 보호가 남지 않으며 안전한 착지가 전혀 없으면 체크포인트로 복귀한다.
 - 추격 시 엔진 SceneCapture2D로 CCTV를 켜고, 추격 종료 후 5초 유지한다. 거리에 따른 구도, 부드러운 추적, 저채도, REC/스캔라인을 적용했다. 벽에 가까우면 측면 구도를 찾고 실제 카메라 거리로 FOV를 계산한다. 종료 시 캡처 객체를 제거해 추가 렌더링을 중단한다.
 - 전등 9개에 근접 조명 컴포넌트를 부착했다. 몬스터가 수평 15m 안에 들어오면 0.6초 깜빡인 뒤 꺼지고, 범위를 벗어나면 즉시 복구한다. 한 층 테스트룸 규칙이다. Ambient/Directional은 남아 있어 완전 암전은 아니다.
 - 바닥·벽·전시대·테이블에 엔진 박스 콜라이더를, 상자 3개에 Jolt 강체를 연결했다. 상자의 낙하·회전·정착 결과를 게임 이동/카메라 장애물 AABB에도 반영한다. 테이블 파괴 시 상판과 다리 콜라이더를 함께 제거하고 리셋 시 복구한다.
@@ -13,17 +19,19 @@
 
 ## 실행과 기능별 확인
 
-Visual Studio의 F5는 기본 인자 `--editor`로 에디터를 연다. 모델 미리보기는 `SeonEngine.exe`를 인자 없이 실행하면 열린다. [Visual Studio 실행 설정](../../../Docs/BuildSetup.md#visual-studio에서-실행)
+Visual Studio에서 F5를 누르면 기본 인자 `--editor`로 에디터가 열린다. [Visual Studio 실행 설정](../../../Docs/BuildSetup.md#visual-studio에서-실행)
 
-기본 실행 파일: `Binaries/v143/x64/Debug/SeonEngine.exe`. 모델 미리보기에서 Single player (S / D)를 선택하고 Start single player로 들어간다. 협동은 Co-op (S / period)를 선택한 뒤 Start co-op으로 시작한다. 기존 Bistro 데모는 `--third-person`, 에디터는 `--editor`, 자동 검사는 `--babydoll-test`다.
+`Binaries/v143/x64/Debug/SeonEngine.exe`를 인자 없이 실행하면 BabyDoll 시작 화면이 열린다. `Single player (S / D)` 또는 `Co-op (S / period)`을 선택한 뒤 `Begin escape`를 누른다. `Esc`로 일시정지하거나 재개할 수 있고, 완주 화면에서 `Play again`을 누르면 새 판이 시작된다.
+
+모델 미리보기는 `Developer tools`에서 `Model preview`를 선택하면 열린다. WASD 이동, 무적 및 AI 끄기 옵션도 `Developer tools`에 있다. Bistro 데모는 `--third-person`, BabyDoll 자동 검사는 `--babydoll-test`로 실행한다.
 
 ```powershell
-./Tools/AssetPipeline/BuildBabyDoll.ps1 -NoDebugSymbols
+./Tools/AssetPipeline/BuildBabyDoll.ps1
 ./Binaries/v143/x64/Debug/SeonEngine.exe --babydoll-test
 ./Binaries/v143/x64/Debug/SeonEngine.exe
 ```
 
-v143 14.44로 검증했다. `-NoDebugSymbols`는 설치된 PDB DLL 버전 충돌(LNK1101)을 피하는 실행 검증용 옵션이다. IDE 디버깅에서는 정상적인 심벌 환경에서 이 옵션 없이 빌드한다. 공용 디버그 설정은 변경하지 않았다.
+v143 14.44와 디버그 심벌을 포함한 빌드로 검증한다. 제한된 실행 환경에서는 PDB 서비스 접근 제한으로 LNK1101이 발생할 수 있으며 일반 빌드 환경에서 검증한다. `-NoDebugSymbols`는 해당 제한 환경의 실행 확인용 선택 옵션이다.
 
 | 조작 | 동작 |
 | --- | --- |
@@ -31,7 +39,7 @@ v143 14.44로 검증했다. `-NoDebugSymbols`는 설치된 PDB DLL 버전 충돌
 | S / . 번갈아 누름 | 협동 왼발/오른발, 리듬 가속 |
 | 같은 발 두 번 | 넘어짐과 실수 소리 이벤트 1회 |
 | 마우스 | 시야와 이동 방향 |
-| T | 바라보는 테이블에 숨기 / 시야 방향으로 나오기 |
+| T | 열쇠 획득 / 잠긴 출구 열기 / 테이블 숨기·나오기 |
 | Space | AI 확인용 큰 실수 소리 이벤트 |
 | Esc | 일시정지와 커서 해제 / 재개 |
 | Tab | 컴포넌트 진단 |
@@ -53,7 +61,7 @@ R 손동작은 예약만 했다. 1인용은 오른발 D와 우클릭 상호작�
 OnInitialize
   설정 로드 → 방/콜라이더/전등 → 몬스터/포즈
   플레이어·심박·CCTV·메인 카메라 부착 → 물리 상자
-  시작 상태 복원 → 물리 준비 → 모델 미리보기
+  시작 상태 복원 -> 물리 준비 -> BabyDoll 시작 화면
 
 OnUpdate (렌더 프레임마다)
   입력/마우스 읽기 → 명령 누적 → 시야 목표 갱신
@@ -101,9 +109,13 @@ GetRenderRequest → 메인 뷰 (엔진이 등록된 SceneCapture 뷰도 함께 
 
 AI는 들린 위치를 추적 목적지로 사용한다. 실제 플레이어 위치는 잡기·숨기 관찰·근접 감속 등의 별도 판정에 사용한다. 경로는 100cm 격자 A*이며 불필요한 꺾임을 줄이고 앞쪽 지점을 추종한다. 몸의 전방으로 이동하며 큰 선회에서는 감속하고 회전 속도/가속도를 제한한다. 원본 SCISSORMAN의 +X 정면과 엔진 좌표계는 +90도 모델 보정으로 맞췄다.
 
-## 수정 가능한 JSON 값 45개
+## 수정 가능한 게임 설정
 
 `Game/Content/BabyDoll/Config/Prototype.json` 수정 후 다시 실행하면 적용된다. 재컴파일은 필요 없다. 허용 범위는 `PrototypeTypes.cpp::LoadPrototypeConfig`에 있다. 잘못된 값은 부분 적용하지 않고 로드를 실패시킨다. 런타임 자동 저장/파일 재로드는 없다.
+
+탈출 구간의 `Config/Escape.json`은 열쇠 위치(keyX/keyZ), 탈출 표식 위치(escapeX/escapeZ), 상호작용 거리(interactionDistance), 클리어 반경(escapeRadius)을 조절한다. 벽과 출입구는 고정된 한 층 배치이므로 허용 범위 안에서만 이동할 수 있다. 공간 단위는 cm다.
+
+추가 AI 값: hideSuspicionRadius=300cm, hideSuspicionTime=2초, searchTimeout=3초, smashTime=1.4초, roarTime=2초, listenTime=1.3초, lookTime=2.2초, patrolWait=2.2초, hideExitTime=1.1초, wrongSoundRadius=4500cm, chaseStartDistance=1000cm. calmTime은 의심 중 심박 진정 시간으로 별도 조절한다.
 
 | 키 | 현재 값 | 의미/단위 |
 | --- | --- | --- |
@@ -157,7 +169,7 @@ AI는 들린 위치를 추적 목적지로 사용한다. 실제 플레이어 위
 
 메뉴에서 즉시 바꿀 값은 Sensitivity, Camera follow, Look response, Model facing, CCTV saturation이다. Free movement/Play mode/AI enabled/Ignore capture/Diagnostics/Preview CCTV/Proximity lamps도 런타임 옵션이다. 조명 타입의 darkRadiusCm/flickerTime/baseIntensity는 Inspector용 등록 필드다. 현재 별도 테스트룸을 에디터에서 자동으로 여는 작업까지 연결한 것은 아니다.
 
-아직 코드에서 수정하는 값: 방/테이블/스폰 배치는 BabyDollApplication.cpp::BuildRoom 및 PlayerSpawn/MonsterSpawn, 정찰 지점/행동 타이머는 StitchBrainComponent.cpp, 격자는 GameplaySpace.cpp, 상자 개수/배치는 PhysicsProps.cpp, 심박 기준(72/100/150)과 소리 수식은 HeartComponent.cpp다. 카메라 어깨 오프셋/피치 제한/충돌 여유는 OrbitCameraComponent.cpp에 있다. 이 값은 변경 후 빌드해야 한다.
+아직 코드에서 수정하는 값: 고정 방 벽/출입구/테이블 배치는 EscapeScenario.h, 스폰은 BabyDollApplication.cpp, 정찰 지점은 StitchBrainComponent.h::PatrolRoute, 격자는 GameplaySpace.cpp, 상자 개수/배치는 PhysicsProps.cpp, 심박 기준(72/100/150)과 소리 수식은 HeartComponent.cpp다. 카메라 어깨 오프셋/피치 제한/충돌 여유는 OrbitCameraComponent.cpp에 있다. 이 값은 변경 후 빌드해야 한다.
 
 ## 미구현: 엔진 지원이 필요한 부분과 콘텐츠 후속 작업
 
@@ -170,7 +182,7 @@ AI는 들린 위치를 추적 목적지로 사용한다. 실제 플레이어 위
 | 실제 소리 재생 | 확인한 공용 API에 음원 재생/공간 오디오 경로가 없어 소리 이벤트 판정과 UI만 동작한다. |
 | 전체 게임 저장/Play 복제 | 엔진 스냅샷은 준비되어 있다. 게임 AI/이동/심박/테이블 상태 등록과 참조 재연결은 후속 작업이다. 새 전등/기본 물리 객체 복제만 검사했다. |
 | CCTV 추가 효과 | 저채도/스캔라인/REC는 구현했다. 필름 그레인은 이번 범위에서 제외했다. |
-| 손동작/사다리/봉/문/열쇠/퍼즐/챕터 | 한 층 테스트룸 이후의 콘텐츠 작업이다. |
+| 사다리/봉/일반 손동작/퍼즐/정식 챕터 | 이번에는 열쇠 1개·잠긴 출구 1개·탈출 판정까지만 구현한다. 다층·퍼즐·2층 엘리베이터는 후속 작업이다. |
 | 최종 캐릭터/애니메이션 | 플레이어는 도형이며 SCISSORMAN 기존 클립을 임시 매핑했다. 스티치 전용 촉수/포효/파괴/제자리 선회 클립은 없다. |
 
 재시작은 시작 체크포인트의 메모리 상태 복원이다. 디스크 영속 저장과 임의 진행 시점 복원은 미구현이다. 테이블은 첫 추격 점유에서 수명을 소모하고 다음 점유부터 파괴 가능하다. 잔해에는 콜라이더를 두지 않는다. 숨은 심박은 기획의 2초 뒤 100 미만을 만족하도록 99.9로 진정시키는 구현 정책이다. UI는 기본 ImGui 폰트에 맞춰 영어다.

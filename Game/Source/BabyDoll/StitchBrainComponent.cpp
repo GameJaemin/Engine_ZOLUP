@@ -1,19 +1,15 @@
 #include "StitchBrainComponent.h"
 
-namespace
-{
-	constexpr Vector3 PatrolPoints[]{ { -1300.0f, 0.0f, 1000.0f }, { 1300.0f, 0.0f, 1000.0f }, { 1300.0f, 0.0f, -1000.0f }, { -1300.0f, 0.0f, -1000.0f } };
-}
-
 void StitchBrainComponent::Reset(const Vector3& spawn)
 {
 	movement.Reset(spawn, 180.0f);
-	destination = PatrolPoints[0];
+	destination = PatrolRoute[0];
 	state = StitchState::Patrol;
 	action = StitchAction::Moving;
 	stateTime = actionTime = hiddenTime = unreachableTime = 0.0f;
 	patrolIndex = 0;
 	resumeAfterRoar = brokeTable = caught = false;
+	deferredSound.reset();
 }
 
 void StitchBrainComponent::BeginAction(StitchAction nextAction)
@@ -30,7 +26,7 @@ void StitchBrainComponent::ChangeState(StitchState nextState)
 	hiddenTime = unreachableTime = stateTime = 0.0f;
 	state = nextState;
 	BeginAction(StitchAction::Moving);
-	if (state == StitchState::Patrol) { destination = PatrolPoints[patrolIndex]; }
+	if (state == StitchState::Patrol) { destination = PatrolRoute[patrolIndex]; }
 }
 
 void StitchBrainComponent::Roar(bool resumeChase)
@@ -45,29 +41,42 @@ void StitchBrainComponent::Step(const StitchObservation& observation, float delt
 	stateTime += deltaTime;
 	actionTime += deltaTime;
 	const float playerDistance = PrototypeMath::Distance(movement.GetPosition(), observation.playerPosition);
+	if (!observation.hidden) { hiddenTime = unreachableTime = 0.0f; }
+	if ((action == StitchAction::Smashing || action == StitchAction::Roaring) && observation.sound
+		&& !(state == StitchState::Suspicious && observation.hidden && observation.sound->kind == SoundKind::Heart))
+	{
+		const auto& sound = *observation.sound;
+		if (!deferredSound || sound.player > deferredSound->player || (sound.player == deferredSound->player && sound.sequence >= deferredSound->sequence)) { deferredSound = sound; }
+	}
 	if (action == StitchAction::Smashing)
 	{
 		movement.Stop(deltaTime, config, space);
-		if (actionTime >= 1.4f) { brokeTable = true; Roar(true); }
+		if (actionTime >= config.smashTime) { brokeTable = true; Roar(true); }
 		return;
 	}
 	if (action == StitchAction::Roaring)
 	{
 		movement.Stop(deltaTime, config, space);
-		if (actionTime >= 2.0f)
+		if (actionTime >= config.roarTime)
 		{
 			if (resumeAfterRoar) { ChangeState(StitchState::Chase); BeginAction(StitchAction::Moving); }
 			else { ChangeState(StitchState::Patrol); BeginAction(StitchAction::Moving); }
 		}
-		return;
+		else { return; }
 	}
-	if (observation.sound)
+	std::optional<SoundStimulus> heard = observation.sound;
+	if (deferredSound)
 	{
-		const SoundStimulus& sound = *observation.sound;
+		if (!heard || deferredSound->player > heard->player || (deferredSound->player == heard->player && deferredSound->sequence > heard->sequence)) { heard = deferredSound; }
+		deferredSound.reset();
+	}
+	if (heard)
+	{
+		const SoundStimulus& sound = *heard;
 		const bool protectedHeartbeat = observation.hidden && sound.kind == SoundKind::Heart;
 		if (!(protectedHeartbeat && state == StitchState::Suspicious))
 		{
-			const bool chase = sound.player && !(sound.kind == SoundKind::Mistake && playerDistance > 1000.0f);
+			const bool chase = sound.player && !(sound.kind == SoundKind::Mistake && PrototypeMath::Distance(movement.GetPosition(), sound.position) > config.chaseStartDistance);
 			if (chase) { ChangeState(StitchState::Chase); }
 			else if (state != StitchState::Chase) { ChangeState(StitchState::Suspicious); }
 			destination = sound.position;
@@ -77,12 +86,12 @@ void StitchBrainComponent::Step(const StitchObservation& observation, float delt
 	else if (state == StitchState::Chase && !observation.hidden) { ChangeState(StitchState::Suspicious); }
 	if (state == StitchState::Chase && observation.hidden)
 	{
-		hiddenTime = playerDistance <= 300.0f ? hiddenTime + deltaTime : 0.0f;
+		hiddenTime = playerDistance <= config.hideSuspicionRadius ? hiddenTime + deltaTime : 0.0f;
 		const bool reached = movement.HasArrived();
 		unreachableTime = reached ? unreachableTime + deltaTime : 0.0f;
-		if (hiddenTime >= 2.0f || unreachableTime >= 3.0f)
+		if (hiddenTime >= config.hideSuspicionTime || unreachableTime >= config.searchTimeout)
 		{
-			if (observation.breakableTable) { movement.Stop(deltaTime, config, space); BeginAction(StitchAction::Smashing); return; }
+			if (observation.breakableTable && hiddenTime >= config.hideSuspicionTime) { movement.Stop(deltaTime, config, space); BeginAction(StitchAction::Smashing); return; }
 			ChangeState(StitchState::Suspicious);
 			BeginAction(StitchAction::Listening);
 		}
@@ -108,15 +117,15 @@ void StitchBrainComponent::Step(const StitchObservation& observation, float delt
 	else
 	{
 		movement.Stop(deltaTime, config, space);
-		if (action == StitchAction::Waiting && actionTime >= 2.2f)
+		if (action == StitchAction::Waiting && actionTime >= config.patrolWait)
 		{
 			patrolIndex = (patrolIndex + 1) % 4;
-			destination = PatrolPoints[patrolIndex];
+			destination = PatrolRoute[patrolIndex];
 			movement.InvalidatePath();
 			BeginAction(StitchAction::Moving);
 		}
-		else if (action == StitchAction::Listening && actionTime >= 1.3f) { BeginAction(StitchAction::Looking); }
-		else if (action == StitchAction::Looking && actionTime >= 2.2f) { Roar(false); }
+		else if (action == StitchAction::Listening && actionTime >= config.listenTime) { BeginAction(StitchAction::Looking); }
+		else if (action == StitchAction::Looking && actionTime >= config.lookTime) { Roar(false); }
 	}
 	if (!observation.hidden && playerDistance <= config.catchDistance) { caught = true; }
 }
