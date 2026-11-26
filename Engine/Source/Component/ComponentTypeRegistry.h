@@ -2,6 +2,7 @@
 
 #include "Component/Component.h"
 #include "Core/Math/EulerAngles.h"
+#include "Core/Math/Quaternion.h"
 #include "Core/Math/Transform.h"
 #include "Core/Math/Vector2.h"
 #include "Core/Math/Vector3.h"
@@ -40,7 +41,7 @@ struct ComponentReference
 };
 
 // 값 하나다. 목록의 원소가 될 수 있는 종류다.
-using ComponentFieldScalar = std::variant<bool, int, float, Vector2, Vector3, EulerAngles, Transform, AssetReference, ComponentReference>;
+using ComponentFieldScalar = std::variant<bool, int, float, Vector2, Vector3, EulerAngles, Quaternion, Transform, AssetReference, ComponentReference, std::string>;
 
 /** 값 하나의 목록이다. 원소는 다시 목록이 될 수 없다(중첩 배열은 지원하지 않는다). */
 struct ComponentFieldList
@@ -49,7 +50,7 @@ struct ComponentFieldList
 };
 
 // 속성 값 하나를 담는다. 값 하나이거나 목록이다. 앞쪽 종류는 ComponentFieldScalar와 같은 순서로 둔다.
-using ComponentFieldValue = std::variant<bool, int, float, Vector2, Vector3, EulerAngles, Transform, AssetReference, ComponentReference, ComponentFieldList>;
+using ComponentFieldValue = std::variant<bool, int, float, Vector2, Vector3, EulerAngles, Quaternion, Transform, AssetReference, ComponentReference, std::string, ComponentFieldList>;
 
 static_assert(std::variant_size_v<ComponentFieldValue> == std::variant_size_v<ComponentFieldScalar> + 1, "ComponentFieldValue must list every ComponentFieldScalar type plus ComponentFieldList.");
 
@@ -96,7 +97,7 @@ inline constexpr bool IsVariantAlternative<Value, std::variant<Types...>> = (std
 template <typename Value>
 inline constexpr bool IsComponentFieldValueType = IsVariantAlternative<Value, ComponentFieldValue>;
 
-/** value 안의 실수가 모두 유한하면 true를 반환한다. bool과 int는 항상 true다. */
+/** value 안의 실수가 모두 유한하면 true를 반환한다. bool, int, 문자열처럼 실수가 없는 값은 항상 true다. */
 template <typename Value>
 bool IsFiniteFieldValue(const Value& value)
 {
@@ -104,6 +105,7 @@ bool IsFiniteFieldValue(const Value& value)
 	else if constexpr (std::is_same_v<Value, Vector2>) { return std::isfinite(value.x) && std::isfinite(value.y); }
 	else if constexpr (std::is_same_v<Value, Vector3>) { return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z); }
 	else if constexpr (std::is_same_v<Value, EulerAngles>) { return std::isfinite(value.pitch) && std::isfinite(value.yaw) && std::isfinite(value.roll); }
+	else if constexpr (std::is_same_v<Value, Quaternion>) { return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z) && std::isfinite(value.w); }
 	else if constexpr (std::is_same_v<Value, Transform>)
 	{
 		return IsFiniteFieldValue(value.position) && IsFiniteFieldValue(value.scale)
@@ -138,6 +140,9 @@ struct ComponentFieldDisplay
 	bool isColor = false;
 	// int 속성을 드롭다운으로 그릴 때의 이름 목록이다. 값 0, 1, 2...가 차례로 각 이름에 대응한다. 비어 있으면 숫자 칸으로 그린다.
 	std::vector<std::string> enumNames;
+	// 목록 속성에서 Inspector가 원소 추가와 삭제 버튼을 그릴지 정한다. 원소 값 편집은 이 값과 상관없이 된다.
+	// 원소 개수가 다른 상태와 맞아야 하는 목록(예: 애니메이션 노드)은 false로 둔다.
+	bool canResize = false;
 };
 
 /** 컴포넌트 속성 하나의 이름, 읽기와 쓰기 함수 및 표시 정보다. 이 속성을 등록한 ComponentTypeInfo가 소유한다. */
