@@ -29,6 +29,15 @@ Matrix4x4 Matrix4x4::operator*(const Matrix4x4& other) const
 	return result;
 }
 
+Vector3 Matrix4x4::TransformPoint(const Vector3& point) const
+{
+	return Vector3{
+		point.x * m[0][0] + point.y * m[1][0] + point.z * m[2][0] + m[3][0],
+		point.x * m[0][1] + point.y * m[1][1] + point.z * m[2][1] + m[3][1],
+		point.x * m[0][2] + point.y * m[1][2] + point.z * m[2][2] + m[3][2]
+	};
+}
+
 bool Matrix4x4::GetAffineInverse(Matrix4x4& outInverse) const
 {
 	// 위쪽 3x3의 여인수다. 0행 전개로 행렬식을 구하고, 역행렬의 0열에도 쓴다.

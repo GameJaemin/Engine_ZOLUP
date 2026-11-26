@@ -50,7 +50,7 @@ namespace ThirdPersonTests
 		ThirdPersonMotor diagonalMotor;
 		diagonalMotor.Reset({ 0.0f, 0.1f, 0.0f }, 0.0f);
 		Simulate(diagonalMotor, diagonal, flat, 120, 1.0f / 60.0f);
-		check(std::abs(ThirdPersonMath::Length(diagonalMotor.GetPosition()) - ThirdPersonMath::Length(straight.GetPosition())) < 0.5f, "diagonal speed is normalized");
+		check(std::abs(diagonalMotor.GetPosition().Length() - straight.GetPosition().Length()) < 0.5f, "diagonal speed is normalized");
 		ThirdPersonMotor running;
 		running.Reset({ 0.0f, 0.1f, 0.0f }, 0.0f);
 		ThirdPersonInput sprint = walk;

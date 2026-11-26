@@ -5,6 +5,7 @@
 #include "Component/StaticMeshComponent.h"
 #include "Component/TransformComponent.h"
 #include "Core/Log.h"
+#include "Core/Math/Matrix4x4.h"
 #include "Core/Math/Transform.h"
 #include "Core/Math/Vector3.h"
 #include "Engine.h"
@@ -54,15 +55,6 @@ namespace
 		Vector3 end;
 	};
 
-	Vector3 TransformPickPoint(const Vector3& point, const Matrix4x4& matrix)
-	{
-		return Vector3{
-			point.x * matrix.m[0][0] + point.y * matrix.m[1][0] + point.z * matrix.m[2][0] + matrix.m[3][0],
-			point.x * matrix.m[0][1] + point.y * matrix.m[1][1] + point.z * matrix.m[2][1] + matrix.m[3][1],
-			point.x * matrix.m[0][2] + point.y * matrix.m[1][2] + point.z * matrix.m[2][2] + matrix.m[3][2]
-		};
-	}
-
 	std::optional<PickSegment> BuildPickSegment(const ViewportPickClick& click, const CameraViewInfo& camera)
 	{
 		Matrix4x4 projection;
@@ -80,8 +72,8 @@ namespace
 		const Vector3 viewStart{ viewX * nearScale, viewY * nearScale, camera.nearClipDistance };
 		const Vector3 viewEnd{ viewX * farScale, viewY * farScale, camera.farClipDistance };
 		const Matrix4x4 cameraToWorld = Matrix4x4::CreateFromQuaternion(camera.rotation) * Matrix4x4::CreateTranslation(camera.position);
-		const Vector3 start = TransformPickPoint(viewStart, cameraToWorld);
-		const Vector3 end = TransformPickPoint(viewEnd, cameraToWorld);
+		const Vector3 start = cameraToWorld.TransformPoint(viewStart);
+		const Vector3 end = cameraToWorld.TransformPoint(viewEnd);
 		const Vector3 direction = end - start;
 		const float lengthSquared = direction.Dot(direction);
 		if (!std::isfinite(lengthSquared) || lengthSquared <= 0.0f) { return std::nullopt; }
@@ -140,9 +132,9 @@ namespace
 					const std::size_t vertexCount = mesh->vertices.size();
 					if (aIndex >= vertexCount || bIndex >= vertexCount || cIndex >= vertexCount) { continue; }
 
-					const Vector3 a = TransformPickPoint(mesh->vertices[aIndex].position, worldMatrix);
-					const Vector3 b = TransformPickPoint(mesh->vertices[bIndex].position, worldMatrix);
-					const Vector3 c = TransformPickPoint(mesh->vertices[cIndex].position, worldMatrix);
+					const Vector3 a = worldMatrix.TransformPoint(mesh->vertices[aIndex].position);
+					const Vector3 b = worldMatrix.TransformPoint(mesh->vertices[bIndex].position);
+					const Vector3 c = worldMatrix.TransformPoint(mesh->vertices[cIndex].position);
 					float fraction = 0.0f;
 					if (!IntersectPickTriangle(segment.start, direction, a, b, c, fraction)) { continue; }
 					if (closestObject != nullptr && fraction >= closestFraction) { continue; }

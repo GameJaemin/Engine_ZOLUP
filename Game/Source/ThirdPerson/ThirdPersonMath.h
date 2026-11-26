@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Core/Math/Matrix4x4.h"
 #include "Core/Math/Vector3.h"
 
 #include <algorithm>
@@ -8,22 +7,6 @@
 
 namespace ThirdPersonMath
 {
-	inline float Length(const Vector3& value)
-	{
-		return std::sqrt(value.Dot(value));
-	}
-
-	inline Vector3 Normalize(const Vector3& value)
-	{
-		const float length = Length(value);
-		return length > 0.00001f ? value / length : Vector3{};
-	}
-
-	inline Vector3 TransformPoint(const Vector3& value, const Matrix4x4& matrix)
-	{
-		return Vector3{ value.x * matrix.m[0][0] + value.y * matrix.m[1][0] + value.z * matrix.m[2][0] + matrix.m[3][0], value.x * matrix.m[0][1] + value.y * matrix.m[1][1] + value.z * matrix.m[2][1] + matrix.m[3][1], value.x * matrix.m[0][2] + value.y * matrix.m[1][2] + value.z * matrix.m[2][2] + matrix.m[3][2] };
-	}
-
 	inline Vector3 ClosestTrianglePoint(const Vector3& point, const Vector3& a, const Vector3& b, const Vector3& c)
 	{
 		const Vector3 ab = b - a;
@@ -104,7 +87,7 @@ namespace ThirdPersonMath
 			surfacePoint = atEnd;
 			best = endDistance;
 		}
-		const Vector3 normal = Normalize((b - a).Cross(c - a));
+		const Vector3 normal = (b - a).Cross(c - a).Normalized();
 		const float denominator = normal.Dot(end - start);
 		if (std::abs(denominator) > 0.000001f)
 		{
@@ -113,7 +96,7 @@ namespace ThirdPersonMath
 			{
 				const Vector3 point = Vector3::Lerp(start, end, time);
 				const Vector3 closest = ClosestTrianglePoint(point, a, b, c);
-				if (Length(point - closest) < 0.001f)
+				if ((point - closest).Length() < 0.001f)
 				{
 					axisPoint = surfacePoint = point;
 					return;
