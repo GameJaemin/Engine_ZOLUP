@@ -101,6 +101,7 @@ bool RegisterEngineComponentTypes(ComponentTypeRegistry& registry)
 	if (registry.Register<SceneCapture2DComponent, Component>("SceneCapture2DComponent") == nullptr) { return false; }
 	if (!registry.AddField<SceneCapture2DComponent>("width", &GetCaptureWidth, &SetCaptureWidth, { .displayName = "Width (px)", .dragSpeed = 1.0f, .minValue = 1.0f, .maxValue = 4096.0f })) { return false; }
 	if (!registry.AddField<SceneCapture2DComponent>("height", &GetCaptureHeight, &SetCaptureHeight, { .displayName = "Height (px)", .dragSpeed = 1.0f, .minValue = 1.0f, .maxValue = 4096.0f })) { return false; }
+	if (!registry.AddField<SceneCapture2DComponent>("saturation", &SceneCapture2DComponent::GetSaturation, &SceneCapture2DComponent::SetSaturation, { .displayName = "Saturation", .dragSpeed = 0.01f, .minValue = 0.0f, .maxValue = 2.0f })) { return false; }
 
 	if (registry.Register<StaticMeshComponent, Component>("StaticMeshComponent") == nullptr) { return false; }
 	if (!registry.AddField<StaticMeshComponent>("mesh", &StaticMeshComponent::GetStaticMesh, &StaticMeshComponent::SetStaticMesh)) { return false; }

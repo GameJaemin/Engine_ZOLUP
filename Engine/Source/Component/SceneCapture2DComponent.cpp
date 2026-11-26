@@ -62,6 +62,15 @@ bool SceneCapture2DComponent::SetHeight(std::uint32_t newHeight)
 	return true;
 }
 
+bool SceneCapture2DComponent::SetSaturation(float newSaturation)
+{
+	const bool isValid = newSaturation >= 0.0f && newSaturation <= 2.0f;
+	if (!isValid) { return false; }
+
+	saturation = newSaturation;
+	return true;
+}
+
 bool SceneCapture2DComponent::GetCaptureViewInfo(CameraViewInfo& outCameraViewInfo) const
 {
 	const GameObject* owner = GetGameObject();
@@ -82,5 +91,5 @@ std::optional<SceneRenderRequest> SceneCapture2DComponent::BuildRenderRequest()
 	CameraViewInfo cameraViewInfo;
 	if (!GetCaptureViewInfo(cameraViewInfo)) { return std::nullopt; }
 
-	return SceneRenderRequest{ owner->GetWorld().GetRenderScene(), cameraViewInfo, &renderTarget };
+	return SceneRenderRequest{ owner->GetWorld().GetRenderScene(), cameraViewInfo, &renderTarget, saturation };
 }

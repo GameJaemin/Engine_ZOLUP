@@ -21,6 +21,16 @@
 
 namespace
 {
+	// 후처리 슬롯 0에 ACES 톤매핑을 설정한다. saturation은 0이면 흑백, 1이면 기본 채도다.
+	void ConfigureTonemap(std::uint8_t layer, float saturation)
+	{
+		Hakko::DataHub::RTB_SetTonemap tonemap{};
+		tonemap.ppSlot = 0;
+		tonemap.mode = Hakko::DataHub::Tonemap_Mode_ACES;
+		tonemap.saturation = saturation;
+		Hakko::DataHub::SendRTB(tonemap, layer);
+	}
+
 	// 후처리 설정은 레이어마다 따로 저장되므로 새로 만든 레이어에도 같은 설정을 보낸다.
 	void ConfigureDefaultRenderPasses(std::uint8_t layer)
 	{
@@ -40,10 +50,7 @@ namespace
 		Hakko::DataHub::SendRTB(ambientOcclusionBlur, layer);
 
 		// 슬롯 순서에 따라 톤매핑 결과에 FXAA를 적용한다.
-		Hakko::DataHub::RTB_SetTonemap tonemap{};
-		tonemap.ppSlot = 0;
-		tonemap.mode = Hakko::DataHub::Tonemap_Mode_ACES;
-		Hakko::DataHub::SendRTB(tonemap, layer);
+		ConfigureTonemap(layer, 1.0f);
 
 		Hakko::DataHub::RTB_SetFXAA antialiasing{};
 		antialiasing.ppSlot = 1;
@@ -296,6 +303,8 @@ int Engine::RunFrameLoop(IApplication& application)
 		{
 			const FramePreparationResult result = PrepareRenderRequest(*request, renderArea, directionalShadowAtlas, 0U);
 			if (result == FramePreparationResult::Failed) { return 1; }
+			// 채도는 요청마다 다를 수 있어 매 프레임 그 요청이 쓰는 레이어에 보낸다.
+			if (result == FramePreparationResult::Ready) { ConfigureTonemap(0U, request->saturation); }
 		}
 
 		// 메인 요청이 그리는 World의 캡처를 함께 그린다. 게임과 에디터 Play가 같은 경로를 쓴다.
@@ -323,7 +332,12 @@ int Engine::RunFrameLoop(IApplication& application)
 			ResizeRenderLayers(nextLayer + 1U);
 			const FramePreparationResult result = PrepareRenderRequest(capture, renderArea, directionalShadowAtlas, nextLayer);
 			if (result == FramePreparationResult::Failed) { return 1; }
-			if (result == FramePreparationResult::Ready) { ++nextLayer; }
+			if (result == FramePreparationResult::Ready)
+			{
+				// 레이어 번호를 올리기 전에 보내야 방금 준비한 레이어에 들어간다.
+				ConfigureTonemap(nextLayer, capture.saturation);
+				++nextLayer;
+			}
 		}
 
 		// 이번 프레임에 쓰지 않은 캡처 레이어를 없애 이전 영상이 백버퍼에 합성되지 않게 한다.
