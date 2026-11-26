@@ -35,6 +35,7 @@
     <ClCompile Include="Engine\Source\Texture\ORMImageBuilder.cpp" />
     <ClCompile Include="Engine\Source\AssetManager.cpp" />
     <ClCompile Include="Engine\Source\Engine.cpp" />
+    <ClCompile Include="Engine\Source\Audio\AudioSystem.cpp" />
     <ClCompile Include="Engine\Source\Physics\JoltBroadPhaseLayers.cpp">
       <PreprocessorDefinitions>JPH_OBJECT_STREAM;JPH_FLOATING_POINT_EXCEPTIONS_ENABLED;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
@@ -56,6 +57,7 @@
     <ClCompile Include="Engine\Source\Input\InputDispatcher.cpp" />
     <ClCompile Include="Engine\Source\Component\InputComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\AnimationComponent.cpp" />
+    <ClCompile Include="Engine\Source\Component\AudioComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\BoxColliderComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\CameraComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\Component.cpp" />
@@ -102,6 +104,7 @@
     <ClInclude Include="Engine\Source\Image\ImageLoader.h" />
     <ClInclude Include="Engine\Source\AssetManager.h" />
     <ClInclude Include="Engine\Source\Engine.h" />
+    <ClInclude Include="Engine\Source\Audio\AudioSystem.h" />
     <ClInclude Include="Engine\Source\Physics\JoltBroadPhaseLayers.h" />
     <ClInclude Include="Engine\Source\Physics\JoltObjectLayers.h" />
     <ClInclude Include="Engine\Source\Physics\JoltPhysicsScene.h" />
@@ -139,6 +142,7 @@
     <ClInclude Include="Engine\Source\Component\InputComponent.h" />
     <ClInclude Include="Engine\Source\Component\AmbientLightComponent.h" />
     <ClInclude Include="Engine\Source\Component\AnimationComponent.h" />
+    <ClInclude Include="Engine\Source\Component\AudioComponent.h" />
     <ClInclude Include="Engine\Source\Component\BoxColliderComponent.h" />
     <ClInclude Include="Engine\Source\Component\CameraComponent.h" />
     <ClInclude Include="Engine\Source\Component\Component.h" />

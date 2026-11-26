@@ -2,6 +2,7 @@
 
 #include "Component/AmbientLightComponent.h"
 #include "Component/AnimationComponent.h"
+#include "Component/AudioComponent.h"
 #include "Component/BoxColliderComponent.h"
 #include "Component/CameraComponent.h"
 #include "Component/Component.h"
@@ -137,6 +138,8 @@ bool RegisterEngineComponentTypes(ComponentTypeRegistry& registry)
 	if (!registry.AddField<AnimationComponent>("nodeTransforms", &AnimationComponent::GetNodeTransforms, &AnimationComponent::SetNodeTransforms, { .displayName = "Nodes" })) { return false; }
 	// 노드 번호 순서의 원래 부모 기준 값이다. 노드 목록과 같은 순서와 길이다.
 	if (!registry.AddField<AnimationComponent>("restPose", &AnimationComponent::GetRestPose, &AnimationComponent::SetRestPose, { .displayName = "Rest Pose" })) { return false; }
+
+	if (registry.Register<AudioComponent, Component>("AudioComponent") == nullptr) { return false; }
 
 	if (registry.Register<SkinComponent, Component>("SkinComponent") == nullptr) { return false; }
 	if (!registry.AddField<SkinComponent>("model", &SkinComponent::GetModel, &SkinComponent::SetModel)) { return false; }
