@@ -25,7 +25,7 @@
 #include "Input/InputState.h"
 #include "Input/Key.h"
 #include "Mesh/StaticMesh.h"
-#include "Prefab.h"
+#include "Prefab/Prefab.h"
 #include "Renderer/Material.h"
 #include "Renderer/RenderScene.h"
 #include "World.h"

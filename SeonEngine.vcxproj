@@ -271,6 +271,9 @@
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
+  <!-- VS 2022의 설치 기본 MSVC를 사용해 최신 vcpkg 라이브러리와 STL 버전을 맞춘다. -->
+  <Import Project="$(VsInstallRoot)\VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.props"
+          Condition="'$(VisualStudioVersion)' == '17.0' and '$(VCToolsVersion)' == '' and Exists('$(VsInstallRoot)\VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.props')" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
   </ImportGroup>
