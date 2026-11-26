@@ -4,6 +4,7 @@
 #include "Core/Log.h"
 #include "Component/EngineComponentTypes.h"
 #include "IApplication.h"
+#include "Renderer/PostProcessPasses.h"
 #include "Renderer/RenderScene.h"
 #include "Renderer/SceneRenderRequest.h"
 #include "Renderer/TextureRenderTarget2D.h"
@@ -68,7 +69,7 @@ namespace
 		}
 	}
 
-	FramePreparationResult PrepareRenderRequest(const SceneRenderRequest& request, const ViewportRect& renderArea, const Hakko::DataHub::ShadowAtlas& shadowAtlas, std::uint8_t layer)
+	FramePreparationResult PrepareRenderRequest(const SceneRenderRequest& request, const ViewportRect& renderArea, const Hakko::DataHub::ShadowAtlas& shadowAtlas, std::uint8_t layer, float elapsedSeconds)
 	{
 		float projectionAspectRatio = renderArea.width / renderArea.height;
 		Hakko::DataHub::ViewTarget output{};
@@ -96,6 +97,15 @@ namespace
 		if (result == FramePreparationResult::Ready)
 		{
 			Hakko::DataHub::SetLayerCompositeTarget(output, layer);
+
+			// 셰이더의 g_Time은 레이어마다 따로 있어 준비한 레이어마다 보낸다.
+			Hakko::DataHub::RTB_SetTime time{};
+			time.totalTime = elapsedSeconds;
+			Hakko::DataHub::SendRTB(time, layer);
+
+			// 요청마다 채도와 후처리 목록이 다를 수 있어 매 프레임 그 요청이 쓰는 레이어에 보낸다.
+			ConfigureTonemap(layer, request.saturation);
+			PostProcessPasses::Configure(layer, request.postProcessPasses);
 		}
 
 		return result;
@@ -227,6 +237,9 @@ int Engine::RunFrameLoop(IApplication& application)
 
 	// 초기화와 World 구성 시간을 첫 측정에서 빼려고 루프 직전에 만든다.
 	FrameTimer frameTimer;
+	// 프레임 루프 시작부터 누적한 실제 경과 초다. 셰이더의 g_Time으로 보낸다.
+	// float에 작은 델타를 오래 더하면 오차가 쌓이므로 double로 누적하고 보낼 때만 float로 바꾼다.
+	double elapsedSeconds = 0.0;
 	int exitCode = 0;
 
 	while (windowsApplication.ProcessMessages(exitCode))
@@ -267,7 +280,9 @@ int Engine::RunFrameLoop(IApplication& application)
 		}
 
 		// 그리지 않는 프레임에도 애플리케이션과 시간을 갱신한다.
-		application.OnUpdate(windowsApplication.GetInputState(), frameTimer.Tick());
+		const float deltaSeconds = frameTimer.Tick();
+		elapsedSeconds += deltaSeconds;
+		application.OnUpdate(windowsApplication.GetInputState(), deltaSeconds);
 
 		if (runsGuiFrame)
 		{
@@ -301,10 +316,8 @@ int Engine::RunFrameLoop(IApplication& application)
 		const std::optional<SceneRenderRequest> request = application.GetRenderRequest();
 		if (request.has_value())
 		{
-			const FramePreparationResult result = PrepareRenderRequest(*request, renderArea, directionalShadowAtlas, 0U);
+			const FramePreparationResult result = PrepareRenderRequest(*request, renderArea, directionalShadowAtlas, 0U, static_cast<float>(elapsedSeconds));
 			if (result == FramePreparationResult::Failed) { return 1; }
-			// 채도는 요청마다 다를 수 있어 매 프레임 그 요청이 쓰는 레이어에 보낸다.
-			if (result == FramePreparationResult::Ready) { ConfigureTonemap(0U, request->saturation); }
 		}
 
 		// 메인 요청이 그리는 World의 캡처를 함께 그린다. 게임과 에디터 Play가 같은 경로를 쓴다.
@@ -330,14 +343,9 @@ int Engine::RunFrameLoop(IApplication& application)
 			}
 
 			ResizeRenderLayers(nextLayer + 1U);
-			const FramePreparationResult result = PrepareRenderRequest(capture, renderArea, directionalShadowAtlas, nextLayer);
+			const FramePreparationResult result = PrepareRenderRequest(capture, renderArea, directionalShadowAtlas, nextLayer, static_cast<float>(elapsedSeconds));
 			if (result == FramePreparationResult::Failed) { return 1; }
-			if (result == FramePreparationResult::Ready)
-			{
-				// 레이어 번호를 올리기 전에 보내야 방금 준비한 레이어에 들어간다.
-				ConfigureTonemap(nextLayer, capture.saturation);
-				++nextLayer;
-			}
+			if (result == FramePreparationResult::Ready) { ++nextLayer; }
 		}
 
 		// 이번 프레임에 쓰지 않은 캡처 레이어를 없애 이전 영상이 백버퍼에 합성되지 않게 한다.

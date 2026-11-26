@@ -102,11 +102,13 @@ bool RegisterEngineComponentTypes(ComponentTypeRegistry& registry)
 	if (!registry.AddField<CameraComponent>("nearClipDistance", &CameraComponent::GetNearClipDistance, &CameraComponent::SetNearClipDistance, { .displayName = "Near Clip (cm)", .dragSpeed = 0.1f, .minValue = 0.01f, .maxValue = FLT_MAX }, true)) { return false; }
 	if (!registry.AddField<CameraComponent>("farClipDistance", &CameraComponent::GetFarClipDistance, &CameraComponent::SetFarClipDistance, { .displayName = "Far Clip (cm)", .dragSpeed = 100.0f }, true)) { return false; }
 	if (!registry.AddField<CameraComponent>("projectionMode", &GetCameraProjectionMode, &SetCameraProjectionMode, { .enumNames = { "Perspective", "Orthographic" } })) { return false; }
+	if (!registry.AddField<CameraComponent>("saturation", &CameraComponent::GetSaturation, &CameraComponent::SetSaturation, { .displayName = "Saturation", .dragSpeed = 0.01f, .minValue = 0.0f, .maxValue = 2.0f })) { return false; }
+	if (!registry.AddField<CameraComponent>("postProcessShaderPath", &CameraComponent::GetPostProcessShaderPath, &CameraComponent::SetPostProcessShaderPath, { .displayName = "Post Process Shader" })) { return false; }
+	if (!registry.AddField<CameraComponent>("postProcessParameters", &CameraComponent::GetPostProcessParameters, &CameraComponent::SetPostProcessParameters, { .displayName = "Post Process Parameters", .canResize = true })) { return false; }
 
 	if (registry.Register<SceneCapture2DComponent, Component>("SceneCapture2DComponent") == nullptr) { return false; }
 	if (!registry.AddField<SceneCapture2DComponent>("width", &GetCaptureWidth, &SetCaptureWidth, { .displayName = "Width (px)", .dragSpeed = 1.0f, .minValue = 1.0f, .maxValue = 4096.0f })) { return false; }
 	if (!registry.AddField<SceneCapture2DComponent>("height", &GetCaptureHeight, &SetCaptureHeight, { .displayName = "Height (px)", .dragSpeed = 1.0f, .minValue = 1.0f, .maxValue = 4096.0f })) { return false; }
-	if (!registry.AddField<SceneCapture2DComponent>("saturation", &SceneCapture2DComponent::GetSaturation, &SceneCapture2DComponent::SetSaturation, { .displayName = "Saturation", .dragSpeed = 0.01f, .minValue = 0.0f, .maxValue = 2.0f })) { return false; }
 
 	if (registry.Register<StaticMeshComponent, Component>("StaticMeshComponent") == nullptr) { return false; }
 	if (!registry.AddField<StaticMeshComponent>("mesh", &StaticMeshComponent::GetStaticMesh, &StaticMeshComponent::SetStaticMesh)) { return false; }

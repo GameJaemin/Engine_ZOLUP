@@ -3,6 +3,10 @@
 #include "Camera/CameraViewInfo.h"
 #include "Component.h"
 #include "Core/Math/Vector2.h"
+#include "Renderer/SceneRenderRequest.h"
+
+#include <string>
+#include <vector>
 
 /** 원근 또는 직교 투영 카메라의 설정값을 보관한다. 위치와 회전은 같은 객체의 TransformComponent를 따른다. */
 class CameraComponent : public Component
@@ -72,6 +76,34 @@ public:
 private:
 	float nearClipDistance = 10.0f;
 	float farClipDistance = 100000.0f;
+
+	// 보이는 모양
+public:
+	/** 0은 흑백, 1은 기본 채도다. */
+	float GetSaturation() const { return saturation; }
+
+	/** 유한하며 0 이상 2 이하만 받는다. 조건을 벗어나면 기존 값을 유지하고 false를 반환한다. */
+	bool SetSaturation(float newSaturation);
+
+	/** 내장 후처리 뒤에 실행할 픽셀 셰이더의 저장소 루트 기준 경로다. 비어 있으면 추가 후처리가 없다. */
+	const std::string& GetPostProcessShaderPath() const { return postProcessShaderPath; }
+
+	/** 빈 문자열(끄기) 또는 실제로 있는 파일 경로만 받는다. 조건을 벗어나면 기존 값을 유지하고 false를 반환한다. */
+	bool SetPostProcessShaderPath(const std::string& newPath);
+
+	/** 셰이더의 ACTION_DATA_CB에 앞에서부터 순서대로 들어가는 값이다. */
+	const std::vector<float>& GetPostProcessParameters() const { return postProcessParameters; }
+
+	/** 모두 유한하고 MaxPostProcessParameters개 이하일 때만 받는다. 조건을 벗어나면 기존 값을 유지하고 false를 반환한다. */
+	bool SetPostProcessParameters(std::vector<float> newParameters);
+
+	/** 요청에 담을 후처리 목록을 만든다. 경로가 비어 있으면 빈 목록이다. */
+	std::vector<PostProcessPass> MakePostProcessPasses() const;
+
+private:
+	float saturation = 1.0f;
+	std::string postProcessShaderPath;
+	std::vector<float> postProcessParameters;
 
 	// 시점 값
 public:

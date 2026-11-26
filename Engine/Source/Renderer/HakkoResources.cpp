@@ -444,3 +444,61 @@ bool HakkoResources::PrepareSkyboxTexture(const std::array<const Texture*, 6>& f
 
 	return true;
 }
+
+bool HakkoResources::PreparePostProcessShader(const std::string& shaderPath, Hakko::DataHub::DrawPropID& outDrawPropID)
+{
+	outDrawPropID = 0;
+
+	// 경로 키로 이름을 정해 같은 셰이더를 다시 요청하면 등록된 그리기 설정을 재사용한다.
+	const std::string drawPropName = "__POST_PROCESS|" + Paths::MakeAssetKey(shaderPath);
+	const Hakko::DataHub::DrawPropID existingDrawPropID = Hakko::DataHub::GetDrawPropId(drawPropName);
+	if (existingDrawPropID != 0)
+	{
+		outDrawPropID = existingDrawPropID;
+		return true;
+	}
+
+	std::filesystem::path absolutePath;
+	if (!Paths::GetAbsolutePath(shaderPath, absolutePath))
+	{
+		Log::Write(LogLevel::Error, "RenderScene", "Failed to resolve post process shader path: " + shaderPath);
+		return false;
+	}
+
+	// 셰이더 등록 후 그리기 설정 등록만 실패했던 경로는 셰이더를 다시 등록하지 않고 재사용한다.
+	const std::wstring shaderName = absolutePath.wstring();
+	Hakko::DataHub::ShaderID pixelShaderID = Hakko::DataHub::GetShaderId(shaderName);
+	if (pixelShaderID == 0)
+	{
+		pixelShaderID = Hakko::DataHub::RegisterShader(shaderName.c_str(), Hakko::DataHub::ShaderType_PS);
+	}
+	if (pixelShaderID == 0)
+	{
+		Log::Write(LogLevel::Error, "RenderScene", "Failed to register post process shader: " + shaderPath);
+		return false;
+	}
+
+	// 렌더러 기본 후처리와 같은 설정이다. 화면 전체 삼각형으로 그리고 깊이와 블렌드는 쓰지 않는다.
+	Hakko::DataHub::DrawProp prop{};
+	prop.depthUsage = Hakko::DataHub::DrawProp_DepthUsage_Screen;
+	prop.cullType = Hakko::DataHub::DrawProp_CullType_None;
+	prop.blendType = Hakko::DataHub::DrawProp_BlendType_None;
+	prop.vertexType = Hakko::DataHub::VertexType_Simple;
+	prop.VSId = RESERVED_SHADER_PP_VS_ID;
+	prop.PSId = pixelShaderID;
+
+	const Hakko::DataHub::DrawPropID drawPropID = Hakko::DataHub::CreateDrawProp(drawPropName.c_str(), prop);
+	if (drawPropID == 0)
+	{
+		Log::Write(LogLevel::Error, "RenderScene", "Failed to register post process draw setting: " + shaderPath);
+		return false;
+	}
+
+	// 셰이더(자원)와 그리기 설정(Prop)을 모두 이번 프레임에 올린다.
+	Hakko::DataHub::RTB_UpdateResources upload{};
+	upload.command = Hakko::DataHub::RTBCMD_Upload;
+	Hakko::DataHub::SendRTB(upload);
+
+	outDrawPropID = drawPropID;
+	return true;
+}

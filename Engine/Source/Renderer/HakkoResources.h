@@ -3,6 +3,7 @@
 #include "DataHub_Types.h"
 
 #include <array>
+#include <string>
 
 class StaticMesh;
 class Texture;
@@ -41,4 +42,10 @@ namespace HakkoResources
 	 * 경로 변환과 할당 실패 예외는 전파한다.
 	 */
 	bool PrepareSkyboxTexture(const std::array<const Texture*, 6>& faces, Hakko::DataHub::TexID& outTextureID);
+
+	/**
+	 * DataHub 초기화 후 메인 스레드에서 호출한다. 저장소 루트 기준 경로의 픽셀 셰이더를 화면 전체 후처리용 그리기 설정으로 등록한다.
+	 * 같은 경로는 등록된 ID를 재사용한다. 성공은 셰이더 컴파일 성공을 뜻하지 않는다. 실패하면 false를 반환하고 출력값은 0이다.
+	 */
+	bool PreparePostProcessShader(const std::string& shaderPath, Hakko::DataHub::DrawPropID& outDrawPropID);
 }
