@@ -13,6 +13,8 @@
 
 ## 실행과 기능별 확인
 
+Visual Studio의 F5는 기본 인자 `--editor`로 에디터를 연다. 모델 미리보기는 `SeonEngine.exe`를 인자 없이 실행하면 열린다. [Visual Studio 실행 설정](../../../Docs/BuildSetup.md#visual-studio에서-실행)
+
 기본 실행 파일: `Binaries/v143/x64/Debug/SeonEngine.exe`. 모델 미리보기에서 Single player (S / D)를 선택하고 Start single player로 들어간다. 협동은 Co-op (S / period)를 선택한 뒤 Start co-op으로 시작한다. 기존 Bistro 데모는 `--third-person`, 에디터는 `--editor`, 자동 검사는 `--babydoll-test`다.
 
 ```powershell
