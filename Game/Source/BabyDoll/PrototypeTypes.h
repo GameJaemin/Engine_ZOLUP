@@ -33,6 +33,17 @@ struct PrototypeConfig
 	float monsterVisualYawOffset = 90.0f;
 	float catchDistance = 130.0f;
 	float calmTime = 2.0f;
+	float hideSuspicionRadius = 300.0f;
+	float hideSuspicionTime = 2.0f;
+	float searchTimeout = 3.0f;
+	float smashTime = 1.4f;
+	float roarTime = 2.0f;
+	float listenTime = 1.3f;
+	float lookTime = 2.2f;
+	float patrolWait = 2.2f;
+	float hideExitTime = 1.1f;
+	float wrongSoundRadius = 4500.0f;
+	float chaseStartDistance = 1000.0f;
 	float mouseSensitivity = 0.13f;
 	float cameraDistance = 430.0f;
 	float runningCameraDistance = 560.0f;

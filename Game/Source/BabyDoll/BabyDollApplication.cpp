@@ -110,7 +110,7 @@ bool BabyDollApplication::BuildRoom()
 	}
 	Box("Gallery ceiling", { 0.0f, 620.0f, 0.0f }, { 4500.0f, 40.0f, 3700.0f }, navy);
 	space.obstacles.push_back({ { -2250.0f, 600.0f, -1850.0f }, { 2250.0f, 640.0f, 1850.0f } });
-	const Vector3 plinths[]{ { -1100.0f, 0.0f, -200.0f }, { 1100.0f, 0.0f, 200.0f }, { -300.0f, 0.0f, 700.0f }, { 500.0f, 0.0f, -700.0f } };
+	const auto& plinths = EscapeLayout::Exhibits;
 	for (const Vector3& point : plinths)
 	{
 		Box("Display plinth", point + Vector3{ 0.0f, 90.0f, 0.0f }, { 220.0f, 180.0f, 220.0f }, { 0.16f, 0.13f, 0.18f });
@@ -118,7 +118,7 @@ bool BabyDollApplication::BuildRoom()
 		Box("Exhibit", point + Vector3{ 0.0f, 255.0f, 0.0f }, { 80.0f, 130.0f, 80.0f }, { 0.35f, 0.16f, 0.21f });
 		space.obstacles.push_back({ point + Vector3{ -120.0f, 0.0f, -120.0f }, point + Vector3{ 120.0f, 320.0f, 120.0f } });
 	}
-	const Vector3 tableCenters[]{ { -650.0f, 0.0f, -650.0f }, { 650.0f, 0.0f, 650.0f } };
+	const auto& tableCenters = EscapeLayout::Tables;
 	for (std::size_t index = 0; index < tables.size(); ++index)
 	{
 		GameObject* root = world->CreateGameObject("Hide table", {});
@@ -160,7 +160,25 @@ bool BabyDollApplication::BuildRoom()
 		lamps.push_back(proximity);
 		Box("Lamp housing", point, { 110.0f, 16.0f, 110.0f }, brass);
 	}
-	return true;
+	for (const PrototypeObstacle& wall : layout.Partitions())
+	{
+		space.obstacles.push_back(wall);
+		if (!Box("Room partition", (wall.minimum + wall.maximum) * 0.5f, wall.maximum - wall.minimum, { 0.13f, 0.15f, 0.23f })) { return false; }
+	}
+	doorObstacle = space.obstacles.size();
+	space.obstacles.push_back(layout.Door());
+	// 플레이어/AI 충돌은 게임의 GameplaySpace에서 함께 제어한다. 열린 문은 천장 위로 올린다.
+	doorVisual = Box("Locked exit gate", layout.doorPosition + Vector3{0.0f, 215.0f, 0.0f}, {50.0f, 430.0f, 590.0f}, {0.6f, 0.18f, 0.16f}, nullptr, false);
+	keyVisual = world->CreateGameObject("Storage brass key", {});
+	if (!keyVisual) { return false; }
+	keyVisual->GetComponent<TransformComponent>()->SetPosition(layout.keyPosition + Vector3{0.0f, 100.0f, 0.0f});
+	Box("Key head", {}, {50.0f, 50.0f, 15.0f}, {0.95f, 0.7f, 0.15f}, keyVisual, false);
+	Box("Key shaft", {0.0f, -50.0f, 0.0f}, {12.0f, 75.0f, 15.0f}, {0.95f, 0.7f, 0.15f}, keyVisual, false);
+	Box("Key tooth", {15.0f, -78.0f, 0.0f}, {30.0f, 12.0f, 15.0f}, {0.95f, 0.7f, 0.15f}, keyVisual, false);
+	escapeVisual = Box("Escape beacon", layout.escapePosition + Vector3{0.0f, 2.0f, 0.0f}, {250.0f, 4.0f, 250.0f}, {0.1f, 0.85f, 0.5f}, nullptr, false);
+	Box("Storage doorway left marker", {-800.0f, 220.0f, 720.0f}, {65.0f, 440.0f, 35.0f}, {0.8f, 0.55f, 0.15f}, nullptr, false);
+	Box("Storage doorway right marker", {-800.0f, 220.0f, 1280.0f}, {65.0f, 440.0f, 35.0f}, {0.8f, 0.55f, 0.15f}, nullptr, false);
+	return doorVisual && escapeVisual;
 }
 
 bool BabyDollApplication::BuildMonster()
@@ -242,6 +260,7 @@ bool BabyDollApplication::OnInitialize(Engine& inEngine)
 	engine = &inEngine;
 	if (!RegisterPrototypeLightType()) { return false; }
 	if (!LoadPrototypeConfig(config)) { Log::Write(LogLevel::Error, "BabyDoll", "Invalid or missing Prototype.json"); return false; }
+	if (!LoadEscapeLayout(layout)) { Log::Write(LogLevel::Error, "BabyDoll", "Invalid or missing Escape.json"); return false; }
 	visualYawOffset = config.monsterVisualYawOffset;
 	world = std::make_unique<World>();
 	boxModel = AssetManager::Get().LoadModel("Game/Content/BabyDoll/Geometry/Box.gltf");
@@ -268,6 +287,8 @@ bool BabyDollApplication::OnInitialize(Engine& inEngine)
 	Box("Head", { 0.0f, 97.0f, 0.0f }, { 67.0f, 45.0f, 44.0f }, { 0.62f, 0.46f, 0.48f }, playerVisual, false);
 	for (float x : { -25.0f, 25.0f }) { Box("Ear", { x, 120.0f, 0.0f }, { 18.0f, 18.0f, 20.0f }, { 0.43f, 0.28f, 0.32f }, playerVisual, false); }
 	Box("Ribbon", { 0.0f, 74.0f, -25.0f }, { 35.0f, 12.0f, 6.0f }, { 0.8f, 0.08f, 0.13f }, playerVisual, false);
+	carriedKeyVisual = Box("Carried brass key", {50.0f, 45.0f, 0.0f}, {15.0f, 55.0f, 12.0f}, {0.95f, 0.7f, 0.15f}, playerVisual, false);
+	if (!carriedKeyVisual) { return false; }
 	Prefab ring;
 	ring.model = ringModel;
 	std::shared_ptr<Material> ringMaterial = std::make_shared<Material>();
@@ -281,8 +302,8 @@ bool BabyDollApplication::OnInitialize(Engine& inEngine)
 	ResetRun();
 	physicsHealthy = world->GetPhysicsScene().Update(0.0f);
 	if (!physicsHealthy) { Log::Write(LogLevel::Error, "BabyDoll", "Physics scene preparation failed"); return false; }
-	inspect = paused = true;
-	orbit->Reset(MonsterSpawn + Vector3{ 0.0f, 150.0f, 0.0f }, 0.0f, config);
+	inspect = false;
+	paused = true;
 	Present(1.0f);
 	Log::Write(LogLevel::Info, "BabyDoll", "Ready: S/Period cooperative input, rear CCTV, proximity lamps, Jolt props");
 	return soundRing != nullptr;
@@ -300,6 +321,10 @@ void BabyDollApplication::SetCaptured(bool newCaptured)
 
 void BabyDollApplication::ResetRun()
 {
+	progress = {};
+	deaths = 0;
+	clearTime = 0.0f;
+	soundPulseTime = 0.0f;
 	player->Reset(PlayerSpawn);
 	heart->Reset();
 	brain->Reset(MonsterSpawn);
@@ -319,7 +344,52 @@ void BabyDollApplication::ResetRun()
 	ApplyTableVisuals();
 	orbit->Reset(PlayerSpawn + Vector3{ 0.0f, 160.0f, 0.0f }, 0.0f, config);
 	checkpoint = { PlayerSpawn, MonsterSpawn, { tables[0]->Capture(), tables[1]->Capture() }, true };
+	checkpoint.progress = progress;
+	ApplyProgressVisuals();
+	toast = "Find the brass key in west storage, then return to the red exit gate.";
+	toastTime = 6.0f;
 	resetRequested = false;
+}
+
+void BabyDollApplication::ApplyProgressVisuals()
+{
+	space.obstacles[doorObstacle].enabled = !progress.IsDoorOpen();
+	doorVisual->GetComponent<TransformComponent>()->SetPosition(layout.doorPosition + Vector3{0.0f, progress.IsDoorOpen() ? 900.0f : 215.0f, 0.0f});
+	const float visible = progress.HasKey() ? 0.001f : 1.0f;
+	keyVisual->GetComponent<TransformComponent>()->SetScale({visible, visible, visible});
+	const float carried = progress.HasKey() ? 1.0f : 0.001f;
+	carriedKeyVisual->GetComponent<TransformComponent>()->SetScale({carried, carried, carried});
+}
+
+void BabyDollApplication::RestoreCheckpoint()
+{
+	progress = checkpoint.progress;
+	player->Reset(checkpoint.playerPosition);
+	heart->Reset();
+	brain->Reset(checkpoint.monsterPosition);
+	rearView->Clear();
+	hearing->BeginFrame();
+	physicsProps.Reset(*world);
+	physicsProps.SyncSpace(*world, space);
+	for (auto* lamp : lamps) { lamp->Reset(); }
+	for (std::size_t index = 0; index < tables.size(); ++index) { tables[index]->Restore(checkpoint.tables[index]); }
+	occupiedTable = -1;
+	caughtTime = exitTime = soundPulseTime = 0.0f;
+	previousPlayerPosition = checkpoint.playerPosition;
+	previousMonsterPosition = checkpoint.monsterPosition;
+	previousMonsterYaw = brain->GetYaw();
+	monsterAnimationSpeed = 0.0f;
+	monsterLocomoting = false;
+	ApplyTableVisuals();
+	ApplyProgressVisuals();
+	orbit->Reset(checkpoint.playerPosition + Vector3{0.0f, 160.0f, 0.0f}, 0.0f, config);
+	toast = "Caught. Returned to the entrance checkpoint; key, gate and hiding places restored.";
+	toastTime = 5.0f;
+}
+
+int BabyDollApplication::FindObjectiveInteraction() const
+{
+	return FindEscapeInteraction(progress, layout, space, player->GetPosition(), player->GetMode(), orbit->GetYaw(), doorObstacle);
 }
 
 int BabyDollApplication::FindInteraction() const
@@ -349,6 +419,22 @@ void BabyDollApplication::Interact()
 		if (brain->GetAction() != StitchAction::Smashing) { LeaveTable(false); }
 		return;
 	}
+	const int objective = FindObjectiveInteraction();
+	if (objective == 3) { toast = "Locked. Find the brass key in west storage."; toastTime = 4.0f; return; }
+	if (objective == 1 && progress.TakeKey())
+	{
+		ApplyProgressVisuals();
+		toast = "Brass key acquired. Return through the gold doorway to the red exit gate.";
+		toastTime = 5.0f;
+		return;
+	}
+	if (objective == 2 && progress.UnlockExit())
+	{
+		ApplyProgressVisuals();
+		toast = "Exit unlocked. Cross the gate and reach the green beacon.";
+		toastTime = 4.0f;
+		return;
+	}
 	const int index = FindInteraction();
 	if (index < 0) { return; }
 	occupiedTable = index;
@@ -362,11 +448,24 @@ void BabyDollApplication::LeaveTable(bool forced)
 {
 	if (occupiedTable < 0) { return; }
 	Vector3 destination;
-	if (!tables[occupiedTable]->FindExit(orbit->GetYaw(), brain->GetPosition(), space, destination))
+	if (!tables[occupiedTable]->FindExit(orbit->GetYaw(), brain->GetPosition(), space, destination, forced))
 	{
+		if (forced)
+		{
+			// 모든 출구가 막혀도 부서진 테이블의 숨기 보호가 남지 않게 한다.
+			tables[occupiedTable]->Leave();
+			occupiedTable = -1;
+			player->SetMode(PlayerMode::Caught);
+			caughtTime = 0.0f;
+			++deaths;
+			return;
+		}
+		else
+		{
 		toast = "Exit blocked. Look toward another side.";
 		toastTime = 3.0f;
 		return;
+		}
 	}
 	tables[occupiedTable]->Leave();
 	exitStart = player->GetPosition();
@@ -407,7 +506,9 @@ void BabyDollApplication::ApplyTableVisuals()
 
 void BabyDollApplication::Simulate(const PrototypeCommand& command, float deltaTime)
 {
+	if (progress.stage == EscapeStage::Cleared) { return; }
 	gameTime += deltaTime;
+	soundPulseTime = (std::max)(0.0f, soundPulseTime - deltaTime);
 	previousPlayerPosition = player->GetPosition();
 	previousMonsterPosition = brain->GetPosition();
 	previousMonsterYaw = brain->GetYaw();
@@ -417,22 +518,7 @@ void BabyDollApplication::Simulate(const PrototypeCommand& command, float deltaT
 		caughtTime += deltaTime;
 		if (caughtTime >= 1.6f)
 		{
-			player->Reset(checkpoint.playerPosition);
-			heart->Reset();
-			brain->Reset(checkpoint.monsterPosition);
-			rearView->Clear();
-			physicsProps.Reset(*world);
-			physicsProps.SyncSpace(*world, space);
-			for (ProximityLightComponent* lamp : lamps) { lamp->Reset(); }
-			previousPlayerPosition = checkpoint.playerPosition;
-			previousMonsterPosition = checkpoint.monsterPosition;
-			previousMonsterYaw = brain->GetYaw();
-			for (std::size_t index = 0; index < tables.size(); ++index) { tables[index]->Restore(checkpoint.tables[index]); }
-			occupiedTable = -1;
-			caughtTime = 0.0f;
-			ApplyTableVisuals();
-			toast = "Returned to the test-room checkpoint.";
-			toastTime = 3.0f;
+			RestoreCheckpoint();
 		}
 		return;
 	}
@@ -441,7 +527,7 @@ void BabyDollApplication::Simulate(const PrototypeCommand& command, float deltaT
 	if (player->GetMode() == PlayerMode::Exiting)
 	{
 		exitTime += deltaTime;
-		const float alpha = std::clamp(exitTime / 1.1f, 0.0f, 1.0f);
+		const float alpha = std::clamp(exitTime / config.hideExitTime, 0.0f, 1.0f);
 		player->Teleport(Vector3::Lerp(exitStart, exitDestination, alpha * alpha * (3.0f - 2.0f * alpha)));
 		if (alpha >= 1.0f) { player->SetMode(PlayerMode::Moving); occupiedTable = -1; }
 	}
@@ -450,7 +536,7 @@ void BabyDollApplication::Simulate(const PrototypeCommand& command, float deltaT
 	footRadius = hidden ? 0.0f : HearingComponent::FootRadius(player->GetSpeed(), config.maxSpeed);
 	hearing->Emit(player->GetPosition(), footRadius, SoundKind::Foot);
 	hearing->Emit(player->GetPosition(), heart->GetSoundRadius(), SoundKind::Heart);
-	if (player->HasMistake() || command.pulse) { hearing->Emit(player->GetPosition(), 4500.0f, SoundKind::Mistake); }
+	if (player->HasMistake() || command.pulse) { hearing->Emit(player->GetPosition(), config.wrongSoundRadius, SoundKind::Mistake); soundPulseTime = 0.8f; }
 	soundRadius = (std::max)(footRadius, heart->GetSoundRadius());
 	if (aiEnabled)
 	{
@@ -472,7 +558,18 @@ void BabyDollApplication::Simulate(const PrototypeCommand& command, float deltaT
 		{
 			player->SetMode(PlayerMode::Caught);
 			caughtTime = 0.0f;
+			++deaths;
 		}
+	}
+	if (progress.TryEscape(player->GetPosition(), player->GetMode(), layout))
+	{
+		clearTime = gameTime;
+		paused = true;
+		rearView->Clear();
+		// 고정 틱 처리 도중 입력 누적기를 초기화하지 않는다.
+		captured = false;
+		engine->SetCursorConfined(false);
+		engine->SetCursorVisible(true);
 	}
 }
 
@@ -482,7 +579,7 @@ void BabyDollApplication::Present(float deltaTime)
 	const Vector3 playerPosition = Vector3::Lerp(previousPlayerPosition, player->GetPosition(), interpolation);
 	const Vector3 monsterPosition = Vector3::Lerp(previousMonsterPosition, brain->GetPosition(), interpolation);
 	if (inspect) { rearView->Clear(); }
-	else if (!rearView->Step(brain->GetState() == StitchState::Chase, previewRear, playerPosition, monsterPosition, brain->GetYaw(), paused ? 0.0f : deltaTime, config, space))
+	else if (progress.stage != EscapeStage::Cleared && !rearView->Step(brain->GetState() == StitchState::Chase, previewRear, playerPosition, monsterPosition, brain->GetYaw(), paused ? 0.0f : deltaTime, config, space))
 	{
 		toast = "Rear camera setup failed"; toastTime = 3.0f;
 	}
@@ -515,6 +612,11 @@ void BabyDollApplication::Present(float deltaTime)
 		if (locomotion) { playbackRate = std::clamp(monsterAnimationSpeed / (nextClip == "Scissorman_Walk" ? config.patrolSpeed : config.chaseSpeed), 0.55f, 1.6f); }
 	}
 	animator->Step(paused && !inspect ? 0.0f : deltaTime, playbackRate);
+	if (!progress.HasKey())
+	{
+		keyVisual->GetComponent<TransformComponent>()->SetPosition(layout.keyPosition + Vector3{0.0f, 105.0f + 12.0f * std::sin(gameTime * 2.0f), 0.0f});
+		keyVisual->GetComponent<TransformComponent>()->SetRotation({0.0f, gameTime * 45.0f, 0.0f});
+	}
 	if (soundRing)
 	{
 		// 0 배율의 역행렬이 렌더 경로로 전달되지 않게 보이지 않을 정도의 최소 반경을 쓴다.
@@ -538,7 +640,7 @@ void BabyDollApplication::OnUpdate(const InputState& input, float deltaTime)
 	const PrototypeInputFrame frame = inputAdapter.Read(input, soloControls);
 	leftFootDown = frame.leftDown;
 	rightFootDown = frame.rightDown;
-	if (frame.togglePause)
+	if (frame.togglePause && progress.stage != EscapeStage::Cleared)
 	{
 		if (captured) { paused = true; SetCaptured(false); }
 		else if (!inspect) { paused = false; SetCaptured(true); }
@@ -563,6 +665,7 @@ void BabyDollApplication::OnUpdate(const InputState& input, float deltaTime)
 			pending.feet.clear();
 			pending.interact = pending.pulse = false;
 			accumulator -= FixedStep;
+			if (paused) { accumulator = 0.0f; break; }
 		}
 	}
 	else { pending = {}; accumulator = 0.0f; }

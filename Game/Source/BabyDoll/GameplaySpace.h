@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PrototypeTypes.h"
+#include <optional>
 
 struct PrototypeObstacle
 {
@@ -21,6 +22,7 @@ public:
 	/** 몸체 전체가 직선 구간을 통과할 수 있는지 보수적으로 검사한다. */
 	bool CanTraverse(const Vector3& start, const Vector3& end, float radius, float height) const;
 	Vector3 Move(const Vector3& position, const Vector3& displacement, float radius, float height) const;
-	float CameraDistance(const Vector3& origin, const Vector3& direction, float distance, float radius) const;
+	/** 상호작용 대상 자신의 장애물만 제외할 수 있다. 일반 카메라 충돌은 모두 검사한다. */
+	float CameraDistance(const Vector3& origin, const Vector3& direction, float distance, float radius, std::optional<std::size_t> ignoredObstacle = std::nullopt) const;
 	std::vector<Vector3> FindPath(const Vector3& start, const Vector3& destination, float radius, float height) const;
 };

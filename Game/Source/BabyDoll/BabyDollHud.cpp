@@ -36,7 +36,19 @@ void BabyDollApplication::DrawHud()
 	const ImVec2 size = viewport->WorkSize;
 	ImDrawList* draw = ImGui::GetForegroundDrawList();
 	draw->AddText(ImVec2(origin.x + 28.0f, origin.y + 22.0f), Pink, "B A B Y D O L L");
-	draw->AddText(ImVec2(origin.x + 28.0f, origin.y + 43.0f), Muted, "CONTENT PROTOTYPE  /  SCISSORMAN");
+	draw->AddText(ImVec2(origin.x + 28.0f, origin.y + 43.0f), Muted, "THE EXHIBITION  /  ESCAPE PROTOTYPE");
+	if (!inspect)
+	{
+		draw->AddText(ImVec2(origin.x + 28.0f, origin.y + 68.0f), Cyan, progress.Objective());
+		const Vector3 goal = !progress.HasKey() ? layout.keyPosition : progress.IsDoorOpen() ? layout.escapePosition : layout.doorPosition;
+		const Vector3 delta = goal - player->GetPosition();
+		const float angle = std::remainder(std::atan2(delta.x, delta.z) * 57.2957795f - orbit->GetYaw(), 360.0f);
+		char guide[160];
+		std::snprintf(guide, sizeof(guide), "%s  |  %.1f m  |  %s", !progress.HasKey() ? "BRASS KEY" : progress.IsDoorOpen() ? "ESCAPE" : "EXIT GATE", PrototypeMath::Length(delta) / 100.0f,
+			std::abs(angle) < 20.0f ? "AHEAD" : std::abs(angle) > 150.0f ? "BEHIND" : angle > 0.0f ? "RIGHT" : "LEFT");
+		draw->AddText(ImVec2(origin.x + 28.0f, origin.y + 88.0f), Muted, guide);
+		if (soundPulseTime > 0.0f) { draw->AddText(ImVec2(origin.x + 28.0f, origin.y + 113.0f), Pink, "LOUD NOISE - the creature may have heard you"); }
+	}
 	ImGui::SetNextWindowPos(ImVec2(origin.x + size.x - 28.0f, origin.y + 22.0f), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
 	ImGui::SetNextWindowBgAlpha(0.82f);
 	ImGui::Begin("AI status", nullptr, OverlayFlags);
@@ -74,7 +86,7 @@ void BabyDollApplication::DrawHud()
 		ImGui::SameLine();
 		ImGui::TextColored(rightFootDown ? ImVec4(0.85f, 1.0f, 1.0f, 1.0f) : ImVec4(0.4f, 0.85f, 0.9f, 1.0f), soloControls ? "[ D ]  Right foot" : "[ . ]  P2 Right foot");
 	}
-	ImGui::TextDisabled("Mouse  Look    T  Hide / Leave    Space  Test sound");
+	ImGui::TextDisabled("Mouse  Look    T  Use / Hide / Leave    Space  Make noise");
 	ImGui::TextDisabled("Esc  Pause    Tab  Diagnostics");
 	ImGui::End();
 	if (captured)
@@ -82,9 +94,10 @@ void BabyDollApplication::DrawHud()
 		const ImVec2 center(origin.x + size.x * 0.5f, origin.y + size.y * 0.5f);
 		draw->AddCircleFilled(center, 2.0f, IM_COL32(235, 240, 245, 180));
 		const int target = FindInteraction();
-		if (target >= 0 || player->GetMode() == PlayerMode::Hidden)
+		const int objective = FindObjectiveInteraction();
+		if (target >= 0 || objective || player->GetMode() == PlayerMode::Hidden)
 		{
-			const char* text = player->GetMode() == PlayerMode::Hidden ? "[ T ]  Leave hiding place" : "[ T ]  Hide under table";
+			const char* text = player->GetMode() == PlayerMode::Hidden ? "[ T ]  Leave hiding place" : objective == 1 ? "[ T ]  Take brass key" : objective == 2 ? "[ T ]  Unlock exit gate" : objective == 3 ? "[ T ]  Locked - brass key required" : "[ T ]  Hide under table";
 			const ImVec2 textSize = ImGui::CalcTextSize(text);
 			draw->AddText(ImVec2(center.x - textSize.x * 0.5f, center.y + 34.0f), Cyan, text);
 		}
@@ -92,7 +105,7 @@ void BabyDollApplication::DrawHud()
 	if (toastTime > 0.0f)
 	{
 		const ImVec2 textSize = ImGui::CalcTextSize(toast.c_str());
-		draw->AddText(ImVec2(origin.x + (size.x - textSize.x) * 0.5f, origin.y + 95.0f), Cyan, toast.c_str());
+		draw->AddText(ImVec2(origin.x + (size.x - textSize.x) * 0.5f, origin.y + 145.0f), Cyan, toast.c_str());
 	}
 	if (player->GetMode() == PlayerMode::Caught)
 	{
@@ -105,12 +118,25 @@ void BabyDollApplication::DrawHud()
 void BabyDollApplication::DrawPanel()
 {
 	const ImGuiViewport* viewport = ImGui::GetMainViewport();
-	ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 28.0f, viewport->WorkPos.y + 90.0f), ImGuiCond_Always);
+	ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 28.0f, viewport->WorkPos.y + 185.0f), ImGuiCond_Always);
 	ImGui::SetNextWindowSize(ImVec2(355.0f, 0.0f), ImGuiCond_Always);
 	ImGui::SetNextWindowSizeConstraints(ImVec2(355.0f, 100.0f), ImVec2(355.0f, (std::max)(200.0f, viewport->WorkSize.y - 120.0f)));
 	ImGui::SetNextWindowBgAlpha(0.94f);
-	ImGui::Begin("Prototype console", nullptr, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse);
-	ImGui::TextDisabled("SCISSORMAN  /  Goth Scarecrow  /  CC0");
+	ImGui::Begin("Exhibition escape", nullptr, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse);
+	if (progress.stage == EscapeStage::Cleared)
+	{
+		ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.7f, 1.0f), "YOU ESCAPED");
+		ImGui::Text("Time  %02d:%02d", static_cast<int>(clearTime) / 60, static_cast<int>(clearTime) % 60);
+		ImGui::Text("Caught  %d time(s)", deaths);
+		ImGui::TextWrapped("You found the key, unlocked the gate and escaped the exhibition.");
+		if (ImGui::Button("Play again", ImVec2(-1.0f, 36.0f))) { ResetRun(); inspect = paused = false; SetCaptured(true); }
+		ImGui::End();
+		return;
+	}
+	ImGui::TextWrapped("One body. Two players. Find the brass key in west storage and escape through the red gate.");
+	ImGui::TextWrapped("Storage opens to the north through gold pillars. The exit is in the southeast. Alternate feet, watch your heartbeat, and use tables to hide.");
+	ImGui::TextDisabled("Audio is not available in this build.");
+	ImGui::TextWrapped("Use the noise ring, threat cue, lights and rear CCTV to read danger. Space makes a loud distraction.");
 	ImGui::Separator();
 	if (inspect)
 	{
@@ -133,17 +159,17 @@ void BabyDollApplication::DrawPanel()
 	if (wasSolo != soloControls)
 	{
 		freeMove = false;
-		player->SetMode(PlayerMode::Moving);
-		occupiedTable = -1;
 		pending = {};
 	}
 	ImGui::TextWrapped(soloControls ? "Alternate S and D to walk. Mouse looks; T or right-click hides / leaves." : "P1: S / R / T. P2: period / mouse. T hides; R is reserved for hand actions.");
-	if (ImGui::Button(inspect ? (soloControls ? "Start single player" : "Start co-op") : "Resume", ImVec2(-1.0f, 36.0f)))
+	if (ImGui::Button(inspect || gameTime == 0.0f ? "Begin escape" : "Resume", ImVec2(-1.0f, 36.0f)))
 	{
 		if (inspect) { ResetRun(); }
 		inspect = paused = false;
 		SetCaptured(true);
 	}
+	if (gameTime > 0.0f && ImGui::Button("Restart from entrance", ImVec2(-1.0f, 28.0f))) { ResetRun(); inspect = paused = false; SetCaptured(true); }
+	if (!ImGui::CollapsingHeader("Developer tools")) { ImGui::End(); return; }
 	if (!inspect && ImGui::Button("Model preview", ImVec2(-1.0f, 28.0f)))
 	{
 		inspect = paused = true;

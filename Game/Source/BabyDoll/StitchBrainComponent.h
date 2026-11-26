@@ -5,6 +5,7 @@
 #include "HearingComponent.h"
 
 #include "Component/Component.h"
+#include <array>
 
 struct StitchObservation
 {
@@ -19,6 +20,8 @@ struct StitchObservation
 class StitchBrainComponent final : public Component
 {
 public:
+	// 잠긴 출구 구역 안에 순찰 목표를 두지 않는다. 창고와 전시홀은 북쪽 문으로 연결된다.
+	static constexpr std::array<Vector3, 4> PatrolRoute{{ {-1450.0f, 0.0f, 1000.0f}, {-1450.0f, 0.0f, -800.0f}, {0.0f, 0.0f, 1000.0f}, {300.0f, 0.0f, -1000.0f} }};
 	void Reset(const Vector3& spawn);
 	void ChangeState(StitchState nextState);
 	void Step(const StitchObservation& observation, float deltaTime, const PrototypeConfig& config, const GameplaySpace& space);
@@ -50,4 +53,5 @@ private:
 	bool resumeAfterRoar = false;
 	bool brokeTable = false;
 	bool caught = false;
+	std::optional<SoundStimulus> deferredSound;
 };
