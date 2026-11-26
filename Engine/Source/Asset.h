@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 /** 메시, 텍스처, 사운드 같은 엔진 콘텐츠의 공통 이름과 경로를 보관한다. */
@@ -29,7 +30,15 @@ public:
 	/** 파일 없는 에셋은 빈 경로다. 반환한 참조는 이 객체가 살아 있는 동안 사용한다. */
 	const std::string& GetPath() const;
 
+	/**
+	 * 이 객체를 만들 때 받은 번호다. 실행 중에는 객체마다 다르고 다시 쓰이지 않으며 0이 아니다.
+	 * 실행할 때마다 달라지므로 파일에 저장하지 않는다. 렌더러 리소스 이름처럼 실행 중에 에셋 객체를 구분할 때 쓴다.
+	 */
+	std::uint64_t GetInstanceID() const;
+
 private:
 	std::string name;
 	std::string path;
+	// 생성자에서 정한다. 이동하면 새 객체로 옮겨지고, 이동한 원본은 더 사용하지 않는다.
+	std::uint64_t instanceID;
 };

@@ -4,6 +4,8 @@
 #include "Asset.h"
 #include "GLTF/GLTFLoader.h"
 
+#include <compare>
+#include <cstdint>
 #include <filesystem>
 #include <map>
 #include <memory>
@@ -143,17 +145,34 @@ private:
 	 * 저장소 루트 기준 UTF-8 경로의 이미지를 합쳐 선형 ORM 텍스처를 만든다.
 	 * 빈 경로는 해당 이미지가 없다는 뜻이며, 같은 입력 조합은 매니저 수명 동안 재사용한다.
 	 * 두 경로가 모두 비었거나 로딩, 합성 또는 초기화에 실패하면 nullptr를 반환한다.
-	 * 생성 텍스처의 경로는 파일을 가리키지 않는 식별자다. 경로 변환과 할당 예외는 전파한다.
+	 * 만든 텍스처는 파일에서 다시 만들 수 없어 빈 경로다. 경로 변환과 할당 예외는 전파한다.
 	 */
 	std::shared_ptr<const Texture> LoadORMTexture(std::string_view occlusionPath, std::string_view metallicRoughnessPath);
 
-	/** 원본 이미지 또는 흰색 한 픽셀에 선형 RGB 발광 계수(0~1)를 적용한 sRGB 텍스처를 준비해 공유한다. */
+	/**
+	 * 원본 이미지 또는 흰색 한 픽셀에 선형 RGB 발광 계수(0~1)를 적용한 sRGB 텍스처를 준비해 공유한다.
+	 * 원본이 있고 계수가 모두 1이면 원본 텍스처를 그대로 돌려준다. 새로 만든 텍스처는 파일에서 다시 만들 수 없어 빈 경로다.
+	 */
 	std::shared_ptr<const Texture> LoadEmissiveTexture(std::string_view texturePath, const Vector3& factor);
 
 private:
+	// 발광 텍스처 하나를 구분하는 값이다. 원본 텍스처 객체와 곱한 계수가 같으면 같은 텍스처다.
+	struct EmissiveTextureKey
+	{
+		// 원본 텍스처의 Asset::GetInstanceID다. 0이면 원본 없이 흰색 한 픽셀에서 만든다.
+		std::uint64_t sourceInstanceID = 0;
+		// 선형 RGB 발광 계수다. glTF 로더가 0~1 범위를 확인한 값이라 NaN이 없다.
+		float red = 0.0f;
+		float green = 0.0f;
+		float blue = 0.0f;
+
+		auto operator<=>(const EmissiveTextureKey&) const = default;
+	};
+
 	std::map<std::pair<std::string, TextureFormat>, std::shared_ptr<const Texture>> textures;
 	// 정규화한 절대 경로를 차폐, 금속성-거칠기 순서로 묶는다. 빈 키는 입력 없음이다.
 	std::map<std::pair<std::string, std::string>, std::shared_ptr<const Texture>> ormTextures;
+	std::map<EmissiveTextureKey, std::shared_ptr<const Texture>> emissiveTextures;
 
 	// 폰트
 public:

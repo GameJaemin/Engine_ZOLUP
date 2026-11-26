@@ -553,12 +553,11 @@ std::shared_ptr<const Texture> AssetManager::LoadORMTexture(std::string_view occ
 		return nullptr;
 	}
 
-	// ':'와 '|'로 실제 파일 경로와 구분하고, 역할과 원본 바이트 길이를 포함한다.
-	const std::string generatedPath = std::format("generated:orm|o={}:{}|m={}:{}", cacheKey.first.size(), EncodeGeneratedPathKey(cacheKey.first), cacheKey.second.size(), EncodeGeneratedPathKey(cacheKey.second));
-	Texture textureData("ORM", generatedPath);
+	// 파일에서 다시 만들 수 없는 텍스처라 빈 경로다. 같은 입력의 재사용은 ormTextures가 맡는다.
+	Texture textureData("ORM", std::string());
 	if (!textureData.Initialize(std::move(ormImage), TextureFormat::RGBA8UNorm))
 	{
-		Log::Write(LogLevel::Error, "AssetManager", "Failed to initialize ORM texture: " + generatedPath);
+		Log::Write(LogLevel::Error, "AssetManager", std::format("Failed to initialize ORM texture: occlusion='{}', metallicRoughness='{}'", occlusionPath, metallicRoughnessPath));
 		return nullptr;
 	}
 
@@ -580,12 +579,10 @@ std::shared_ptr<const Texture> AssetManager::LoadEmissiveTexture(std::string_vie
 		if (usesOriginalColor) { return source; }
 	}
 
-	const std::string sourceKey = source != nullptr ? Paths::MakeAssetKey(source->GetPath()) : std::string{};
-	// 계수를 손실 없이 키에 넣고, 양의 0과 음의 0은 같은 키를 쓴다.
-	const std::string generatedPath = std::format("generated:emissive|image={}|rgb={:a},{:a},{:a}", EncodeGeneratedPathKey(sourceKey), std::abs(factor.x), std::abs(factor.y), std::abs(factor.z));
-	const std::pair<std::string, TextureFormat> cacheKey{ generatedPath, format };
-	const auto cachedTexture = textures.find(cacheKey);
-	if (cachedTexture != textures.end()) { return cachedTexture->second; }
+	// 같은 파일은 같은 Texture 객체로 돌려받으므로 원본은 객체 번호로 구분한다.
+	const EmissiveTextureKey cacheKey{ source != nullptr ? source->GetInstanceID() : 0, factor.x, factor.y, factor.z };
+	const auto cachedTexture = emissiveTextures.find(cacheKey);
+	if (cachedTexture != emissiveTextures.end()) { return cachedTexture->second; }
 
 	constexpr std::byte white{ 255 };
 	Image image{ 1, 1, { white, white, white, white } };
@@ -604,11 +601,12 @@ std::shared_ptr<const Texture> AssetManager::LoadEmissiveTexture(std::string_vie
 		image.pixels[offset + 2] = blue[std::to_integer<std::size_t>(image.pixels[offset + 2])];
 	}
 
-	Texture textureData("Emissive", generatedPath);
+	// 파일에서 다시 만들 수 없는 텍스처라 빈 경로다.
+	Texture textureData("Emissive", std::string());
 	if (!textureData.Initialize(std::move(image), format)) { return nullptr; }
 
 	std::shared_ptr<const Texture> texture = std::make_shared<const Texture>(std::move(textureData));
-	textures.emplace(cacheKey, texture);
+	emissiveTextures.emplace(cacheKey, texture);
 	return texture;
 }
 
