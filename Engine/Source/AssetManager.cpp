@@ -1,6 +1,8 @@
 #include "AssetManager.h"
 
+#include "Core/FileHelper.h"
 #include "Core/Log.h"
+#include "Font.h"
 #include "GLTF/GLTFLoader.h"
 #include "Image/Image.h"
 #include "Image/ImageLoader.h"
@@ -608,6 +610,39 @@ std::shared_ptr<const Texture> AssetManager::LoadEmissiveTexture(std::string_vie
 	std::shared_ptr<const Texture> texture = std::make_shared<const Texture>(std::move(textureData));
 	textures.emplace(cacheKey, texture);
 	return texture;
+}
+
+std::shared_ptr<const Font> AssetManager::LoadFont(std::string_view relativePath)
+{
+	std::filesystem::path absolutePath;
+	if (!Paths::GetAbsolutePath(relativePath, absolutePath))
+	{
+		Log::Write(LogLevel::Warning, "AssetManager", "Failed to resolve font path: " + std::string(relativePath));
+		return nullptr;
+	}
+
+	absolutePath = absolutePath.lexically_normal();
+	const std::u8string absolutePathUtf8 = absolutePath.generic_u8string();
+	const std::string pathText(absolutePathUtf8.begin(), absolutePathUtf8.end());
+	const std::string cacheKey = Paths::MakeAssetKey(pathText);
+	const auto cachedFont = fonts.find(cacheKey);
+	if (cachedFont != fonts.end()) { return cachedFont->second; }
+
+	std::vector<std::byte> bytes;
+	if (!FileHelper::ReadAllBytes(absolutePath, bytes) || bytes.empty())
+	{
+		Log::Write(LogLevel::Warning, "AssetManager", "Failed to read font: " + std::string(relativePath));
+		return nullptr;
+	}
+
+	const std::filesystem::path assetPath = std::filesystem::path(std::u8string(relativePath.begin(), relativePath.end())).lexically_normal();
+	const std::u8string nameUtf8 = assetPath.stem().u8string();
+	const std::u8string pathUtf8 = assetPath.generic_u8string();
+	const std::string name(nameUtf8.begin(), nameUtf8.end());
+	const std::string path(pathUtf8.begin(), pathUtf8.end());
+	const std::shared_ptr<const Font> font = std::make_shared<const Font>(name, path, std::move(bytes));
+	fonts.emplace(cacheKey, font);
+	return font;
 }
 
 std::shared_ptr<const Prefab> AssetManager::LoadPrefab(std::string_view relativePath)

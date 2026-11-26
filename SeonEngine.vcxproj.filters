@@ -127,6 +127,9 @@
     <ClCompile Include="Engine\Source\SavedAssetReference.cpp">
       <Filter>Engine\Source</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Source\Font.cpp">
+      <Filter>Engine\Source</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Source\Animation\AnimationClip.cpp">
       <Filter>Engine\Source\Animation</Filter>
     </ClCompile>
@@ -373,6 +376,9 @@
       <Filter>Editor\Source\Panels</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Asset.h">
+      <Filter>Engine\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Font.h">
       <Filter>Engine\Source</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\AssetReference.h">

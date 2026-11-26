@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+class Font;
 class Material;
 struct Prefab;
 class StaticMesh;
@@ -153,6 +154,17 @@ private:
 	std::map<std::pair<std::string, TextureFormat>, std::shared_ptr<const Texture>> textures;
 	// 정규화한 절대 경로를 차폐, 금속성-거칠기 순서로 묶는다. 빈 키는 입력 없음이다.
 	std::map<std::pair<std::string, std::string>, std::shared_ptr<const Texture>> ormTextures;
+
+	// 폰트
+public:
+	/**
+	 * 저장소 루트 기준 UTF-8 상대 경로의 폰트 원본 바이트를 읽고 같은 정규화 경로 요청에 재사용한다.
+	 * 파일을 읽을 수 없거나 비어 있으면 로그를 남기고 nullptr를 반환한다. 폰트 형식 검증은 사용하는 쪽에서 한다.
+	 */
+	[[nodiscard]] std::shared_ptr<const Font> LoadFont(std::string_view relativePath);
+
+private:
+	std::unordered_map<std::string, std::shared_ptr<const Font>> fonts;
 
 	// 프리팹
 public:
