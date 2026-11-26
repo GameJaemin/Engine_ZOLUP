@@ -2,7 +2,7 @@
 
 #include "Core/FileHelper.h"
 #include "Core/Log.h"
-#include "Prefab/PrefabComponents.h"
+#include "PrefabComponents.h"
 
 #include "rapidjson/document.h"
 #include "rapidjson/error/en.h"

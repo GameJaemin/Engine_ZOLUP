@@ -11,7 +11,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Engine\Source\CameraViewInfo.cpp" />
+    <ClCompile Include="Engine\Source\Camera\CameraViewInfo.cpp" />
     <ClCompile Include="Engine\Source\Core\Math\Matrix4x4.cpp" />
     <ClCompile Include="Engine\Source\Core\Math\Quaternion.cpp" />
     <ClCompile Include="Engine\Source\Core\Math\Transform.cpp" />
@@ -71,14 +71,14 @@
     <ClCompile Include="Engine\Source\Component\StaticMeshComponent.cpp" />
     <ClCompile Include="Engine\Source\Component\TransformComponent.cpp" />
     <ClCompile Include="Engine\Source\Core\Math\Vector3.cpp" />
-    <ClCompile Include="Engine\Source\ComponentTypeRegistry.cpp" />
-    <ClCompile Include="Engine\Source\EngineComponentTypes.cpp" />
+    <ClCompile Include="Engine\Source\Component\ComponentTypeRegistry.cpp" />
+    <ClCompile Include="Engine\Source\Component\EngineComponentTypes.cpp" />
     <ClCompile Include="Engine\Source\GameObject.cpp" />
-    <ClCompile Include="Engine\Source\GLTFLoader.cpp" />
-    <ClCompile Include="Engine\Source\LevelLoader.cpp" />
+    <ClCompile Include="Engine\Source\GLTF\GLTFLoader.cpp" />
+    <ClCompile Include="Engine\Source\Scene\LevelLoader.cpp" />
     <ClCompile Include="Engine\Source\ObjectID.cpp" />
-    <ClCompile Include="Engine\Source\Prefab.cpp" />
-    <ClCompile Include="Engine\Source\SceneSnapshot.cpp" />
+    <ClCompile Include="Engine\Source\Prefab\Prefab.cpp" />
+    <ClCompile Include="Engine\Source\Scene\SceneSnapshot.cpp" />
     <ClCompile Include="Engine\Source\Prefab\PrefabAnimation.cpp" />
     <ClCompile Include="Engine\Source\Prefab\PrefabCamera.cpp" />
     <ClCompile Include="Engine\Source\Prefab\PrefabInstantiation.cpp" />
@@ -86,7 +86,7 @@
     <ClCompile Include="Engine\Source\Prefab\PrefabSkin.cpp" />
     <ClCompile Include="Engine\Source\Prefab\PrefabSkybox.cpp" />
     <ClCompile Include="Engine\Source\Prefab\PrefabStaticMesh.cpp" />
-    <ClCompile Include="Engine\Source\ImageLoader.cpp" />
+    <ClCompile Include="Engine\Source\Image\ImageLoader.cpp" />
     <ClCompile Include="Engine\Source\WindowsApplication.cpp" />
     <ClCompile Include="Engine\Source\World.cpp" />
     <ClCompile Include="Engine\Source\Renderer\RenderScene.cpp" />
@@ -94,11 +94,11 @@
     <ClCompile Include="Engine\Source\Renderer\TextureRenderTarget2D.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Engine\Source\CameraViewInfo.h" />
+    <ClInclude Include="Engine\Source\Camera\CameraViewInfo.h" />
     <ClInclude Include="Engine\Source\Core\Math\MathUtility.h" />
     <ClInclude Include="Engine\Source\Asset.h" />
-    <ClInclude Include="Engine\Source\Image.h" />
-    <ClInclude Include="Engine\Source\ImageLoader.h" />
+    <ClInclude Include="Engine\Source\Image\Image.h" />
+    <ClInclude Include="Engine\Source\Image\ImageLoader.h" />
     <ClInclude Include="Engine\Source\AssetManager.h" />
     <ClInclude Include="Engine\Source\Engine.h" />
     <ClInclude Include="Engine\Source\Physics\JoltBroadPhaseLayers.h" />
@@ -158,15 +158,15 @@
     <ClInclude Include="Engine\Source\Core\Math\Transform.h" />
     <ClInclude Include="Engine\Source\Core\Math\Vector2.h" />
     <ClInclude Include="Engine\Source\Core\Math\Vector3.h" />
-    <ClInclude Include="Engine\Source\ComponentTypeRegistry.h" />
-    <ClInclude Include="Engine\Source\EngineComponentTypes.h" />
+    <ClInclude Include="Engine\Source\Component\ComponentTypeRegistry.h" />
+    <ClInclude Include="Engine\Source\Component\EngineComponentTypes.h" />
     <ClInclude Include="Engine\Source\GameObject.h" />
-    <ClInclude Include="Engine\Source\GLTFDocument.h" />
-    <ClInclude Include="Engine\Source\GLTFLoader.h" />
-    <ClInclude Include="Engine\Source\LevelLoader.h" />
+    <ClInclude Include="Engine\Source\GLTF\GLTFDocument.h" />
+    <ClInclude Include="Engine\Source\GLTF\GLTFLoader.h" />
+    <ClInclude Include="Engine\Source\Scene\LevelLoader.h" />
     <ClInclude Include="Engine\Source\ObjectID.h" />
-    <ClInclude Include="Engine\Source\Prefab.h" />
-    <ClInclude Include="Engine\Source\SceneSnapshot.h" />
+    <ClInclude Include="Engine\Source\Prefab\Prefab.h" />
+    <ClInclude Include="Engine\Source\Scene\SceneSnapshot.h" />
     <ClInclude Include="Engine\Source\Prefab\PrefabComponents.h" />
     <ClInclude Include="Engine\Source\WindowsApplication.h" />
     <ClInclude Include="Engine\Source\World.h" />

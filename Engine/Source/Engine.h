@@ -1,7 +1,7 @@
 #pragma once
 
 #include "AssetManager.h"
-#include "ComponentTypeRegistry.h"
+#include "Component/ComponentTypeRegistry.h"
 #include "ImGuiSystem.h"
 #include "Physics/JoltRuntime.h"
 #include "WindowsApplication.h"

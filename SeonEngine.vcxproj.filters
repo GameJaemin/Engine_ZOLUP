@@ -25,6 +25,9 @@
     <Filter Include="Engine\Source">
       <UniqueIdentifier>{2e324943-078b-4bc4-a761-e0331e6269d9}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Engine\Source\Camera">
+      <UniqueIdentifier>{134b62d0-877b-43e0-b33a-6ed46d32f4df}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Engine\Source\Component">
       <UniqueIdentifier>{6dd01cc8-6567-4af5-bf83-a8ad01ac577b}</UniqueIdentifier>
     </Filter>
@@ -33,6 +36,12 @@
     </Filter>
     <Filter Include="Engine\Source\Core\Math">
       <UniqueIdentifier>{936c21e2-30ad-4a38-a249-5fcdfafbf5f3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Engine\Source\GLTF">
+      <UniqueIdentifier>{21dff48b-efef-4f66-a2b5-80a9df1bfeb6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Engine\Source\Image">
+      <UniqueIdentifier>{85759613-29ba-4a54-baf9-efb5254f80ea}</UniqueIdentifier>
     </Filter>
     <Filter Include="Engine\Source\Input">
       <UniqueIdentifier>{7d3a9c41-5e2b-4f86-9a1d-c2b8e6f04a57}</UniqueIdentifier>
@@ -51,6 +60,9 @@
     </Filter>
     <Filter Include="Engine\Source\Animation">
       <UniqueIdentifier>{5a5fd3fb-1dd1-4d71-8c3b-6603f22af79a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Engine\Source\Scene">
+      <UniqueIdentifier>{48073927-71cc-4f48-b10f-d09064309cd5}</UniqueIdentifier>
     </Filter>
     <Filter Include="Engine\Source\Texture">
       <UniqueIdentifier>{f895b427-8ea9-4923-a931-5b461624c193}</UniqueIdentifier>
@@ -147,8 +159,8 @@
     <ClCompile Include="Engine\Source\WindowsApplication.cpp">
       <Filter>Engine\Source</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\Source\CameraViewInfo.cpp">
-      <Filter>Engine\Source</Filter>
+    <ClCompile Include="Engine\Source\Camera\CameraViewInfo.cpp">
+      <Filter>Engine\Source\Camera</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Source\Renderer\RenderScene.cpp">
       <Filter>Engine\Source\Renderer</Filter>
@@ -216,29 +228,29 @@
     <ClCompile Include="Engine\Source\Core\Math\Vector3.cpp">
       <Filter>Engine\Source\Core\Math</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\Source\ComponentTypeRegistry.cpp">
-      <Filter>Engine\Source</Filter>
+    <ClCompile Include="Engine\Source\Component\ComponentTypeRegistry.cpp">
+      <Filter>Engine\Source\Component</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\Source\EngineComponentTypes.cpp">
-      <Filter>Engine\Source</Filter>
+    <ClCompile Include="Engine\Source\Component\EngineComponentTypes.cpp">
+      <Filter>Engine\Source\Component</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Source\GameObject.cpp">
       <Filter>Engine\Source</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\Source\GLTFLoader.cpp">
-      <Filter>Engine\Source</Filter>
+    <ClCompile Include="Engine\Source\GLTF\GLTFLoader.cpp">
+      <Filter>Engine\Source\GLTF</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\Source\LevelLoader.cpp">
-      <Filter>Engine\Source</Filter>
+    <ClCompile Include="Engine\Source\Scene\LevelLoader.cpp">
+      <Filter>Engine\Source\Scene</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Source\ObjectID.cpp">
       <Filter>Engine\Source</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\Source\Prefab.cpp">
-      <Filter>Engine\Source</Filter>
+    <ClCompile Include="Engine\Source\Prefab\Prefab.cpp">
+      <Filter>Engine\Source\Prefab</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\Source\SceneSnapshot.cpp">
-      <Filter>Engine\Source</Filter>
+    <ClCompile Include="Engine\Source\Scene\SceneSnapshot.cpp">
+      <Filter>Engine\Source\Scene</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Source\Prefab\PrefabAnimation.cpp">
       <Filter>Engine\Source\Prefab</Filter>
@@ -261,8 +273,8 @@
     <ClCompile Include="Engine\Source\Prefab\PrefabStaticMesh.cpp">
       <Filter>Engine\Source\Prefab</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\Source\ImageLoader.cpp">
-      <Filter>Engine\Source</Filter>
+    <ClCompile Include="Engine\Source\Image\ImageLoader.cpp">
+      <Filter>Engine\Source\Image</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Source\Core\FileHelper.cpp">
       <Filter>Engine\Source\Core</Filter>
@@ -347,11 +359,11 @@
     <ClInclude Include="Engine\Source\Asset.h">
       <Filter>Engine\Source</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\Source\Image.h">
-      <Filter>Engine\Source</Filter>
+    <ClInclude Include="Engine\Source\Image\Image.h">
+      <Filter>Engine\Source\Image</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\Source\ImageLoader.h">
-      <Filter>Engine\Source</Filter>
+    <ClInclude Include="Engine\Source\Image\ImageLoader.h">
+      <Filter>Engine\Source\Image</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\AssetManager.h">
       <Filter>Engine\Source</Filter>
@@ -404,8 +416,8 @@
     <ClInclude Include="Engine\Source\WindowsApplication.h">
       <Filter>Engine\Source</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\Source\CameraViewInfo.h">
-      <Filter>Engine\Source</Filter>
+    <ClInclude Include="Engine\Source\Camera\CameraViewInfo.h">
+      <Filter>Engine\Source\Camera</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Component\AmbientLightComponent.h">
       <Filter>Engine\Source\Component</Filter>
@@ -494,32 +506,32 @@
     <ClInclude Include="Engine\Source\Texture\ORMImageBuilder.h">
       <Filter>Engine\Source\Texture</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\Source\ComponentTypeRegistry.h">
-      <Filter>Engine\Source</Filter>
+    <ClInclude Include="Engine\Source\Component\ComponentTypeRegistry.h">
+      <Filter>Engine\Source\Component</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\Source\EngineComponentTypes.h">
-      <Filter>Engine\Source</Filter>
+    <ClInclude Include="Engine\Source\Component\EngineComponentTypes.h">
+      <Filter>Engine\Source\Component</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\GameObject.h">
       <Filter>Engine\Source</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\Source\GLTFDocument.h">
-      <Filter>Engine\Source</Filter>
+    <ClInclude Include="Engine\Source\GLTF\GLTFDocument.h">
+      <Filter>Engine\Source\GLTF</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\Source\GLTFLoader.h">
-      <Filter>Engine\Source</Filter>
+    <ClInclude Include="Engine\Source\GLTF\GLTFLoader.h">
+      <Filter>Engine\Source\GLTF</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\Source\LevelLoader.h">
-      <Filter>Engine\Source</Filter>
+    <ClInclude Include="Engine\Source\Scene\LevelLoader.h">
+      <Filter>Engine\Source\Scene</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\ObjectID.h">
       <Filter>Engine\Source</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\Source\Prefab.h">
-      <Filter>Engine\Source</Filter>
+    <ClInclude Include="Engine\Source\Prefab\Prefab.h">
+      <Filter>Engine\Source\Prefab</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\Source\SceneSnapshot.h">
-      <Filter>Engine\Source</Filter>
+    <ClInclude Include="Engine\Source\Scene\SceneSnapshot.h">
+      <Filter>Engine\Source\Scene</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Prefab\PrefabComponents.h">
       <Filter>Engine\Source\Prefab</Filter>

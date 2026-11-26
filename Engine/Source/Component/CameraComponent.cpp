@@ -1,6 +1,6 @@
 #include "CameraComponent.h"
 
-#include "CameraViewInfo.h"
+#include "Camera/CameraViewInfo.h"
 #include "Component/TransformComponent.h"
 #include "Core/Math/Transform.h"
 #include "GameObject.h"

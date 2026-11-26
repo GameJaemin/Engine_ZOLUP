@@ -1,7 +1,7 @@
 #include "SceneCapture2DComponent.h"
 
 #include "CameraComponent.h"
-#include "CameraViewInfo.h"
+#include "Camera/CameraViewInfo.h"
 #include "Core/Log.h"
 #include "GameObject.h"
 #include "Renderer/RenderScene.h"

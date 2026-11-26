@@ -1,4 +1,4 @@
-#include "GLTFLoader.h"
+#include "GLTF/GLTFLoader.h"
 
 #include <cmath>
 #include <cstdio>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ComponentTypeRegistry.h"
+#include "Component/ComponentTypeRegistry.h"
 #include "ObjectID.h"
 
 #include <optional>

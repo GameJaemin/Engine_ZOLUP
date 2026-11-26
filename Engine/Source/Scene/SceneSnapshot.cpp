@@ -2,7 +2,7 @@
 
 #include "Component/CameraComponent.h"
 #include "Component/Component.h"
-#include "ComponentTypeRegistry.h"
+#include "Component/ComponentTypeRegistry.h"
 #include "Core/Log.h"
 #include "GameObject.h"
 #include "World.h"

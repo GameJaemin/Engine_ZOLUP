@@ -2,7 +2,7 @@
 
 #include "Core/FrameTimer.h"
 #include "Core/Log.h"
-#include "EngineComponentTypes.h"
+#include "Component/EngineComponentTypes.h"
 #include "IApplication.h"
 #include "Renderer/RenderScene.h"
 #include "Renderer/SceneRenderRequest.h"

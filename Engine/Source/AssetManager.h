@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Animation/AnimationClip.h"
-#include "GLTFLoader.h"
+#include "GLTF/GLTFLoader.h"
 
 #include <filesystem>
 #include <map>

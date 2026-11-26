@@ -1,6 +1,6 @@
 #include "Texture.h"
 
-#include "Image.h"
+#include "Image/Image.h"
 
 #include <limits>
 #include <utility>

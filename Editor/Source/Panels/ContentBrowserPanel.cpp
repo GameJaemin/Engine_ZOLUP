@@ -3,8 +3,8 @@
 #include "Core/Log.h"
 #include "DataHub_Interface.h"
 #include "EditorAssetDragDrop.h"
-#include "Image.h"
-#include "ImageLoader.h"
+#include "Image/Image.h"
+#include "Image/ImageLoader.h"
 #include "Paths.h"
 
 #include <imgui.h>

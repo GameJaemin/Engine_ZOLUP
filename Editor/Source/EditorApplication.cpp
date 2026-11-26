@@ -1,7 +1,7 @@
 #include "EditorApplication.h"
 
 #include "AssetManager.h"
-#include "CameraViewInfo.h"
+#include "Camera/CameraViewInfo.h"
 #include "Component/StaticMeshComponent.h"
 #include "Component/TransformComponent.h"
 #include "Core/Log.h"
@@ -11,7 +11,7 @@
 #include "GameObject.h"
 #include "Mesh/StaticMesh.h"
 #include "Paths.h"
-#include "Prefab.h"
+#include "Prefab/Prefab.h"
 #include "World.h"
 
 #include <imgui.h>

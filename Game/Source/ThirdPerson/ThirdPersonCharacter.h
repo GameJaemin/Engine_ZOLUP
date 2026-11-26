@@ -8,7 +8,7 @@
 #include "Input/InputState.h"
 #include "Input/Key.h"
 #include "ObjectID.h"
-#include "Prefab.h"
+#include "Prefab/Prefab.h"
 #include "World.h"
 
 #include <cmath>

@@ -5,7 +5,7 @@
 #include "Component/SkinComponent.h"
 #include "Core/Log.h"
 #include "GameObject.h"
-#include "GLTFLoader.h"
+#include "GLTF/GLTFLoader.h"
 
 #include <cstddef>
 #include <format>

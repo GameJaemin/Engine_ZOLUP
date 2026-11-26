@@ -2,9 +2,9 @@
 
 #include "EditorSelection.h"
 #include "GameObject.h"
-#include "LevelLoader.h"
+#include "Scene/LevelLoader.h"
 #include "ObjectID.h"
-#include "SceneSnapshot.h"
+#include "Scene/SceneSnapshot.h"
 #include "World.h"
 
 #include <optional>

@@ -9,7 +9,7 @@
 #include "Component/TransformComponent.h"
 #include "Core/Log.h"
 #include "Core/Math/Transform.h"
-#include "GLTFLoader.h"
+#include "GLTF/GLTFLoader.h"
 #include "GameObject.h"
 #include "Mesh/Skin.h"
 #include "Prefab.h"

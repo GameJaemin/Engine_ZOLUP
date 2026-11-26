@@ -1,6 +1,6 @@
 #include "RenderScene.h"
 
-#include "CameraViewInfo.h"
+#include "Camera/CameraViewInfo.h"
 #include "Component/AmbientLightComponent.h"
 #include "Component/DirectionalLightComponent.h"
 #include "Component/LightComponent.h"

@@ -1,7 +1,7 @@
 #include "InspectorPanel.h"
 
 #include "Component/Component.h"
-#include "ComponentTypeRegistry.h"
+#include "Component/ComponentTypeRegistry.h"
 #include "Core/Math/EulerAngles.h"
 #include "Core/Math/Vector2.h"
 #include "Core/Math/Vector3.h"

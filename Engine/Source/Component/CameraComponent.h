@@ -1,6 +1,6 @@
 #pragma once
 
-#include "CameraViewInfo.h"
+#include "Camera/CameraViewInfo.h"
 #include "Component.h"
 
 /** 원근 또는 직교 투영 카메라의 설정값을 보관한다. 위치와 회전은 같은 객체의 TransformComponent를 따른다. */
