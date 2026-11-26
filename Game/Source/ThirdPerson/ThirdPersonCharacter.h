@@ -5,6 +5,7 @@
 #include "AssetManager.h"
 #include "Component/CameraComponent.h"
 #include "Core/Log.h"
+#include "Core/Math/Matrix4x4.h"
 #include "Input/InputState.h"
 #include "Input/Key.h"
 #include "ObjectID.h"
@@ -83,7 +84,7 @@ public:
 			}
 			for (const MeshVertex& vertex : model->meshes[*model->sceneNodes[node].mesh]->vertices)
 			{
-				minimumY = (std::min)(minimumY, ThirdPersonMath::TransformPoint(vertex.position, matrix).y);
+				minimumY = (std::min)(minimumY, matrix.TransformPoint(vertex.position).y);
 			}
 		}
 		if (!std::isfinite(minimumY) || minimumY == (std::numeric_limits<float>::max)()) { return FailAttach(); }
@@ -189,7 +190,7 @@ private:
 				float floor = 0.0f;
 				if (!scene.FindGround(point, hint.y - 25.0f, hint.y - 800.0f, floor)) { continue; }
 				point.y = floor + 0.1f;
-				if (ThirdPersonMath::Length(scene.GetPenetration(point, config.radius + 1.0f, config.height)) > 0.1f) { continue; }
+				if (scene.GetPenetration(point, config.radius + 1.0f, config.height).Length() > 0.1f) { continue; }
 				result = point;
 				return true;
 			}

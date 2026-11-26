@@ -26,6 +26,9 @@
     <Filter Include="Engine\Source">
       <UniqueIdentifier>{2e324943-078b-4bc4-a761-e0331e6269d9}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Engine\Source\Audio">
+      <UniqueIdentifier>{394fff9f-8d7b-48cf-99d5-0345fbefc288}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Engine\Source\Camera">
       <UniqueIdentifier>{134b62d0-877b-43e0-b33a-6ed46d32f4df}</UniqueIdentifier>
     </Filter>
@@ -139,6 +142,9 @@
     <ClCompile Include="Engine\Source\Engine.cpp">
       <Filter>Engine\Source</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Source\Audio\AudioSystem.cpp">
+      <Filter>Engine\Source\Audio</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Source\Physics\JoltBroadPhaseLayers.cpp">
       <Filter>Engine\Source\Physics</Filter>
     </ClCompile>
@@ -169,10 +175,16 @@
     <ClCompile Include="Engine\Source\Renderer\HakkoResources.cpp">
       <Filter>Engine\Source\Renderer</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Source\Renderer\PostProcessPasses.cpp">
+      <Filter>Engine\Source\Renderer</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Source\Renderer\TextureRenderTarget2D.cpp">
       <Filter>Engine\Source\Renderer</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Source\Component\AnimationComponent.cpp">
+      <Filter>Engine\Source\Component</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Component\AudioComponent.cpp">
       <Filter>Engine\Source\Component</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Source\Component\BoxColliderComponent.cpp">
@@ -372,6 +384,9 @@
     <ClInclude Include="Engine\Source\Engine.h">
       <Filter>Engine\Source</Filter>
     </ClInclude>
+    <ClInclude Include="Engine\Source\Audio\AudioSystem.h">
+      <Filter>Engine\Source\Audio</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\Source\Physics\JoltBroadPhaseLayers.h">
       <Filter>Engine\Source\Physics</Filter>
     </ClInclude>
@@ -414,6 +429,9 @@
     <ClInclude Include="Engine\Source\Renderer\HakkoResources.h">
       <Filter>Engine\Source\Renderer</Filter>
     </ClInclude>
+    <ClInclude Include="Engine\Source\Renderer\PostProcessPasses.h">
+      <Filter>Engine\Source\Renderer</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\Source\WindowsApplication.h">
       <Filter>Engine\Source</Filter>
     </ClInclude>
@@ -424,6 +442,9 @@
       <Filter>Engine\Source\Component</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Component\AnimationComponent.h">
+      <Filter>Engine\Source\Component</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Component\AudioComponent.h">
       <Filter>Engine\Source\Component</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Component\BoxColliderComponent.h">

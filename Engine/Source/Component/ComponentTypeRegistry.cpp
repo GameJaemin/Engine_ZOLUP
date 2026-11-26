@@ -152,12 +152,23 @@ bool ComponentTypeRegistry::AddFieldInfo(std::type_index type, ComponentFieldInf
 	return true;
 }
 
-ObjectID ComponentTypeRegistry::GetOwnerObjectID(const Component* component)
+bool ComponentTypeRegistry::CanReference(const Component& source, const Component& referenced)
 {
-	if (component == nullptr) { return ObjectID{}; }
+	const GameObject* sourceOwner = source.GetGameObject();
+	const GameObject* referencedOwner = referenced.GetGameObject();
+	if (sourceOwner == nullptr || referencedOwner == nullptr) { return false; }
 
-	const GameObject* owner = component->GetGameObject();
-	return owner != nullptr ? owner->GetObjectID() : ObjectID{};
+	// source의 World에서 같은 ID로 찾은 객체가 바로 그 객체여야 한다.
+	// 다른 World의 객체, 등록되지 않은 객체(무효 ID) 및 삭제 예정 객체(FindGameObject가 찾지 않음)가 여기서 걸러진다.
+	return sourceOwner->GetWorld().FindGameObject(referencedOwner->GetObjectID()) == referencedOwner;
+}
+
+std::optional<ObjectID> ComponentTypeRegistry::FindReferenceObjectID(const Component* source, const Component& referenced)
+{
+	if (source == nullptr || !CanReference(*source, referenced)) { return std::nullopt; }
+
+	// CanReference를 통과했으므로 소유 객체가 있다.
+	return referenced.GetGameObject()->GetObjectID();
 }
 
 Component* ComponentTypeRegistry::FindReferencedComponent(Component& target, const ComponentReference& reference)

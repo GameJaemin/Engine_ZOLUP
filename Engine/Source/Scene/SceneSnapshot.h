@@ -42,9 +42,8 @@ struct SceneSnapshot
 
 /**
  * 삭제 예정이 아닌 객체를 컴포넌트 속성 표로 담는다.
- * 파생 GameObject, 등록되지 않았거나 만들 수 없거나 속성이 없는 컴포넌트, 같은 타입 컴포넌트 중복,
- * 스냅샷 밖을 가리키는 컴포넌트 참조가 있으면 로그를 남기고 nullopt를 반환한다.
- * 참조는 ObjectID로 담으므로, 같은 ID를 쓰는 다른 World의 컴포넌트를 가리킨 경우는 걸러 내지 못한다.
+ * 파생 GameObject, 등록되지 않았거나 만들 수 없거나 저장되는 속성이 없는 컴포넌트, 같은 타입 컴포넌트 중복,
+ * 다른 World나 등록되지 않은 객체 또는 스냅샷 밖을 가리키는 컴포넌트 참조가 있으면 로그를 남기고 nullopt를 반환한다.
  */
 [[nodiscard]] std::optional<SceneSnapshot> CaptureWorld(const World& world);
 

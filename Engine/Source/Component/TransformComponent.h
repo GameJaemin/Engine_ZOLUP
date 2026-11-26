@@ -41,6 +41,12 @@ public:
 	/** 부모 기준 회전을 오일러 각으로 설정한다. 각 값은 유한해야 하며 내부에서 쿼터니언으로 바꿔 저장한다. */
 	void SetRotation(const EulerAngles& newRotation);
 
+	/** 부모 기준 회전 쿼터니언의 복사본을 반환한다. 오일러 각을 거치지 않아 저장한 값과 정확히 같다. */
+	Quaternion GetRotationQuaternion() const;
+
+	/** 부모 기준 회전을 쿼터니언으로 설정한다. 유한하고 길이가 1에 가까울 때만 받아 그대로 저장하며, 아니면 기존 값을 유지하고 false를 반환한다. */
+	bool SetRotationQuaternion(const Quaternion& newRotation);
+
 	/**
 	 * 부모들의 회전까지 합친 월드 회전으로 로컬 +Z를 회전한 단위 전방 벡터를 반환한다. 위치와 크기는 무시한다.
 	 * 회전은 GetWorldTransform()에서 얻으며, 저장된 회전은 유한한 단위 쿼터니언이어야 한다.

@@ -68,7 +68,7 @@ public:
 		view.yaw = std::remainder(view.yaw + input.mouseX * config.mouseSensitivity, 360.0f);
 		view.pitch = std::clamp(view.pitch + input.mouseY * config.mouseSensitivity, -65.0f, 65.0f);
 		Vector3 movement{ input.right, 0.0f, input.forward };
-		const float inputLength = ThirdPersonMath::Length(movement);
+		const float inputLength = movement.Length();
 		if (inputLength > 1.0f)
 		{
 			movement = movement / inputLength;
@@ -84,8 +84,8 @@ public:
 		for (int step = 0; step < steps; ++step)
 		{
 			const Vector3 difference = desired - velocity;
-			const float differenceLength = ThirdPersonMath::Length(difference);
-			const float acceleration = ThirdPersonMath::Length(desired) > 0.001f ? config.acceleration : config.braking;
+			const float differenceLength = difference.Length();
+			const float acceleration = desired.Length() > 0.001f ? config.acceleration : config.braking;
 			if (differenceLength > 0.0001f)
 			{
 				velocity += difference * ((std::min)(differenceLength, acceleration * stepTime) / differenceLength);
@@ -111,7 +111,7 @@ public:
 			}
 			Vector3 resolved = scene.Resolve(candidate, config.radius, config.height);
 			// 캡슐이 좁은 틈이나 급경사에서 한 프레임에 크게 밀려나면 수평 이동을 취소한다.
-			if (resolved.y - position.y > config.stepHeight + 2.0f || ThirdPersonMath::Length(resolved - candidate) > config.radius)
+			if (resolved.y - position.y > config.stepHeight + 2.0f || (resolved - candidate).Length() > config.radius)
 			{
 				resolved = position;
 				velocity = {};
@@ -124,7 +124,7 @@ public:
 			}
 		}
 		const Vector3 actual{ position.x - previous.x, 0.0f, position.z - previous.z };
-		speed = ThirdPersonMath::Length(actual) / elapsed;
+		speed = actual.Length() / elapsed;
 		if (speed > 2.0f)
 		{
 			const float desiredYaw = Math::RadiansToDegrees(std::atan2(actual.x, actual.z));

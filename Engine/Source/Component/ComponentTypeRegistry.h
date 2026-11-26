@@ -2,6 +2,7 @@
 
 #include "Component/Component.h"
 #include "Core/Math/EulerAngles.h"
+#include "Core/Math/Quaternion.h"
 #include "Core/Math/Transform.h"
 #include "Core/Math/Vector2.h"
 #include "Core/Math/Vector3.h"
@@ -40,7 +41,7 @@ struct ComponentReference
 };
 
 // 값 하나다. 목록의 원소가 될 수 있는 종류다.
-using ComponentFieldScalar = std::variant<bool, int, float, Vector2, Vector3, EulerAngles, Transform, AssetReference, ComponentReference>;
+using ComponentFieldScalar = std::variant<bool, int, float, Vector2, Vector3, EulerAngles, Quaternion, Transform, AssetReference, ComponentReference, std::string>;
 
 /** 값 하나의 목록이다. 원소는 다시 목록이 될 수 없다(중첩 배열은 지원하지 않는다). */
 struct ComponentFieldList
@@ -49,7 +50,7 @@ struct ComponentFieldList
 };
 
 // 속성 값 하나를 담는다. 값 하나이거나 목록이다. 앞쪽 종류는 ComponentFieldScalar와 같은 순서로 둔다.
-using ComponentFieldValue = std::variant<bool, int, float, Vector2, Vector3, EulerAngles, Transform, AssetReference, ComponentReference, ComponentFieldList>;
+using ComponentFieldValue = std::variant<bool, int, float, Vector2, Vector3, EulerAngles, Quaternion, Transform, AssetReference, ComponentReference, std::string, ComponentFieldList>;
 
 static_assert(std::variant_size_v<ComponentFieldValue> == std::variant_size_v<ComponentFieldScalar> + 1, "ComponentFieldValue must list every ComponentFieldScalar type plus ComponentFieldList.");
 
@@ -96,7 +97,7 @@ inline constexpr bool IsVariantAlternative<Value, std::variant<Types...>> = (std
 template <typename Value>
 inline constexpr bool IsComponentFieldValueType = IsVariantAlternative<Value, ComponentFieldValue>;
 
-/** value 안의 실수가 모두 유한하면 true를 반환한다. bool과 int는 항상 true다. */
+/** value 안의 실수가 모두 유한하면 true를 반환한다. bool, int, 문자열처럼 실수가 없는 값은 항상 true다. */
 template <typename Value>
 bool IsFiniteFieldValue(const Value& value)
 {
@@ -104,6 +105,7 @@ bool IsFiniteFieldValue(const Value& value)
 	else if constexpr (std::is_same_v<Value, Vector2>) { return std::isfinite(value.x) && std::isfinite(value.y); }
 	else if constexpr (std::is_same_v<Value, Vector3>) { return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z); }
 	else if constexpr (std::is_same_v<Value, EulerAngles>) { return std::isfinite(value.pitch) && std::isfinite(value.yaw) && std::isfinite(value.roll); }
+	else if constexpr (std::is_same_v<Value, Quaternion>) { return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z) && std::isfinite(value.w); }
 	else if constexpr (std::is_same_v<Value, Transform>)
 	{
 		return IsFiniteFieldValue(value.position) && IsFiniteFieldValue(value.scale)
@@ -138,6 +140,9 @@ struct ComponentFieldDisplay
 	bool isColor = false;
 	// int 속성을 드롭다운으로 그릴 때의 이름 목록이다. 값 0, 1, 2...가 차례로 각 이름에 대응한다. 비어 있으면 숫자 칸으로 그린다.
 	std::vector<std::string> enumNames;
+	// 목록 속성에서 Inspector가 원소 추가와 삭제 버튼을 그릴지 정한다. 원소 값 편집은 이 값과 상관없이 된다.
+	// 원소 개수가 다른 상태와 맞아야 하는 목록(예: 애니메이션 노드)은 false로 둔다.
+	bool canResize = false;
 };
 
 /** 컴포넌트 속성 하나의 이름, 읽기와 쓰기 함수 및 표시 정보다. 이 속성을 등록한 ComponentTypeInfo가 소유한다. */
@@ -146,10 +151,13 @@ struct ComponentFieldInfo
 	// 같은 타입과 그 부모, 자손 사이에서 유일한 이름이다. camelCase로 쓰고 단위가 있으면 이름에 붙인다.
 	std::string name;
 	// component의 현재 값을 반환한다. 이 속성을 등록한 타입이나 그 파생 타입의 컴포넌트만 넘긴다.
-	std::function<ComponentFieldValue(const Component&)> get;
+	// 컴포넌트 참조(목록이면 원소 하나라도)가 CanReference를 통과하지 못하면 비어 있는 optional을 반환한다.
+	std::function<std::optional<ComponentFieldValue>(const Component&)> get;
 	// value를 component에 쓴다. 값 타입이 다르거나, 값에 유한하지 않은 수가 있거나, setter가 거부하면 false를 반환한다.
 	std::function<bool(Component&, const ComponentFieldValue&)> set;
 	ComponentFieldDisplay display;
+	// true면 저장과 Play 복제에서 빼고 Inspector 편집에만 쓴다. 이 속성이 바꾸는 상태는 저장되는 다른 속성에도 담겨 있어야 한다.
+	bool isTransient = false;
 	// 목록 속성일 때 원소 하나의 기본값이다. 원소 타입을 알려 주며, 원소를 추가할 때 처음 값으로 쓴다. 목록이 아니면 비어 있다.
 	std::optional<ComponentFieldScalar> elementPrototype;
 };
@@ -213,10 +221,11 @@ public:
 	 * T의 속성 fieldName을 getter와 setter로 등록한다. T는 먼저 Register되어 있어야 한다.
 	 * setter는 getter의 값 타입을 받고 void 또는 bool(성공 여부)을 반환해야 한다.
 	 * display는 Inspector 표시 정보이며 생략하면 기본값(자동 이름, 편집 가능)을 쓴다.
+	 * isTransient는 ComponentFieldInfo::isTransient의 계약을 따른다.
 	 * 이름이 비었거나 T와 그 부모, 자손에 같은 이름이 있으면 로그를 남기고 false를 반환한다.
 	 */
 	template <typename T, typename Getter, typename Setter>
-	bool AddField(std::string_view fieldName, Getter getter, Setter setter, ComponentFieldDisplay display = {});
+	bool AddField(std::string_view fieldName, Getter getter, Setter setter, ComponentFieldDisplay display = {}, bool isTransient = false);
 
 private:
 	/** Register의 타입 독립 부분이다. parentType이 nullptr이면 Component를 직접 상속한 타입이다. */
@@ -231,8 +240,8 @@ private:
 	/** AddField의 타입 독립 부분이다. 검사를 통과하면 field를 type의 fields에 넣는다. */
 	bool AddFieldInfo(std::type_index type, ComponentFieldInfo field);
 
-	/** component가 붙은 객체의 ID다. nullptr이거나 객체에 붙어 있지 않으면 무효 ID다. */
-	static ObjectID GetOwnerObjectID(const Component* component);
+	/** referenced가 CanReference(*source, referenced)를 통과하면 그 소유 객체의 ID를 반환한다. source가 nullptr이거나 통과하지 못하면 비어 있다. */
+	static std::optional<ObjectID> FindReferenceObjectID(const Component* source, const Component& referenced);
 
 	/**
 	 * target이 속한 World에서 reference가 가리키는 객체를 찾고, 그 객체에서 componentType이거나 그 파생인 컴포넌트를 찾는다.
@@ -240,9 +249,12 @@ private:
 	 */
 	static Component* FindReferencedComponent(Component& target, const ComponentReference& reference);
 
-	/** 컴포넌트 쪽 값 하나를 속성 표에 담을 값으로 바꾼다. */
+	/**
+	 * 컴포넌트 쪽 값 하나를 속성 표에 담을 값으로 바꾼다. source는 이 값을 가진 컴포넌트이며 nullptr이 아닌 컴포넌트 참조를 담을 때만 쓴다.
+	 * 컴포넌트 참조가 CanReference를 통과하지 못하면(source가 nullptr인 경우 포함) 비어 있는 optional을 반환한다.
+	 */
 	template <typename Value>
-	static FieldStoredType<Value> ToStoredValue(const Value& value);
+	static std::optional<FieldStoredType<Value>> ToStoredValue(const Value& value, const Component* source);
 
 	/**
 	 * 속성 표의 값 하나를 컴포넌트 쪽 값으로 되돌린다. target은 컴포넌트 참조를 찾을 World를 정한다.
@@ -264,6 +276,12 @@ public:
 
 	/** type의 가장 위 부모 속성부터 type 자신의 속성까지 순서대로 visit을 호출한다. */
 	static void ForEachField(const ComponentTypeInfo& type, const std::function<void(const ComponentFieldInfo&)>& visit);
+
+	/**
+	 * source의 컴포넌트 참조로 referenced를 담을 수 있으면 true를 반환한다.
+	 * referenced가 source와 같은 World에 등록되어 있고 삭제 예정이 아닌 객체에 붙어 있어야 한다. 둘 중 하나라도 객체에 붙어 있지 않으면 false다.
+	 */
+	static bool CanReference(const Component& source, const Component& referenced);
 
 private:
 	// 등록 정보를 소유한다. parent와 색인이 주소를 가리키므로 등록이 늘어도 주소가 바뀌지 않게 따로 할당한다.
@@ -297,7 +315,7 @@ const ComponentTypeInfo* ComponentTypeRegistry::Register(std::string_view name)
 }
 
 template <typename T, typename Getter, typename Setter>
-bool ComponentTypeRegistry::AddField(std::string_view fieldName, Getter getter, Setter setter, ComponentFieldDisplay display)
+bool ComponentTypeRegistry::AddField(std::string_view fieldName, Getter getter, Setter setter, ComponentFieldDisplay display, bool isTransient)
 {
 	static_assert(std::is_base_of_v<Component, T>, "T must derive from Component.");
 
@@ -315,27 +333,39 @@ bool ComponentTypeRegistry::AddField(std::string_view fieldName, Getter getter, 
 	ComponentFieldInfo field;
 	field.name = std::string(fieldName);
 	field.display = std::move(display);
+	field.isTransient = isTransient;
 	if constexpr (IsFieldVector<Value>)
 	{
 		static_assert(!IsFieldVector<Element>, "Nested vectors are not supported.");
 		static_assert(IsVariantAlternative<FieldStoredType<Element>, ComponentFieldScalar>, "Vector element must be a ComponentFieldScalar type, shared_ptr<const Asset> or const Component*.");
-		field.elementPrototype = ComponentFieldScalar(ToStoredValue<Element>(Element{}));
+		// 기본값의 참조는 nullptr라 담을 컴포넌트가 필요 없고 항상 성공한다.
+		field.elementPrototype = ComponentFieldScalar(*ToStoredValue<Element>(Element{}, nullptr));
 	}
 
 	// T 이상의 타입에만 등록되므로 넘어온 component는 실제로 T이거나 T의 파생이다.
-	field.get = [getter](const Component& component)
+	field.get = [getter](const Component& component) -> std::optional<ComponentFieldValue>
 	{
 		const T& source = static_cast<const T&>(component);
 		if constexpr (IsFieldVector<Value>)
 		{
-			// 원소마다 값 하나 변환을 다시 쓴다.
+			// 원소마다 값 하나 변환을 다시 쓴다. 하나라도 담을 수 없으면 목록 전체를 담지 않는다.
 			const Value& elements = std::invoke(getter, source);
 			ComponentFieldList list;
 			list.elements.reserve(elements.size());
-			for (const Element& element : elements) { list.elements.push_back(ComponentFieldScalar(ToStoredValue<Element>(element))); }
+			for (const Element& element : elements)
+			{
+				std::optional<FieldStoredType<Element>> stored = ToStoredValue<Element>(element, &component);
+				if (!stored.has_value()) { return std::nullopt; }
+				list.elements.push_back(ComponentFieldScalar(std::move(*stored)));
+			}
 			return ComponentFieldValue(std::move(list));
 		}
-		else { return ComponentFieldValue(ToStoredValue<Value>(std::invoke(getter, source))); }
+		else
+		{
+			std::optional<FieldStoredType<Value>> stored = ToStoredValue<Value>(std::invoke(getter, source), &component);
+			if (!stored.has_value()) { return std::nullopt; }
+			return ComponentFieldValue(std::move(*stored));
+		}
 	};
 	field.set = [setter](Component& component, const ComponentFieldValue& value)
 	{
@@ -380,7 +410,7 @@ bool ComponentTypeRegistry::AddField(std::string_view fieldName, Getter getter, 
 }
 
 template <typename Value>
-FieldStoredType<Value> ComponentTypeRegistry::ToStoredValue(const Value& value)
+std::optional<FieldStoredType<Value>> ComponentTypeRegistry::ToStoredValue(const Value& value, const Component* source)
 {
 	if constexpr (IsAssetPointer<Value>)
 	{
@@ -388,9 +418,15 @@ FieldStoredType<Value> ComponentTypeRegistry::ToStoredValue(const Value& value)
 	}
 	else if constexpr (IsComponentPointer<Value>)
 	{
-		// 주소 대신 소유 객체 ID와 타입으로 담는다. 가리키지 않거나 붙어 있지 않은 컴포넌트면 무효 ID다.
+		// 주소 대신 소유 객체 ID와 타입으로 담는다. 무효 ID는 의도적으로 가리키지 않는 nullptr에만 쓴다.
 		using Referenced = std::remove_cv_t<std::remove_pointer_t<Value>>;
-		return ComponentReference{ GetOwnerObjectID(value), std::type_index(typeid(Referenced)) };
+		const std::type_index referencedType(typeid(Referenced));
+		if (value == nullptr) { return ComponentReference{ ObjectID{}, referencedType }; }
+
+		// 다른 World나 등록되지 않은 객체의 컴포넌트는 ID로 나타낼 수 없어 무효 ID로 바꾸지 않고 실패로 돌려준다.
+		const std::optional<ObjectID> objectID = FindReferenceObjectID(source, *value);
+		if (!objectID.has_value()) { return std::nullopt; }
+		return ComponentReference{ *objectID, referencedType };
 	}
 	else { return value; }
 }

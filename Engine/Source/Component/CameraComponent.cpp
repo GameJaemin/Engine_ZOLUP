@@ -4,7 +4,13 @@
 #include "Component/TransformComponent.h"
 #include "Core/Math/Transform.h"
 #include "GameObject.h"
+#include "Paths.h"
 #include "World.h"
+
+#include <cmath>
+#include <filesystem>
+#include <system_error>
+#include <utility>
 
 CameraComponent::~CameraComponent()
 {
@@ -20,7 +26,7 @@ CameraComponent::~CameraComponent()
 
 bool CameraComponent::SetVerticalFovDegrees(float newVerticalFovDegrees)
 {
-	if (newVerticalFovDegrees <= 0.0f || newVerticalFovDegrees >= 180.0f) { return false; }
+	if (!CameraProjection::IsValidVerticalFovDegrees(newVerticalFovDegrees)) { return false; }
 
 	verticalFovDegrees = newVerticalFovDegrees;
 	return true;
@@ -28,7 +34,7 @@ bool CameraComponent::SetVerticalFovDegrees(float newVerticalFovDegrees)
 
 bool CameraComponent::SetOrthographicHeight(float newOrthographicHeight)
 {
-	if (newOrthographicHeight <= 0.0f) { return false; }
+	if (!CameraProjection::IsValidOrthographicHeight(newOrthographicHeight)) { return false; }
 
 	orthographicHeight = newOrthographicHeight;
 	return true;
@@ -46,11 +52,60 @@ bool CameraComponent::SetFarClipDistance(float newFarClipDistance)
 
 bool CameraComponent::SetClipDistances(float newNearClipDistance, float newFarClipDistance)
 {
-	if (newNearClipDistance <= 0.0f || newFarClipDistance <= newNearClipDistance) { return false; }
+	if (!CameraProjection::AreValidClipDistances(newNearClipDistance, newFarClipDistance)) { return false; }
 
 	nearClipDistance = newNearClipDistance;
 	farClipDistance = newFarClipDistance;
 	return true;
+}
+
+bool CameraComponent::SetClipDistances(const Vector2& newClipDistances)
+{
+	return SetClipDistances(newClipDistances.x, newClipDistances.y);
+}
+
+bool CameraComponent::SetSaturation(float newSaturation)
+{
+	const bool isValid = std::isfinite(newSaturation) && newSaturation >= 0.0f && newSaturation <= 2.0f;
+	if (!isValid) { return false; }
+
+	saturation = newSaturation;
+	return true;
+}
+
+bool CameraComponent::SetPostProcessShaderPath(const std::string& newPath)
+{
+	// 없는 파일을 받으면 그릴 때마다 등록에 실패하므로 지정할 때 거른다.
+	if (!newPath.empty())
+	{
+		std::filesystem::path absolutePath;
+		if (!Paths::GetAbsolutePath(newPath, absolutePath)) { return false; }
+
+		std::error_code error;
+		if (!std::filesystem::is_regular_file(absolutePath, error)) { return false; }
+	}
+
+	postProcessShaderPath = newPath;
+	return true;
+}
+
+bool CameraComponent::SetPostProcessParameters(std::vector<float> newParameters)
+{
+	if (newParameters.size() > MaxPostProcessParameters) { return false; }
+	for (const float parameter : newParameters)
+	{
+		if (!std::isfinite(parameter)) { return false; }
+	}
+
+	postProcessParameters = std::move(newParameters);
+	return true;
+}
+
+std::vector<PostProcessPass> CameraComponent::MakePostProcessPasses() const
+{
+	if (postProcessShaderPath.empty()) { return {}; }
+
+	return { PostProcessPass{ postProcessShaderPath, postProcessParameters } };
 }
 
 bool CameraComponent::GetCameraViewInfo(CameraViewInfo& outCameraViewInfo) const

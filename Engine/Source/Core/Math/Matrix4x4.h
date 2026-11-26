@@ -20,6 +20,9 @@ struct Matrix4x4
 	/** 행렬 곱셈이다. 행 벡터 규칙이므로 왼쪽 행렬의 변환을 먼저 적용한다. */
 	Matrix4x4 operator*(const Matrix4x4& other) const;
 
+	/** 아핀 행렬을 전제로 점을 변환한다. 입력의 w는 1이며 이동 성분을 적용하고 원근 나눗셈은 하지 않는다. */
+	Vector3 TransformPoint(const Vector3& point) const;
+
 	/**
 	 * 넷째 열이 0, 0, 0, 1인 행렬(이동, 회전, 크기만 섞인 행렬)의 역행렬을 구한다. 다른 행렬에는 쓰지 않는다.
 	 * 위쪽 3x3의 행렬식이 0이라 역이 없으면 출력값을 유지하고 false를 반환한다.

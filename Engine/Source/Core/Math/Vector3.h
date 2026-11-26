@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cmath>
+
 struct Vector3
 {
 	/** 각 성분의 합을 반환하며 두 피연산자는 바꾸지 않는다. */
@@ -54,6 +56,18 @@ struct Vector3
 	Vector3 Cross(const Vector3& other) const
 	{
 		return Vector3{ y * other.z - z * other.y, z * other.x - x * other.z, x * other.y - y * other.x };
+	}
+
+	float Length() const
+	{
+		return std::sqrt(Dot(*this));
+	}
+
+	/** 원본을 유지하고 단위 벡터를 반환한다. 길이가 0.00001f 이하면 영벡터를 반환한다. */
+	Vector3 Normalized() const
+	{
+		const float length = Length();
+		return length > 0.00001f ? *this / length : Vector3{};
 	}
 
 	/** from에서 to까지 alpha 비율만큼 간 값을 반환한다. alpha가 0이면 from, 1이면 to이며 범위를 제한하지 않는다. */

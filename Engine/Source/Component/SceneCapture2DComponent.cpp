@@ -62,24 +62,12 @@ bool SceneCapture2DComponent::SetHeight(std::uint32_t newHeight)
 	return true;
 }
 
-bool SceneCapture2DComponent::SetSaturation(float newSaturation)
-{
-	const bool isValid = newSaturation >= 0.0f && newSaturation <= 2.0f;
-	if (!isValid) { return false; }
-
-	saturation = newSaturation;
-	return true;
-}
-
-bool SceneCapture2DComponent::GetCaptureViewInfo(CameraViewInfo& outCameraViewInfo) const
+const CameraComponent* SceneCapture2DComponent::FindCaptureCamera() const
 {
 	const GameObject* owner = GetGameObject();
-	if (owner == nullptr) { return false; }
+	if (owner == nullptr) { return nullptr; }
 
-	const CameraComponent* camera = owner->GetComponent<CameraComponent>();
-	if (camera == nullptr) { return false; }
-
-	return camera->GetCameraViewInfo(outCameraViewInfo);
+	return owner->GetComponent<CameraComponent>();
 }
 
 std::optional<SceneRenderRequest> SceneCapture2DComponent::BuildRenderRequest()
@@ -88,8 +76,14 @@ std::optional<SceneRenderRequest> SceneCapture2DComponent::BuildRenderRequest()
 	if (owner == nullptr || owner->IsPendingDestroy()) { return std::nullopt; }
 	if (renderTarget.GetName().empty()) { return std::nullopt; }
 
-	CameraViewInfo cameraViewInfo;
-	if (!GetCaptureViewInfo(cameraViewInfo)) { return std::nullopt; }
+	// 시점과 보이는 모양은 같은 객체의 카메라를 따른다.
+	const CameraComponent* camera = FindCaptureCamera();
+	if (camera == nullptr) { return std::nullopt; }
 
-	return SceneRenderRequest{ owner->GetWorld().GetRenderScene(), cameraViewInfo, &renderTarget, saturation };
+	CameraViewInfo cameraViewInfo;
+	if (!camera->GetCameraViewInfo(cameraViewInfo)) { return std::nullopt; }
+
+	SceneRenderRequest request{ owner->GetWorld().GetRenderScene(), cameraViewInfo, &renderTarget, camera->GetSaturation() };
+	request.postProcessPasses = camera->MakePostProcessPasses();
+	return request;
 }

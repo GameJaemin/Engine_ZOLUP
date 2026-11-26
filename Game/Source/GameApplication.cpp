@@ -150,7 +150,9 @@ std::optional<SceneRenderRequest> GameApplication::GetRenderRequest()
 	CameraViewInfo cameraViewInfo;
 	if (!camera->GetCameraViewInfo(cameraViewInfo)) { return std::nullopt; }
 
-	return SceneRenderRequest{ gameWorld->GetRenderScene(), cameraViewInfo, nullptr };
+	SceneRenderRequest request{ gameWorld->GetRenderScene(), cameraViewInfo, nullptr, camera->GetSaturation() };
+	request.postProcessPasses = camera->MakePostProcessPasses();
+	return request;
 }
 
 void GameApplication::OnShutdown() noexcept

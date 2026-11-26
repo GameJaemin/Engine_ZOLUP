@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 
+class CameraComponent;
 class RenderScene;
 
 class SceneCapture2DComponent : public Component
@@ -35,17 +36,8 @@ public:
 
 	static constexpr std::uint32_t MaxResolution = 4096;
 
-	/** 0은 흑백, 1은 기본 채도다. */
-	float GetSaturation() const { return saturation; }
-
-	/** 0 이상 2 이하만 받는다. 범위를 벗어나면 기존 값을 유지하고 false를 반환한다. */
-	bool SetSaturation(float newSaturation);
-
-	/**
-	 * 같은 객체의 CameraComponent에서 시점 값을 얻는다.
-	 * 소속 객체나 카메라가 없거나 시점 조회에 실패하면 출력값을 유지하고 false를 반환한다.
-	 */
-	bool GetCaptureViewInfo(CameraViewInfo& outCameraViewInfo) const;
+	/** 시점과 보이는 모양을 정하는 같은 객체의 CameraComponent를 빌려준다. 소속 객체나 카메라가 없으면 nullptr이다. */
+	const CameraComponent* FindCaptureCamera() const;
 
 	/** 이 컴포넌트가 소유한 타깃을 빌려준다. 등록 전이나 생성 요청이 거부되면 빈 타깃이다. */
 	const TextureRenderTarget2D& GetRenderTarget() const { return renderTarget; }
@@ -65,5 +57,4 @@ private:
 	// 등록 전에도 유지하는 요청 해상도다. GPU 생성 완료 여부와 별개로 타깃 크기는 이 값을 따른다.
 	std::uint32_t width = 256;
 	std::uint32_t height = 256;
-	float saturation = 1.0f;
 };

@@ -4,6 +4,8 @@
 #include "Core/Math/Quaternion.h"
 #include "GameObject.h"
 
+#include <cmath>
+
 Transform TransformComponent::GetTransform() const
 {
 	return transform;
@@ -60,6 +62,25 @@ EulerAngles TransformComponent::GetRotation() const
 void TransformComponent::SetRotation(const EulerAngles& newRotation)
 {
 	transform.rotation = Quaternion::CreateFromEulerAngles(newRotation);
+}
+
+Quaternion TransformComponent::GetRotationQuaternion() const
+{
+	return transform.rotation;
+}
+
+bool TransformComponent::SetRotationQuaternion(const Quaternion& newRotation)
+{
+	if (!std::isfinite(newRotation.x) || !std::isfinite(newRotation.y) || !std::isfinite(newRotation.z) || !std::isfinite(newRotation.w)) { return false; }
+
+	// 길이가 1에서 이보다 더 벗어나면 단위 쿼터니언이 아니라고 보고 거부한다. glTF 로더가 받는 허용치(0.001)와 같게 해 불러온 회전을 거부하지 않는다.
+	// 정규화하면 값이 바뀌어 저장한 회전을 그대로 되돌릴 수 없으므로 하지 않는다.
+	constexpr float UnitLengthTolerance = 0.001f;
+	const float lengthSquared = newRotation.x * newRotation.x + newRotation.y * newRotation.y + newRotation.z * newRotation.z + newRotation.w * newRotation.w;
+	if (std::fabs(std::sqrt(lengthSquared) - 1.0f) > UnitLengthTolerance) { return false; }
+
+	transform.rotation = newRotation;
+	return true;
 }
 
 Vector3 TransformComponent::GetForwardVector() const

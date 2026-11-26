@@ -2,6 +2,7 @@
 
 #include "Component/AmbientLightComponent.h"
 #include "Component/AnimationComponent.h"
+#include "Component/AudioComponent.h"
 #include "Component/BoxColliderComponent.h"
 #include "Component/CameraComponent.h"
 #include "Component/Component.h"
@@ -88,20 +89,27 @@ bool RegisterEngineComponentTypes(ComponentTypeRegistry& registry)
 {
 	if (registry.Register<TransformComponent, Component>("TransformComponent") == nullptr) { return false; }
 	if (!registry.AddField<TransformComponent>("position", &TransformComponent::GetPosition, &TransformComponent::SetPosition, { .dragSpeed = 1.0f })) { return false; }
-	if (!registry.AddField<TransformComponent>("rotation", &TransformComponent::GetRotation, &TransformComponent::SetRotation, { .dragSpeed = 0.5f })) { return false; }
+	// 저장과 Play 복제는 내부 값인 쿼터니언을 그대로 옮기고, Inspector는 오일러 각으로 편집한다. 각도를 거쳐 저장하면 변환 오차가 생긴다.
+	if (!registry.AddField<TransformComponent>("rotationQuaternion", &TransformComponent::GetRotationQuaternion, &TransformComponent::SetRotationQuaternion, { .visibility = ComponentFieldVisibility::Hidden })) { return false; }
+	if (!registry.AddField<TransformComponent>("rotation", &TransformComponent::GetRotation, &TransformComponent::SetRotation, { .dragSpeed = 0.5f }, true)) { return false; }
 	if (!registry.AddField<TransformComponent>("scale", &TransformComponent::GetScale, &TransformComponent::SetScale, { .dragSpeed = 0.01f })) { return false; }
 
 	if (registry.Register<CameraComponent, Component>("CameraComponent") == nullptr) { return false; }
 	if (!registry.AddField<CameraComponent>("verticalFovDegrees", &CameraComponent::GetVerticalFovDegrees, &CameraComponent::SetVerticalFovDegrees, { .displayName = "Vertical FOV (deg)", .dragSpeed = 0.5f, .minValue = 1.0f, .maxValue = 179.0f })) { return false; }
 	if (!registry.AddField<CameraComponent>("orthographicHeight", &CameraComponent::GetOrthographicHeight, &CameraComponent::SetOrthographicHeight, { .displayName = "Orthographic Height (cm)", .dragSpeed = 10.0f, .minValue = 1.0f, .maxValue = FLT_MAX })) { return false; }
-	if (!registry.AddField<CameraComponent>("nearClipDistance", &CameraComponent::GetNearClipDistance, &CameraComponent::SetNearClipDistance, { .displayName = "Near Clip (cm)", .dragSpeed = 0.1f, .minValue = 0.01f, .maxValue = FLT_MAX })) { return false; }
-	if (!registry.AddField<CameraComponent>("farClipDistance", &CameraComponent::GetFarClipDistance, &CameraComponent::SetFarClipDistance, { .displayName = "Far Clip (cm)", .dragSpeed = 100.0f })) { return false; }
+	// near와 far는 0 < near < far를 함께 검사하므로, 저장과 Play 복제는 한 번에 쓰는 clipDistances로 하고 Inspector는 near와 far를 따로 편집한다.
+	// SetClipDistances는 (near, far)와 Vector2 두 가지가 있어 Vector2를 받는 것을 지정한다.
+	if (!registry.AddField<CameraComponent>("clipDistances", &CameraComponent::GetClipDistances, static_cast<bool (CameraComponent::*)(const Vector2&)>(&CameraComponent::SetClipDistances), { .visibility = ComponentFieldVisibility::Hidden })) { return false; }
+	if (!registry.AddField<CameraComponent>("nearClipDistance", &CameraComponent::GetNearClipDistance, &CameraComponent::SetNearClipDistance, { .displayName = "Near Clip (cm)", .dragSpeed = 0.1f, .minValue = 0.01f, .maxValue = FLT_MAX }, true)) { return false; }
+	if (!registry.AddField<CameraComponent>("farClipDistance", &CameraComponent::GetFarClipDistance, &CameraComponent::SetFarClipDistance, { .displayName = "Far Clip (cm)", .dragSpeed = 100.0f }, true)) { return false; }
 	if (!registry.AddField<CameraComponent>("projectionMode", &GetCameraProjectionMode, &SetCameraProjectionMode, { .enumNames = { "Perspective", "Orthographic" } })) { return false; }
+	if (!registry.AddField<CameraComponent>("saturation", &CameraComponent::GetSaturation, &CameraComponent::SetSaturation, { .displayName = "Saturation", .dragSpeed = 0.01f, .minValue = 0.0f, .maxValue = 2.0f })) { return false; }
+	if (!registry.AddField<CameraComponent>("postProcessShaderPath", &CameraComponent::GetPostProcessShaderPath, &CameraComponent::SetPostProcessShaderPath, { .displayName = "Post Process Shader" })) { return false; }
+	if (!registry.AddField<CameraComponent>("postProcessParameters", &CameraComponent::GetPostProcessParameters, &CameraComponent::SetPostProcessParameters, { .displayName = "Post Process Parameters", .canResize = true })) { return false; }
 
 	if (registry.Register<SceneCapture2DComponent, Component>("SceneCapture2DComponent") == nullptr) { return false; }
 	if (!registry.AddField<SceneCapture2DComponent>("width", &GetCaptureWidth, &SetCaptureWidth, { .displayName = "Width (px)", .dragSpeed = 1.0f, .minValue = 1.0f, .maxValue = 4096.0f })) { return false; }
 	if (!registry.AddField<SceneCapture2DComponent>("height", &GetCaptureHeight, &SetCaptureHeight, { .displayName = "Height (px)", .dragSpeed = 1.0f, .minValue = 1.0f, .maxValue = 4096.0f })) { return false; }
-	if (!registry.AddField<SceneCapture2DComponent>("saturation", &SceneCapture2DComponent::GetSaturation, &SceneCapture2DComponent::SetSaturation, { .displayName = "Saturation", .dragSpeed = 0.01f, .minValue = 0.0f, .maxValue = 2.0f })) { return false; }
 
 	if (registry.Register<StaticMeshComponent, Component>("StaticMeshComponent") == nullptr) { return false; }
 	if (!registry.AddField<StaticMeshComponent>("mesh", &StaticMeshComponent::GetStaticMesh, &StaticMeshComponent::SetStaticMesh)) { return false; }
@@ -130,6 +138,8 @@ bool RegisterEngineComponentTypes(ComponentTypeRegistry& registry)
 	if (!registry.AddField<AnimationComponent>("nodeTransforms", &AnimationComponent::GetNodeTransforms, &AnimationComponent::SetNodeTransforms, { .displayName = "Nodes" })) { return false; }
 	// 노드 번호 순서의 원래 부모 기준 값이다. 노드 목록과 같은 순서와 길이다.
 	if (!registry.AddField<AnimationComponent>("restPose", &AnimationComponent::GetRestPose, &AnimationComponent::SetRestPose, { .displayName = "Rest Pose" })) { return false; }
+
+	if (registry.Register<AudioComponent, Component>("AudioComponent") == nullptr) { return false; }
 
 	if (registry.Register<SkinComponent, Component>("SkinComponent") == nullptr) { return false; }
 	if (!registry.AddField<SkinComponent>("model", &SkinComponent::GetModel, &SkinComponent::SetModel)) { return false; }

@@ -4,6 +4,7 @@
 
 #include "Component/StaticMeshComponent.h"
 #include "Component/TransformComponent.h"
+#include "Core/Math/Matrix4x4.h"
 #include "GameObject.h"
 #include "Mesh/StaticMesh.h"
 
@@ -68,9 +69,9 @@ public:
 				if (!mesh.skinWeights.empty()) { continue; }
 				for (std::size_t face = 0; face + 2 < mesh.indices.size(); face += 3)
 				{
-					const Vector3 a = ThirdPersonMath::TransformPoint(mesh.vertices[mesh.indices[face]].position, matrix);
-					const Vector3 b = ThirdPersonMath::TransformPoint(mesh.vertices[mesh.indices[face + 1]].position, matrix);
-					const Vector3 c = ThirdPersonMath::TransformPoint(mesh.vertices[mesh.indices[face + 2]].position, matrix);
+					const Vector3 a = matrix.TransformPoint(mesh.vertices[mesh.indices[face]].position);
+					const Vector3 b = matrix.TransformPoint(mesh.vertices[mesh.indices[face + 1]].position);
+					const Vector3 c = matrix.TransformPoint(mesh.vertices[mesh.indices[face + 2]].position);
 					AddTriangle(a, b, c);
 				}
 			}
@@ -80,7 +81,7 @@ public:
 
 	void AddTriangle(const Vector3& a, const Vector3& b, const Vector3& c)
 	{
-		if (ThirdPersonMath::Length((b - a).Cross(c - a)) < 0.001f) { return; }
+		if ((b - a).Cross(c - a).Length() < 0.001f) { return; }
 		triangles.push_back({ a, b, c });
 	}
 
@@ -106,7 +107,7 @@ public:
 		{
 			const Vector3 edge1 = triangle.b - triangle.a;
 			const Vector3 edge2 = triangle.c - triangle.a;
-			const Vector3 normal = ThirdPersonMath::Normalize(edge1.Cross(edge2));
+			const Vector3 normal = edge1.Cross(edge2).Normalized();
 			// 양면으로 바닥을 검사한다. 최대 경사는 약 48도다.
 			if (std::abs(normal.y) < 0.67f) { return; }
 			const float denominator = edge1.x * edge2.z - edge1.z * edge2.x;
@@ -140,13 +141,13 @@ public:
 			Vector3 surface;
 			ThirdPersonMath::ClosestSegmentTriangle(start, end, triangle.a, triangle.b, triangle.c, axis, surface);
 			const Vector3 difference = axis - surface;
-			const float distance = ThirdPersonMath::Length(difference);
+			const float distance = difference.Length();
 			const float depth = radius - distance;
 			if (depth <= deepest + 0.001f) { return; }
-			Vector3 normal = ThirdPersonMath::Normalize(difference);
+			Vector3 normal = difference.Normalized();
 			if (distance < 0.00001f)
 			{
-				normal = ThirdPersonMath::Normalize((triangle.b - triangle.a).Cross(triangle.c - triangle.a));
+				normal = (triangle.b - triangle.a).Cross(triangle.c - triangle.a).Normalized();
 				if (normal.Dot((start + end) * 0.5f - triangle.a) < 0.0f)
 				{
 					normal = normal * -1.0f;
@@ -164,7 +165,7 @@ public:
 		for (int iteration = 0; iteration < 12; ++iteration)
 		{
 			const Vector3 correction = GetPenetration(result, radius, height);
-			if (ThirdPersonMath::Length(correction) < 0.001f) { break; }
+			if (correction.Length() < 0.001f) { break; }
 			result += correction;
 		}
 		return result;
@@ -179,7 +180,7 @@ public:
 		{
 			const float current = distance * static_cast<float>(step) / static_cast<float>(steps);
 			const Vector3 center = pivot + direction * current;
-			if (ThirdPersonMath::Length(GetPenetration(center - Vector3{ 0.0f, radius, 0.0f }, radius, radius * 2.0f)) > 0.001f)
+			if (GetPenetration(center - Vector3{ 0.0f, radius, 0.0f }, radius, radius * 2.0f).Length() > 0.001f)
 			{
 				float low = previous;
 				float high = current;
@@ -187,7 +188,7 @@ public:
 				{
 					const float middle = (low + high) * 0.5f;
 					const Vector3 point = pivot + direction * middle - Vector3{ 0.0f, radius, 0.0f };
-					if (ThirdPersonMath::Length(GetPenetration(point, radius, radius * 2.0f)) > 0.001f)
+					if (GetPenetration(point, radius, radius * 2.0f).Length() > 0.001f)
 					{
 						high = middle;
 					}
