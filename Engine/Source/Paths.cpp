@@ -59,3 +59,18 @@ std::string Paths::MakeAssetKey(std::string_view path)
 
 	return key;
 }
+
+std::string Paths::MakeSubAssetPath(std::string_view filePath, std::string_view subAssetName)
+{
+	std::string path(filePath);
+	path += SubAssetSeparator;
+	path += subAssetName;
+	return path;
+}
+
+std::optional<std::pair<std::string_view, std::string_view>> Paths::SplitSubAssetPath(std::string_view path)
+{
+	const std::size_t separator = path.rfind(SubAssetSeparator);
+	if (separator == std::string_view::npos) { return std::nullopt; }
+	return std::pair{ path.substr(0, separator), path.substr(separator + 1) };
+}

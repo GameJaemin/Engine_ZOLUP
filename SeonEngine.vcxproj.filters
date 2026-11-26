@@ -190,6 +190,9 @@
     <ClCompile Include="Engine\Source\Renderer\TextureRenderTarget2D.cpp">
       <Filter>Engine\Source\Renderer</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Source\Renderer\MaterialFile.cpp">
+      <Filter>Engine\Source\Renderer</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Source\Component\AnimationComponent.cpp">
       <Filter>Engine\Source\Component</Filter>
     </ClCompile>
@@ -430,6 +433,9 @@
       <Filter>Engine\Source</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Renderer\Material.h">
+      <Filter>Engine\Source\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Renderer\MaterialFile.h">
       <Filter>Engine\Source\Renderer</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Renderer\RenderScene.h">

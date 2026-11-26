@@ -39,7 +39,7 @@ struct AnimationNodeTrack
 class AnimationClip : public Asset
 {
 public:
-	/** UTF-8 표시 이름과 저장소 루트 기준 상대 경로를 받는다. 경로는 "파일경로#번호" 모양이거나 비어 있다. */
+	/** UTF-8 표시 이름과 저장소 루트 기준 상대 경로를 받는다. 경로는 "파일경로|번호" 모양이거나 비어 있다. */
 	AnimationClip(std::string newName, std::string newPath);
 
 public:

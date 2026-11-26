@@ -11,6 +11,7 @@
 #include "Prefab/Prefab.h"
 #include "Prefab/PrefabComponents.h"
 #include "Renderer/Material.h"
+#include "Renderer/MaterialFile.h"
 #include "Texture/ORMImageBuilder.h"
 #include "Texture/Texture.h"
 
@@ -31,20 +32,6 @@
 
 namespace
 {
-	// 생성 식별자가 경로 정규화를 거쳐도 원본 키의 구분자와 문자가 해석되지 않게 한다.
-	std::string EncodeGeneratedPathKey(std::string_view key)
-	{
-		constexpr char HexDigits[] = "0123456789abcdef";
-		std::string encoded;
-		for (const char character : key)
-		{
-			const unsigned char value = static_cast<unsigned char>(character);
-			encoded += HexDigits[value >> 4];
-			encoded += HexDigits[value & 15];
-		}
-		return encoded;
-	}
-
 	/** 8비트 sRGB 값마다 선형 계수를 곱한 뒤 다시 sRGB로 저장할 바이트를 계산한다. */
 	std::array<std::byte, 256> MakeEmissiveChannelTable(float factor)
 	{
@@ -67,14 +54,6 @@ namespace
 		const std::filesystem::path imagePath = (modelDirectory / std::filesystem::path(uriUtf8)).lexically_normal();
 		const std::u8string imagePathUtf8 = imagePath.generic_u8string();
 		return std::string(imagePathUtf8.begin(), imagePathUtf8.end());
-	}
-
-	/** 파일 안 에셋 경로를 마지막 '#'로 파일 경로와 표시로 나눈다. 파일 이름에 '#'가 있어도 된다. '#'가 없으면 nullopt를 반환한다. */
-	std::optional<std::pair<std::string_view, std::string_view>> SplitSubAssetPath(std::string_view path)
-	{
-		const std::size_t separator = path.rfind('#');
-		if (separator == std::string_view::npos) { return std::nullopt; }
-		return std::pair{ path.substr(0, separator), path.substr(separator + 1) };
 	}
 
 	/** 표시 전체가 십진 숫자면 그 값을, 비었거나 숫자 뒤에 다른 글자가 있으면 nullopt를 반환한다. */
@@ -107,7 +86,7 @@ namespace
 		return ResolvedAssetPath{ std::move(absolutePath), std::move(cacheKey) };
 	}
 
-	/** model에서 '#' 뒤 표시가 가리키는 재질을 고른다. "default"는 기본 재질, 십진 숫자는 그 번호의 재질이다. 없으면 로그 없이 nullptr를 반환한다. */
+	/** model에서 하위 이름이 가리키는 재질을 고른다. "default"는 기본 재질, 십진 숫자는 그 번호의 재질이다. 없으면 로그 없이 nullptr를 반환한다. */
 	std::shared_ptr<const Material> SelectModelMaterial(const Model& model, std::string_view label)
 	{
 		if (label == "default") { return model.defaultMaterial; }
@@ -202,8 +181,8 @@ std::shared_ptr<const Model> AssetManager::LoadModel(std::string_view relativePa
 	{
 		StaticMesh& source = gltfModel.meshes[i];
 
-		// 경로는 만든 뒤 바꿀 수 없으므로, 이름과 "파일경로#번호" 경로로 메시를 새로 만든다.
-		StaticMesh meshData(source.GetName(), modelPath + "#" + std::to_string(i));
+		// 경로는 만든 뒤 바꿀 수 없으므로, 이름과 "파일경로|번호" 경로로 메시를 새로 만든다.
+		StaticMesh meshData(source.GetName(), Paths::MakeSubAssetPath(modelPath, std::to_string(i)));
 
 		// 정점, 인덱스와 정점별 뼈 가중치는 복사하지 않고 옮겨 담는다.
 		meshData.vertices = std::move(source.vertices);
@@ -213,12 +192,12 @@ std::shared_ptr<const Model> AssetManager::LoadModel(std::string_view relativePa
 		model.meshes.push_back(std::make_shared<const StaticMesh>(std::move(meshData)));
 	}
 
-	// glTF 재질마다 "파일경로#번호" 경로의 Material을 만든다. 텍스처 경로의 기준은 모델 파일이 있는 폴더다.
+	// glTF 재질마다 "파일경로|번호" 경로의 Material을 만든다. 텍스처 경로의 기준은 모델 파일이 있는 폴더다.
 	const std::filesystem::path modelDirectory = assetPath.parent_path();
 	model.materials.reserve(gltfModel.materials.size());
 	for (std::size_t i = 0; i < gltfModel.materials.size(); ++i)
 	{
-		std::shared_ptr<const Material> material = CreateMaterial(gltfModel.materials[i], modelDirectory, modelPath + "#" + std::to_string(i));
+		std::shared_ptr<const Material> material = CreateMaterial(gltfModel.materials[i], modelDirectory, Paths::MakeSubAssetPath(modelPath, std::to_string(i)));
 		if (material == nullptr)
 		{
 			Log::Write(LogLevel::Error, "AssetManager", "Failed to create material for model: " + std::string(relativePath));
@@ -230,7 +209,7 @@ std::shared_ptr<const Model> AssetManager::LoadModel(std::string_view relativePa
 
 	// 메시마다 재질을 정한다. 재질 번호는 로더가 범위를 확인했다.
 	// 재질이 없는 메시는 glTF 기본 재질을 쓰며, MaterialParameters의 기본값(흰색, 금속성 1, 거칠기 1, 텍스처 없음)이 이와 같다.
-	// 기본 재질은 필요할 때 한 번만 "파일경로#default" 경로로 만들어 공유한다.
+	// 기본 재질은 필요할 때 한 번만 "파일경로|default" 경로로 만들어 공유한다.
 	model.meshMaterials.reserve(gltfModel.meshMaterials.size());
 	for (const std::optional<std::size_t>& materialIndex : gltfModel.meshMaterials)
 	{
@@ -240,7 +219,7 @@ std::shared_ptr<const Model> AssetManager::LoadModel(std::string_view relativePa
 			continue;
 		}
 
-		if (model.defaultMaterial == nullptr) { model.defaultMaterial = std::make_shared<const Material>("DefaultMaterial", modelPath + "#default", MaterialParameters{}); }
+		if (model.defaultMaterial == nullptr) { model.defaultMaterial = std::make_shared<const Material>("DefaultMaterial", Paths::MakeSubAssetPath(modelPath, "default"), MaterialParameters{}); }
 		model.meshMaterials.push_back(model.defaultMaterial);
 	}
 
@@ -249,8 +228,8 @@ std::shared_ptr<const Model> AssetManager::LoadModel(std::string_view relativePa
 	{
 		AnimationClip& source = gltfModel.animations[i];
 
-		// 경로는 만든 뒤 바꿀 수 없으므로, 이름과 "파일경로#번호" 경로로 클립을 새로 만든다.
-		AnimationClip clip(source.GetName(), modelPath + "#" + std::to_string(i));
+		// 경로는 만든 뒤 바꿀 수 없으므로, 이름과 "파일경로|번호" 경로로 클립을 새로 만든다.
+		AnimationClip clip(source.GetName(), Paths::MakeSubAssetPath(modelPath, std::to_string(i)));
 
 		// 트랙은 복사하지 않고 옮겨 담는다.
 		clip.tracks = std::move(source.tracks);
@@ -275,10 +254,10 @@ std::shared_ptr<const Model> AssetManager::LoadModel(std::string_view relativePa
 
 std::shared_ptr<const StaticMesh> AssetManager::LoadStaticMesh(std::string_view path)
 {
-	const std::optional<std::pair<std::string_view, std::string_view>> parts = SplitSubAssetPath(path);
+	const std::optional<std::pair<std::string_view, std::string_view>> parts = Paths::SplitSubAssetPath(path);
 	if (!parts.has_value())
 	{
-		Log::Write(LogLevel::Error, "AssetManager", "Mesh path has no '#': " + std::string(path));
+		Log::Write(LogLevel::Error, "AssetManager", "Mesh path has no sub-asset name: " + std::string(path));
 		return nullptr;
 	}
 
@@ -298,30 +277,9 @@ std::shared_ptr<const StaticMesh> AssetManager::LoadStaticMesh(std::string_view 
 
 std::shared_ptr<const Material> AssetManager::LoadMaterial(std::string_view path)
 {
-	// '|'가 있으면 교체본이다. '|'는 Windows 파일 이름에 쓸 수 없어 첫 '|'로 기본 재질 경로와 바꿀 내용을 나눌 수 있다.
-	// 기본 재질을 먼저 얻은 뒤 교체본 함수를 부르면 캐시에 걸려 처음 만든 객체가 돌아온다.
-	const std::size_t overrideSeparator = path.find('|');
-	if (overrideSeparator != std::string_view::npos)
-	{
-		constexpr std::string_view textureKey = "baseColorTexture=";
-		const std::string_view change = path.substr(overrideSeparator + 1);
-		if (!change.starts_with(textureKey))
-		{
-			Log::Write(LogLevel::Error, "AssetManager", "Unsupported material change: " + std::string(path));
-			return nullptr;
-		}
-
-		const std::shared_ptr<const Material> baseMaterial = LoadMaterial(path.substr(0, overrideSeparator));
-		if (baseMaterial == nullptr) { return nullptr; }
-		return LoadMaterialWithBaseColorTexture(*baseMaterial, change.substr(textureKey.size()));
-	}
-
-	const std::optional<std::pair<std::string_view, std::string_view>> parts = SplitSubAssetPath(path);
-	if (!parts.has_value())
-	{
-		Log::Write(LogLevel::Error, "AssetManager", "Material path has no '#': " + std::string(path));
-		return nullptr;
-	}
+	const std::optional<std::pair<std::string_view, std::string_view>> parts = Paths::SplitSubAssetPath(path);
+	// 하위 이름이 없으면 파일 하나가 재질 하나인 재질 파일이다.
+	if (!parts.has_value()) { return LoadMaterialFile(path); }
 
 	// 실패하면 LoadModel이 로그를 남긴다.
 	const std::shared_ptr<const Model> model = LoadModel(parts->first);
@@ -336,44 +294,81 @@ std::shared_ptr<const Material> AssetManager::LoadMaterial(std::string_view path
 	return material;
 }
 
-std::shared_ptr<const Material> AssetManager::FindLoadedMaterial(std::string_view path) const
+std::shared_ptr<const Material> AssetManager::LoadMaterialFile(std::string_view relativePath)
 {
-	const std::optional<std::pair<std::string_view, std::string_view>> parts = SplitSubAssetPath(path);
-	if (!parts.has_value()) { return nullptr; }
-
-	const std::optional<ResolvedAssetPath> resolved = ResolveAssetPath(parts->first);
-	if (!resolved.has_value()) { return nullptr; }
-
-	const auto cachedModel = models.find(resolved->cacheKey);
-	if (cachedModel == models.end()) { return nullptr; }
-
-	return SelectModelMaterial(*cachedModel->second, parts->second);
-}
-
-std::shared_ptr<const Material> AssetManager::LoadMaterialWithBaseColorTexture(const Material& baseMaterial, std::string_view texturePath)
-{
-	std::shared_ptr<const Texture> texture = LoadTexture(texturePath, TextureFormat::RGBA8SRGB);
-	if (texture == nullptr) { return nullptr; }
-
-	// 기본 재질이 그 경로로 찾은 모델의 재질일 때만 경로를 만들고 캐시한다.
-	// 경로만 같은 다른 객체의 값으로 캐시하면 이후 같은 경로의 요청이 그 값을 받으므로, 이미 불러온 재질과 같은 객체인지 확인한다.
-	// 코드에서 만든 재질(빈 경로), 이미 교체한 재질('|' 포함), 경로만 같은 다른 객체는 경로 없이 매번 새로 만들어 저장할 수 없는 재질로 둔다.
-	// 텍스처 경로는 요청 문자열 대신 불러온 Texture의 경로를 써서 같은 파일이면 같은 문자열이 되게 한다.
-	const std::string& basePath = baseMaterial.GetPath();
-	const bool canIdentify = !basePath.empty() && basePath.find('|') == std::string::npos && FindLoadedMaterial(basePath).get() == &baseMaterial;
-	std::string path;
-	if (canIdentify)
+	// 재질 이름을 파일 이름에서 이 확장자를 뺀 부분으로 정하므로 확장자를 강제한다.
+	constexpr std::string_view MaterialFileExtension = ".material.json";
+	if (!Paths::MakeAssetKey(relativePath).ends_with(MaterialFileExtension))
 	{
-		path = basePath + "|baseColorTexture=" + texture->GetPath();
-		const auto cached = baseColorTextureMaterials.find(path);
-		if (cached != baseColorTextureMaterials.end()) { return cached->second; }
+		Log::Write(LogLevel::Error, "AssetManager", "Material file name must end with .material.json: " + std::string(relativePath));
+		return nullptr;
 	}
 
-	// 값만 복사하고 정체성은 새로 정한다.
-	MaterialParameters parameters = baseMaterial.parameters;
-	parameters.baseColorTexture = std::move(texture);
-	std::shared_ptr<const Material> material = std::make_shared<const Material>(baseMaterial.GetName(), path, std::move(parameters));
-	if (canIdentify) { baseColorTextureMaterials.emplace(std::move(path), material); }
+	const std::optional<ResolvedAssetPath> resolved = ResolveAssetPath(relativePath);
+	if (!resolved.has_value())
+	{
+		Log::Write(LogLevel::Error, "AssetManager", "Failed to resolve material path: " + std::string(relativePath));
+		return nullptr;
+	}
+
+	const auto cached = materialFiles.find(resolved->cacheKey);
+	if (cached != materialFiles.end()) { return cached->second; }
+
+	// 실패 이유는 ReadMaterialFileDefinition이 먼저 남긴다.
+	MaterialFileDefinition definition;
+	if (!ReadMaterialFileDefinition(resolved->absolutePath, definition)) { return nullptr; }
+
+	// base가 없으면 MaterialParameters 기본값에서 시작한다.
+	MaterialParameters parameters;
+	if (definition.basePath.has_value())
+	{
+		// 재질 파일끼리 서로를 base로 가리키는 순환을 막으려고 모델 재질만 받는다.
+		if (!Paths::SplitSubAssetPath(*definition.basePath).has_value())
+		{
+			Log::Write(LogLevel::Error, "AssetManager", std::format("{}: base must be a model material: {}", relativePath, *definition.basePath));
+			return nullptr;
+		}
+
+		const std::shared_ptr<const Material> baseMaterial = LoadMaterial(*definition.basePath);
+		if (baseMaterial == nullptr)
+		{
+			Log::Write(LogLevel::Error, "AssetManager", std::format("{}: could not load base material {}", relativePath, *definition.basePath));
+			return nullptr;
+		}
+		parameters = baseMaterial->parameters;
+	}
+
+	// 적힌 텍스처만 칸에 맞는 형식으로 불러와 바꾼다. 실패 이유는 LoadTexture가 먼저 남긴다.
+	const auto replaceTexture = [this](const std::optional<std::string>& texturePath, TextureFormat format, std::shared_ptr<const Texture>& target)
+	{
+		if (!texturePath.has_value()) { return true; }
+		target = LoadTexture(*texturePath, format);
+		return target != nullptr;
+	};
+	const bool texturesLoaded = replaceTexture(definition.baseColorTexturePath, TextureFormat::RGBA8SRGB, parameters.baseColorTexture)
+		&& replaceTexture(definition.normalTexturePath, TextureFormat::RGBA8UNorm, parameters.normalTexture)
+		&& replaceTexture(definition.ormTexturePath, TextureFormat::RGBA8UNorm, parameters.ormTexture)
+		&& replaceTexture(definition.emissiveTexturePath, TextureFormat::RGBA8SRGB, parameters.emissiveTexture);
+	if (!texturesLoaded)
+	{
+		Log::Write(LogLevel::Error, "AssetManager", "Failed to load texture for material file: " + std::string(relativePath));
+		return nullptr;
+	}
+
+	if (definition.baseColor.has_value()) { parameters.baseColor = *definition.baseColor; }
+	if (definition.alphaMode.has_value()) { parameters.alphaMode = *definition.alphaMode; }
+	if (definition.baseColorAlpha.has_value()) { parameters.baseColorAlpha = *definition.baseColorAlpha; }
+	if (definition.roughness.has_value()) { parameters.roughness = *definition.roughness; }
+	if (definition.metallic.has_value()) { parameters.metallic = *definition.metallic; }
+
+	// 경로는 LoadTexture처럼 요청 경로를 정리한 값이다. 이름은 파일 이름에서 확장자를 뺀 부분이다.
+	const std::filesystem::path requestedPath = std::filesystem::path(std::u8string(relativePath.begin(), relativePath.end())).lexically_normal();
+	const std::u8string fileNameUtf8 = requestedPath.filename().u8string();
+	const std::u8string nameUtf8 = fileNameUtf8.substr(0, fileNameUtf8.size() - MaterialFileExtension.size());
+	const std::u8string pathUtf8 = requestedPath.generic_u8string();
+
+	std::shared_ptr<const Material> material = std::make_shared<const Material>(std::string(nameUtf8.begin(), nameUtf8.end()), std::string(pathUtf8.begin(), pathUtf8.end()), std::move(parameters));
+	materialFiles.emplace(resolved->cacheKey, material);
 	return material;
 }
 
@@ -689,10 +684,10 @@ std::shared_ptr<const Prefab> AssetManager::LoadPrefab(std::string_view relative
 				return nullptr;
 			}
 
-			std::shared_ptr<const Material> material = LoadMaterialWithBaseColorTexture(*defaultMaterials[meshIndex], entry.baseColorTexturePath);
+			std::shared_ptr<const Material> material = LoadMaterial(entry.materialPath);
 			if (material == nullptr)
 			{
-				Log::Write(LogLevel::Error, "AssetManager", std::format("{}: mesh {} could not load texture {}", relativePath, meshIndex, entry.baseColorTexturePath));
+				Log::Write(LogLevel::Error, "AssetManager", std::format("{}: mesh {} could not load material {}", relativePath, meshIndex, entry.materialPath));
 				return nullptr;
 			}
 

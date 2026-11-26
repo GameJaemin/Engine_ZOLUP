@@ -32,16 +32,16 @@ bool ReadStaticMeshProperties(const rapidjson::Value& properties, std::string_vi
 	mesh.modelPath.assign(model->value.GetString(), model->value.GetStringLength());
 	mesh.meshIndex = static_cast<std::size_t>(meshIndex->value.GetUint64());
 
-	const auto baseColorTexture = properties.FindMember("baseColorTexture");
-	if (baseColorTexture != properties.MemberEnd())
+	const auto material = properties.FindMember("material");
+	if (material != properties.MemberEnd())
 	{
-		const std::string_view textureError = ValidatePrefabAssetPath(baseColorTexture->value);
-		if (!textureError.empty())
+		const std::string_view materialError = ValidatePrefabAssetPath(material->value);
+		if (!materialError.empty())
 		{
-			Log::Write(LogLevel::Error, "Prefab", std::format("{}.baseColorTexture {}", context, textureError));
+			Log::Write(LogLevel::Error, "Prefab", std::format("{}.material {}", context, materialError));
 			return false;
 		}
-		mesh.baseColorTexturePath.emplace(baseColorTexture->value.GetString(), baseColorTexture->value.GetStringLength());
+		mesh.materialPath.emplace(material->value.GetString(), material->value.GetStringLength());
 	}
 
 	return true;
@@ -62,12 +62,13 @@ bool LoadPrefabStaticMesh(AssetManager& assets, const PrefabStaticMeshDefinition
 	}
 
 	std::shared_ptr<const Material> material = model->meshMaterials[definition.meshIndex];
-	if (definition.baseColorTexturePath.has_value())
+	if (definition.materialPath.has_value())
 	{
-		material = assets.LoadMaterialWithBaseColorTexture(*material, *definition.baseColorTexturePath);
+		// 실패 이유는 LoadMaterial이 먼저 남긴다.
+		material = assets.LoadMaterial(*definition.materialPath);
 		if (material == nullptr)
 		{
-			Log::Write(LogLevel::Error, "AssetManager", std::format("{}: staticMesh could not load baseColorTexture {}", context, *definition.baseColorTexturePath));
+			Log::Write(LogLevel::Error, "AssetManager", std::format("{}: staticMesh could not load material {}", context, *definition.materialPath));
 			return false;
 		}
 	}

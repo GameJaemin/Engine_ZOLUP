@@ -12,7 +12,7 @@
 				"properties": {
 					"model": "Game/Content/Meshes/UtahTeapot/UtahTeapot.gltf",
 					"meshIndex": 0,
-					"baseColorTexture": "Engine/Content/Textures/Checker.png"
+					"material": "Game/Content/Materials/CheckerTeapot.material.json"
 				}
 			}
 		]
