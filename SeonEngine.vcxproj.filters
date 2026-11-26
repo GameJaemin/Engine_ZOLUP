@@ -784,4 +784,12 @@
     <ClInclude Include="Game\Source\BabyDoll\StitchBrainComponent.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
   </ItemGroup>
   <ItemGroup><ClCompile Include="Game\Source\BabyDoll\AgentMovement.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile><ClInclude Include="Game\Source\BabyDoll\AgentMovement.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude></ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Game\Source\BabyDoll\PhysicsProps.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile>
+    <ClInclude Include="Game\Source\BabyDoll\PhysicsProps.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+    <ClCompile Include="Game\Source\BabyDoll\ProximityLightComponent.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile>
+    <ClInclude Include="Game\Source\BabyDoll\ProximityLightComponent.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+    <ClCompile Include="Game\Source\BabyDoll\RearCameraComponent.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile>
+    <ClInclude Include="Game\Source\BabyDoll\RearCameraComponent.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+  </ItemGroup>
 </Project>

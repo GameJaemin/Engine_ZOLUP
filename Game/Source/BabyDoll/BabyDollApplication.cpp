@@ -9,11 +9,14 @@
 #include "PlayerMoveComponent.h"
 #include "PoseAnimatorComponent.h"
 #include "StitchBrainComponent.h"
+#include "RearCameraComponent.h"
+#include "ProximityLightComponent.h"
 
 #include "AssetManager.h"
 #include "Component/AmbientLightComponent.h"
 #include "Component/AnimationComponent.h"
 #include "Component/CameraComponent.h"
+#include "Component/BoxColliderComponent.h"
 #include "Component/DirectionalLightComponent.h"
 #include "Component/PointLightComponent.h"
 #include "Component/StaticMeshComponent.h"
@@ -59,7 +62,7 @@ namespace
 BabyDollApplication::BabyDollApplication() = default;
 BabyDollApplication::~BabyDollApplication() = default;
 
-GameObject* BabyDollApplication::Box(const std::string& name, const Vector3& center, const Vector3& size, const Vector3& color, GameObject* parent)
+GameObject* BabyDollApplication::Box(const std::string& name, const Vector3& center, const Vector3& size, const Vector3& color, GameObject* parent, bool collides)
 {
 	std::shared_ptr<Material> material = std::make_shared<Material>();
 	material->baseColor = color;
@@ -73,6 +76,7 @@ GameObject* BabyDollApplication::Box(const std::string& name, const Vector3& cen
 	transform.scale = size / 100.0f;
 	GameObject* object = world->InstantiatePrefab(prefab, { name, transform });
 	if (object && parent) { object->SetParent(parent); }
+	if (object && collides) { Attach<BoxColliderComponent>(*object); }
 	return object;
 }
 
@@ -85,9 +89,14 @@ bool BabyDollApplication::BuildRoom()
 		for (int z = 0; z < 9; ++z)
 		{
 			const float shade = (x + z) % 2 == 0 ? 0.12f : 0.16f;
-			if (!Box("Floor", { -2000.0f + x * 400.0f, -12.0f, -1600.0f + z * 400.0f }, { 398.0f, 24.0f, 398.0f }, { shade * 0.75f, shade * 0.85f, shade })) { return false; }
+			if (!Box("Floor", { -2000.0f + x * 400.0f, -12.0f, -1600.0f + z * 400.0f }, { 398.0f, 24.0f, 398.0f }, { shade * 0.75f, shade * 0.85f, shade }, nullptr, false)) { return false; }
 		}
 	}
+	// 엔진 물리 씬의 64바디 한도에 맞춰 바닥 타일 99개를 연속된 한 바디로 합친다.
+	GameObject* floorBody = world->CreateGameObject("Continuous physics floor", {});
+	if (!floorBody) { return false; }
+	floorBody->GetComponent<TransformComponent>()->SetPosition({ 0.0f, -12.0f, 0.0f });
+	if (!Attach<BoxColliderComponent>(*floorBody)->SetLocalHalfExtents({ 2200.0f, 12.0f, 1800.0f })) { return false; }
 	const PrototypeObstacle walls[]{
 		{ { -2250.0f, 0.0f, -1850.0f }, { -2200.0f, 600.0f, 1850.0f } },
 		{ { 2200.0f, 0.0f, -1850.0f }, { 2250.0f, 600.0f, 1850.0f } },
@@ -134,16 +143,21 @@ bool BabyDollApplication::BuildRoom()
 	sun->SetColor({ 0.85f, 0.80f, 0.75f });
 	sun->SetIntensity(1.6f);
 	lighting->GetComponent<TransformComponent>()->SetRotation({ 55.0f, -30.0f, 0.0f });
-	for (int index = 0; index < 4; ++index)
+	for (int index = 0; index < 9; ++index)
 	{
-		const Vector3 point{ index % 2 == 0 ? -1400.0f : 1400.0f, 420.0f, index < 2 ? -1100.0f : 1100.0f };
+		const Vector3 point{ (index % 3 - 1) * 1500.0f, 420.0f, (index / 3 - 1) * 1100.0f };
 		GameObject* lightObject = world->CreateGameObject("Gallery lamp", {});
 		if (!lightObject) { return false; }
 		lightObject->GetComponent<TransformComponent>()->SetPosition(point);
 		PointLightComponent* light = Attach<PointLightComponent>(*lightObject);
-		light->SetRange(1700.0f);
-		light->SetIntensity(5.0f);
+		light->SetRange(config.lampRange);
+		light->SetIntensity(config.lampIntensity);
 		light->SetColor(index % 2 == 0 ? Vector3{ 1.0f, 0.5f, 0.35f } : Vector3{ 0.3f, 0.8f, 1.0f });
+		ProximityLightComponent* proximity = Attach<ProximityLightComponent>(*lightObject);
+		proximity->SetDarkRadius(config.lampDarkRadius);
+		proximity->SetFlickerTime(config.lampFlickerTime);
+		proximity->SetBaseIntensity(config.lampIntensity);
+		lamps.push_back(proximity);
 		Box("Lamp housing", point, { 110.0f, 16.0f, 110.0f }, brass);
 	}
 	return true;
@@ -226,30 +240,34 @@ bool BabyDollApplication::BuildMonster()
 bool BabyDollApplication::OnInitialize(Engine& inEngine)
 {
 	engine = &inEngine;
+	if (!RegisterPrototypeLightType()) { return false; }
 	if (!LoadPrototypeConfig(config)) { Log::Write(LogLevel::Error, "BabyDoll", "Invalid or missing Prototype.json"); return false; }
 	visualYawOffset = config.monsterVisualYawOffset;
 	world = std::make_unique<World>();
 	boxModel = AssetManager::Get().LoadModel("Game/Content/BabyDoll/Geometry/Box.gltf");
 	ringModel = AssetManager::Get().LoadModel("Game/Content/BabyDoll/Geometry/Ring.gltf");
-	if (!boxModel || !ringModel || !BuildRoom() || !BuildMonster()) { return false; }
+	if (!boxModel || !ringModel) { Log::Write(LogLevel::Error, "BabyDoll", "Geometry assets could not be loaded"); return false; }
+	if (!BuildRoom()) { Log::Write(LogLevel::Error, "BabyDoll", "Room construction failed"); return false; }
+	if (!BuildMonster()) { Log::Write(LogLevel::Error, "BabyDoll", "Monster construction failed"); return false; }
 	playerObject = world->CreateGameObject("Player", {});
 	GameObject* cameraObject = world->CreateGameObject("Prototype camera", {});
 	GameObject* soundObject = world->CreateGameObject("Gameplay hearing", {});
 	if (!playerObject || !cameraObject || !soundObject) { return false; }
 	player = Attach<PlayerMoveComponent>(*playerObject);
 	heart = Attach<HeartComponent>(*playerObject);
+	rearView = Attach<RearCameraComponent>(*playerObject);
 	hearing = Attach<HearingComponent>(*soundObject);
 	camera = Attach<CameraComponent>(*cameraObject);
 	orbit = Attach<OrbitCameraComponent>(*cameraObject);
 	camera->SetClipDistances(5.0f, 10000.0f);
-	if (!world->SetActiveCamera(camera)) { return false; }
+	if (!world->SetActiveCamera(camera)) { Log::Write(LogLevel::Error, "BabyDoll", "Active camera registration failed"); return false; }
 	playerVisual = world->CreateGameObject("Placeholder doll", {});
 	if (!playerVisual || !playerVisual->SetParent(playerObject)) { return false; }
-	Box("Pink half", { -17.0f, 48.0f, 0.0f }, { 34.0f, 65.0f, 45.0f }, { 0.72f, 0.20f, 0.34f }, playerVisual);
-	Box("Blue half", { 17.0f, 48.0f, 0.0f }, { 34.0f, 65.0f, 45.0f }, { 0.17f, 0.51f, 0.66f }, playerVisual);
-	Box("Head", { 0.0f, 97.0f, 0.0f }, { 67.0f, 45.0f, 44.0f }, { 0.62f, 0.46f, 0.48f }, playerVisual);
-	for (float x : { -25.0f, 25.0f }) { Box("Ear", { x, 120.0f, 0.0f }, { 18.0f, 18.0f, 20.0f }, { 0.43f, 0.28f, 0.32f }, playerVisual); }
-	Box("Ribbon", { 0.0f, 74.0f, -25.0f }, { 35.0f, 12.0f, 6.0f }, { 0.8f, 0.08f, 0.13f }, playerVisual);
+	Box("Pink half", { -17.0f, 48.0f, 0.0f }, { 34.0f, 65.0f, 45.0f }, { 0.72f, 0.20f, 0.34f }, playerVisual, false);
+	Box("Blue half", { 17.0f, 48.0f, 0.0f }, { 34.0f, 65.0f, 45.0f }, { 0.17f, 0.51f, 0.66f }, playerVisual, false);
+	Box("Head", { 0.0f, 97.0f, 0.0f }, { 67.0f, 45.0f, 44.0f }, { 0.62f, 0.46f, 0.48f }, playerVisual, false);
+	for (float x : { -25.0f, 25.0f }) { Box("Ear", { x, 120.0f, 0.0f }, { 18.0f, 18.0f, 20.0f }, { 0.43f, 0.28f, 0.32f }, playerVisual, false); }
+	Box("Ribbon", { 0.0f, 74.0f, -25.0f }, { 35.0f, 12.0f, 6.0f }, { 0.8f, 0.08f, 0.13f }, playerVisual, false);
 	Prefab ring;
 	ring.model = ringModel;
 	std::shared_ptr<Material> ringMaterial = std::make_shared<Material>();
@@ -259,11 +277,14 @@ bool BabyDollApplication::OnInitialize(Engine& inEngine)
 	ringMaterial->metallic = 0.0f;
 	ring.meshMaterialOverrides = { ringMaterial };
 	soundRing = world->InstantiatePrefab(ring, { std::string("Sound radius"), Transform{} });
+	if (!physicsProps.Initialize(*world, boxModel, space, config)) { return false; }
 	ResetRun();
+	physicsHealthy = world->GetPhysicsScene().Update(0.0f);
+	if (!physicsHealthy) { Log::Write(LogLevel::Error, "BabyDoll", "Physics scene preparation failed"); return false; }
 	inspect = paused = true;
 	orbit->Reset(MonsterSpawn + Vector3{ 0.0f, 150.0f, 0.0f }, 0.0f, config);
 	Present(1.0f);
-	Log::Write(LogLevel::Info, "BabyDoll", "Ready: SCISSORMAN / S-D rhythm / mouse camera / T hide / Space sound / Esc pause");
+	Log::Write(LogLevel::Info, "BabyDoll", "Ready: S/Period cooperative input, rear CCTV, proximity lamps, Jolt props");
 	return soundRing != nullptr;
 }
 
@@ -282,6 +303,10 @@ void BabyDollApplication::ResetRun()
 	player->Reset(PlayerSpawn);
 	heart->Reset();
 	brain->Reset(MonsterSpawn);
+	rearView->Clear();
+	physicsProps.Reset(*world);
+	physicsProps.SyncSpace(*world, space);
+	for (ProximityLightComponent* lamp : lamps) { lamp->Reset(); }
 	previousPlayerPosition = PlayerSpawn;
 	previousMonsterPosition = MonsterSpawn;
 	previousMonsterYaw = brain->GetYaw();
@@ -358,6 +383,22 @@ void BabyDollApplication::ApplyTableVisuals()
 	{
 		const bool broken = tables[index]->IsBroken();
 		space.obstacles[tables[index]->obstacleIndex].enabled = !broken;
+		BoxColliderComponent* collider = tableVisuals[index]->GetComponent<BoxColliderComponent>();
+		if ((broken && collider) || (!broken && !collider))
+		{
+			GameObject* root = tableVisuals[index]->GetParent();
+			const std::vector<GameObject*> oldChildren = root->GetChildren();
+			for (GameObject* child : oldChildren) { world->DestroyGameObject(child); }
+			tableVisuals[index] = Box("Table top", {}, { 320.0f, 35.0f, 240.0f }, { 0.19f, 0.30f, 0.30f }, root, !broken);
+			if (!tableVisuals[index]) { physicsHealthy = false; continue; }
+			if (!broken)
+			{
+				for (float x : { -140.0f, 140.0f })
+				{
+					for (float z : { -100.0f, 100.0f }) { Box("Table leg", { x, 50.0f, z }, { 14.0f, 100.0f, 14.0f }, { 0.42f, 0.25f, 0.12f }, root); }
+				}
+			}
+		}
 		TransformComponent* transform = tableVisuals[index]->GetComponent<TransformComponent>();
 		transform->SetPosition(broken ? Vector3{ 25.0f, 12.0f, 20.0f } : Vector3{ 0.0f, 117.5f, 0.0f });
 		transform->SetRotation(broken ? EulerAngles{ 0.0f, 18.0f, 9.0f } : EulerAngles{});
@@ -379,6 +420,10 @@ void BabyDollApplication::Simulate(const PrototypeCommand& command, float deltaT
 			player->Reset(checkpoint.playerPosition);
 			heart->Reset();
 			brain->Reset(checkpoint.monsterPosition);
+			rearView->Clear();
+			physicsProps.Reset(*world);
+			physicsProps.SyncSpace(*world, space);
+			for (ProximityLightComponent* lamp : lamps) { lamp->Reset(); }
 			previousPlayerPosition = checkpoint.playerPosition;
 			previousMonsterPosition = checkpoint.monsterPosition;
 			previousMonsterYaw = brain->GetYaw();
@@ -436,6 +481,12 @@ void BabyDollApplication::Present(float deltaTime)
 	const float interpolation = paused || inspect ? 1.0f : std::clamp(accumulator / FixedStep, 0.0f, 1.0f);
 	const Vector3 playerPosition = Vector3::Lerp(previousPlayerPosition, player->GetPosition(), interpolation);
 	const Vector3 monsterPosition = Vector3::Lerp(previousMonsterPosition, brain->GetPosition(), interpolation);
+	if (inspect) { rearView->Clear(); }
+	else if (!rearView->Step(brain->GetState() == StitchState::Chase, previewRear, playerPosition, monsterPosition, brain->GetYaw(), paused ? 0.0f : deltaTime, config, space))
+	{
+		toast = "Rear camera setup failed"; toastTime = 3.0f;
+	}
+	for (ProximityLightComponent* lamp : lamps) { lamp->Step(monsterPosition, paused ? 0.0f : deltaTime, lightsEnabled && !inspect); }
 	playerObject->GetComponent<TransformComponent>()->SetPosition(playerPosition);
 	playerObject->GetComponent<TransformComponent>()->SetRotation({ 0.0f, player->GetYaw(), 0.0f });
 	const PlayerMode mode = player->GetMode();
@@ -483,7 +534,10 @@ void BabyDollApplication::OnUpdate(const InputState& input, float deltaTime)
 	GetWindowThreadProcessId(GetForegroundWindow(), &process);
 	if (captured && process != GetCurrentProcessId()) { paused = true; SetCaptured(false); }
 	if (resetRequested) { ResetRun(); }
-	const PrototypeInputFrame frame = inputAdapter.Read(input);
+	if (dropPropsRequested) { physicsProps.Reset(*world); physicsProps.SyncSpace(*world, space); dropPropsRequested = false; }
+	const PrototypeInputFrame frame = inputAdapter.Read(input, soloControls);
+	leftFootDown = frame.leftDown;
+	rightFootDown = frame.rightDown;
 	if (frame.togglePause)
 	{
 		if (captured) { paused = true; SetCaptured(false); }
@@ -504,6 +558,8 @@ void BabyDollApplication::OnUpdate(const InputState& input, float deltaTime)
 		while (accumulator >= FixedStep)
 		{
 			Simulate(pending, FixedStep);
+			if (!world->GetPhysicsScene().Update(FixedStep)) { physicsHealthy = false; paused = true; SetCaptured(false); break; }
+			physicsProps.SyncSpace(*world, space);
 			pending.feet.clear();
 			pending.interact = pending.pulse = false;
 			accumulator -= FixedStep;
@@ -528,6 +584,10 @@ std::optional<SceneRenderRequest> BabyDollApplication::GetRenderRequest()
 void BabyDollApplication::OnShutdown() noexcept
 {
 	if (engine) { engine->SetCursorVisible(true); engine->SetCursorConfined(false); }
+	if (rearView) { rearView->Clear(); }
+	if (world) { world->DestroyPendingGameObjects(); }
+	rearView = nullptr;
+	lamps.clear();
 	player = nullptr;
 	heart = nullptr;
 	hearing = nullptr;

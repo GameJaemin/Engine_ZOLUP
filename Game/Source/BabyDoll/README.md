@@ -1,102 +1,188 @@
-# BabyDoll 프로토타입 사용과 코드 흐름
+# BabyDoll 프로토타입: 코드와 플레이 흐름 보고서
 
-엔진과 렌더러를 변경하지 않는 게임 전용 모듈이다. SCISSORMAN 모델 확인과 한 층 테스트룸의 보행, 심박, 청각 AI, 테이블 숨기를 검증한다. 기획 원본 PDF와 엑셀은 수정하지 않는다.
+2026-11-26 엔진 업데이트 기준. Engine/Renderer 소스와 기획 원본 PDF/XLSX는 수정하지 않았다. Game 코드, 게임 설정, 프로젝트의 게임 파일 등록만 변경했다. 이 문서는 구현 보고서이며 원본 기획의 변경안이 아니다.
 
-## 실행
+## 이번 개선
 
-Visual Studio에서 Debug 또는 Release x64를 빌드하고 실행한다. 기본 실행은 모델 미리보기이며, 기존 Bistro 데모는 `SeonEngine.exe --third-person`, 에디터는 `--editor`로 보존한다. 헤드리스 게임 규칙 검증은 `--babydoll-test`다.
+- 기본 모드는 1인용이며 S(왼발) / D(오른발)를 번갈아 눌러 이동한다. 시작 화면의 Play mode에서 협동 S/마침표 모드도 선택할 수 있다. 입력 순서를 유지하고 OS 키 반복을 걸음에서 제외한다. 양쪽 키의 눌림 상태를 분홍/청록 안내로 표시한다. 1인용과 협동은 동일한 이동 규칙을 사용한다.
+- 추격 시 엔진 SceneCapture2D로 CCTV를 켜고, 추격 종료 후 5초 유지한다. 거리에 따른 구도, 부드러운 추적, 저채도, REC/스캔라인을 적용했다. 벽에 가까우면 측면 구도를 찾고 실제 카메라 거리로 FOV를 계산한다. 종료 시 캡처 객체를 제거해 추가 렌더링을 중단한다.
+- 전등 9개에 근접 조명 컴포넌트를 부착했다. 몬스터가 수평 15m 안에 들어오면 0.6초 깜빡인 뒤 꺼지고, 범위를 벗어나면 즉시 복구한다. 한 층 테스트룸 규칙이다. Ambient/Directional은 남아 있어 완전 암전은 아니다.
+- 바닥·벽·전시대·테이블에 엔진 박스 콜라이더를, 상자 3개에 Jolt 강체를 연결했다. 상자의 낙하·회전·정착 결과를 게임 이동/카메라 장애물 AABB에도 반영한다. 테이블 파괴 시 상판과 다리 콜라이더를 함께 제거하고 리셋 시 복구한다.
+- 엔진 물리 씬의 최대 64바디 제한에 맞춰 바닥 타일 99개를 연속된 물리 바닥 하나로 합쳤다. 외형은 타일을 유지한다.
+- 새 조명 타입과 편집 필드를 등록했다. 기본 물리 객체와 이 조명을 엔진 스냅샷으로 복제하는 검사도 추가했다. 전체 게임 저장은 아직 완성하지 않았다.
 
-첫 화면의 Animation에서 원본 클립 10개를 선택할 수 있다. Orbit model을 누르면 마우스로 둘러본다. Esc로 커서를 풀고 Start gameplay test를 누르면 플레이한다.
+## 실행과 기능별 확인
 
-이 환경의 검증은 v143 14.44로 수행했다. 로컬 PDB DLL 버전 충돌(LNK1101)을 피하기 위해 실행 검증용 빌드는 디버그 심벌 생성을 끈다. `Tools/AssetPipeline/BuildBabyDoll.ps1 -NoDebugSymbols`로 재현할 수 있다. 정상적인 IDE 환경에서는 이 옵션 없이 빌드해 디버거 심벌을 생성한다. 엔진/렌더러 소스나 공용 프로젝트의 디버그 설정은 변경하지 않았다.
+기본 실행 파일: `Binaries/v143/x64/Debug/SeonEngine.exe`. 모델 미리보기에서 Single player (S / D)를 선택하고 Start single player로 들어간다. 협동은 Co-op (S / period)를 선택한 뒤 Start co-op으로 시작한다. 기존 Bistro 데모는 `--third-person`, 에디터는 `--editor`, 자동 검사는 `--babydoll-test`다.
+
+```powershell
+./Tools/AssetPipeline/BuildBabyDoll.ps1 -NoDebugSymbols
+./Binaries/v143/x64/Debug/SeonEngine.exe --babydoll-test
+./Binaries/v143/x64/Debug/SeonEngine.exe
+```
+
+v143 14.44로 검증했다. `-NoDebugSymbols`는 설치된 PDB DLL 버전 충돌(LNK1101)을 피하는 실행 검증용 옵션이다. IDE 디버깅에서는 정상적인 심벌 환경에서 이 옵션 없이 빌드한다. 공용 디버그 설정은 변경하지 않았다.
 
 | 조작 | 동작 |
 | --- | --- |
-| S / D 번갈아 누름 | 왼발 / 오른발. 누르고 있기와 키 반복은 걸음으로 세지 않음 |
-| 같은 발 두 번 | 넘어짐, 실수 소리 1회 |
+| S / D 번갈아 누름 | 1인용 왼발/오른발, 리듬 가속 |
+| S / . 번갈아 누름 | 협동 왼발/오른발, 리듬 가속 |
+| 같은 발 두 번 | 넘어짐과 실수 소리 이벤트 1회 |
 | 마우스 | 시야와 이동 방향 |
-| T | 바라보는 테이블에 숨기 / 카메라 방향으로 나오기 |
-| Space | AI 확인용 큰 실수 소리. 실제 게임 조작에 추가한 개발 도구 |
+| T | 바라보는 테이블에 숨기 / 시야 방향으로 나오기 |
+| Space | AI 확인용 큰 실수 소리 이벤트 |
 | Esc | 일시정지와 커서 해제 / 재개 |
-| Tab | 컴포넌트 진단 표시 |
+| Tab | 컴포넌트 진단 |
 
-메뉴의 Free movement는 카메라 감각을 따로 확인하는 WASD/Shift 개발 모드다. AI enabled와 Ignore capture도 개발 옵션이다. 입력 모드와 카메라 수치는 메뉴에서 실시간으로 조절하며, 기본 수치는 `Game/Content/BabyDoll/Config/Prototype.json`에 있다. 런타임 변경은 파일에 자동 저장하지 않는다.
+R 손동작은 예약만 했다. 1인용은 오른발 D와 우클릭 상호작용을 사용한다. Play mode는 일시정지 메뉴에서도 변경할 수 있다. Free movement는 WASD/Shift로 카메라 감각을 확인하는 개발 모드다.
 
-## 읽을 순서
+1. 모델 미리보기에서 Idle/Walk/Run을 확인한다.
+2. 1인용 게임에서 S와 D를 번갈아 눌러 이동/가속/카메라 추적을 확인한다. 같은 발을 반복해 넘어짐도 확인한다.
+3. Esc 메뉴의 Preview CCTV로 영상을 단독 확인한다. 이 옵션을 끄면 추격 시에만 열린다. AI enabled/Ignore capture는 상태 실험용이다.
+4. Tab에서 AI 상태, CCTV 유지 시간, 꺼진 전등 수, 상자 수와 Jolt ready를 확인한다. Proximity lamps로 효과를 비교한다.
+5. Drop physics props again 후 Resume으로 상자를 다시 낙하시킨다.
+6. 테이블 첫 추격 점유/이탈, 두 번째 점유와 파괴를 플레이 동선에서 확인한다.
 
-1. `BabyDollApplication::OnInitialize`: 기존 엔진 객체에 필요한 컴포넌트를 부착한다.
-2. `OnUpdate`: 키 입력을 명령으로 변환하고 고정 120Hz로 시뮬레이션한다.
-3. `Simulate`: 플레이어 -> 심박 -> 소리 -> AI -> 잡기/테이블 파괴 순서다.
-4. `Present`: 확정 상태를 도형, 몬스터 포즈, 소리 링, 카메라로 표시한다.
-5. `BabyDollHud.cpp`: 상태를 읽어 표시하고 메뉴 명령을 전달한다.
+## 코드 읽는 순서와 실행 흐름
 
-카메라와 포즈는 렌더 프레임마다 갱신한다. 마우스 변위에는 deltaTime을 곱하지 않는다. 이동/카메라 보간은 지수 응답으로 프레임률 의존성을 줄인다. 긴 프레임은 0.1초까지만 소비하며 창 포커스를 잃으면 자동 일시정지하고 남은 입력을 폐기한다. GUI 호출은 OnGui에서만 한다.
+`GameMain.cpp` → `BabyDollApplication::OnInitialize` → `OnUpdate` → `Simulate` → `Present` → `OnGui` 순서로 읽으면 된다. 게임 규칙 컴포넌트는 자동 Tick 대신 조립 코드가 Step을 명시적으로 호출한다.
 
-## 컴포넌트 경계
+```text
+OnInitialize
+  설정 로드 → 방/콜라이더/전등 → 몬스터/포즈
+  플레이어·심박·CCTV·메인 카메라 부착 → 물리 상자
+  시작 상태 복원 → 물리 준비 → 모델 미리보기
 
-| 코드 | 책임 | 전달받는 것 |
+OnUpdate (렌더 프레임마다)
+  입력/마우스 읽기 → 명령 누적 → 시야 목표 갱신
+  고정 120Hz 반복:
+    Simulate
+      상호작용 → 플레이어 이동 → 심박/소리 → 청각 → AI/경로 이동
+      테이블 파괴/잡힘 → 체크포인트 복귀
+    PhysicsScene.Update(1/120) → 엔진 내부 60Hz 물리
+    물리 상자 Transform → GameplaySpace 장애물 갱신
+    단발 명령 소비
+  World.Tick → Present → 삭제 예정 객체 정리
+
+Present (렌더 프레임마다)
+  이전/현재 틱의 위치·회전 보간 → CCTV/전등
+  플레이어 도형·몬스터 포즈·소리 링 → 메인 카메라
+OnGui → HUD/CCTV 텍스처/메뉴
+GetRenderRequest → 메인 뷰 (엔진이 등록된 SceneCapture 뷰도 함께 렌더)
+```
+
+마우스 변위에는 deltaTime을 곱하지 않는다. 시야/추적은 지수 응답을 적용하고 고정 틱 사이 위치와 회전을 함께 보간한다. 긴 프레임은 0.1초까지만 소비한다. 포커스를 잃으면 일시정지하고 남은 입력을 폐기한다. 게임 규칙은 120Hz, Jolt는 내부 60Hz다. 물리 상자는 엔진이 돌려주는 포즈를 사용하며 별도 렌더 보간은 아직 없다.
+
+## 실제 파일과 책임
+
+아래 파일은 모두 `Game/Source/BabyDoll/`에 있다. World가 객체/컴포넌트를 소유하고 앱은 포인터를 빌린다. 값과 좁은 공간 질의로 의존을 줄였다. 표현 어댑터는 같은 객체의 Camera/Light/Transform 등을 조회한다.
+
+| 코드 (.h/.cpp, 별도 표기 제외) | 책임 |
+| --- | --- |
+| BabyDollApplication | 생성, 실행 순서, 리셋, 테이블 외형을 조립 |
+| BabyDollHud.cpp | 상태·CCTV 텍스처 표시, 메뉴 명령 |
+| PrototypeTypes | 설정/명령/상태/계산, JSON 검증 |
+| PrototypeInputAdapter.h | 엔진 입력을 순서 있는 게임 명령으로 변환 |
+| PlayerMoveComponent | 박자/운동량/이동/넘어짐 |
+| HeartComponent | 심박과 심장 소리 반경 |
+| HearingComponent | 위치/반경/층/우선순위로 들린 소리 선택 |
+| StitchBrainComponent | Patrol/Suspicious/Chase와 행동 단계, 목적지 결정 |
+| AgentMovement | 경로 추종/가감속/회전 제한 |
+| GameplaySpace | 평면 충돌/카메라 거리/2D A*. NavMeshVolume이 아님 |
+| HideTableComponent | 수명/점유 세션/출구/파괴 가능 여부 |
+| PoseAnimatorComponent | 클립 교차 재생, Walk/Run 위상 보존, 엔진 포즈 적용 |
+| OrbitCameraComponent | 메인 카메라 각도/추적/줌/FOV/충돌 |
+| RearCameraComponent | 추격 CCTV 수명/구도/추적, SceneCapture 생성/제거 |
+| ProximityLightComponent | 근접 깜빡임/소등/복구, 타입과 편집 필드 등록 |
+| PhysicsProps | 상자 생성/리셋, Jolt 포즈를 이동 장애물에 반영 |
+| PrototypeTests.h | GPU 없이 게임 규칙/물리/스냅샷 검사 |
+
+AI는 들린 위치를 추적 목적지로 사용한다. 실제 플레이어 위치는 잡기·숨기 관찰·근접 감속 등의 별도 판정에 사용한다. 경로는 100cm 격자 A*이며 불필요한 꺾임을 줄이고 앞쪽 지점을 추종한다. 몸의 전방으로 이동하며 큰 선회에서는 감속하고 회전 속도/가속도를 제한한다. 원본 SCISSORMAN의 +X 정면과 엔진 좌표계는 +90도 모델 보정으로 맞췄다.
+
+## 수정 가능한 JSON 값 45개
+
+`Game/Content/BabyDoll/Config/Prototype.json` 수정 후 다시 실행하면 적용된다. 재컴파일은 필요 없다. 허용 범위는 `PrototypeTypes.cpp::LoadPrototypeConfig`에 있다. 잘못된 값은 부분 적용하지 않고 로드를 실패시킨다. 런타임 자동 저장/파일 재로드는 없다.
+
+| 키 | 현재 값 | 의미/단위 |
 | --- | --- | --- |
-| PrototypeInputAdapter | 키 입력을 게임 명령으로 변환 | 엔진 InputState |
-| PlayerMoveComponent | 박자, 가속, 넘어짐, 이동 | 명령, 시야 yaw, 설정, 공간 질의 |
-| HeartComponent | 심박과 심장 소리 반경 | 속도, 숨기, AI 상태, 거리 |
-| HearingComponent | 수평 거리/층 기준 청각 자극 선택 | 위치, 반경, 소리 종류 |
-| StitchBrainComponent | 정찰/의심/추격과 행동 단계, 경로 이동 | 관찰값과 공간 질의 |
-| AgentMovement | 경로 정리, 선행 지점 추종, 가감속과 회전 | 목적지, 목표 속도, 설정, 공간 질의 |
-| HideTableComponent | 테이블 수명, 점유 세션, 출구 후보 | 추격 여부, 진입 위치, 공간 질의 |
-| PoseAnimatorComponent | 같은 모델 내 클립 교차 재생 | 모델, 엔진 AnimationComponent, 클립명 |
-| OrbitCameraComponent | 목표 각도, 추적, 줌, FOV, 카메라 충돌 | 마우스 변위, 목표 위치, 공간 질의 |
-| GameplaySpace | 게임 전용 박스 충돌과 2D A* | 기본 도형 장애물 목록 |
+| maxSpeed | 680 | 플레이어 최고 속도 cm/s |
+| accelerationTime | 3.3 | 리듬 가속 기준 시간, 초 |
+| rhythmWindow | 0.75 | 교대 발 이력 유지 시간, 초 |
+| fastInterval | 0.17 | 빠른 걸음 기준 간격, 초 |
+| momentumDecay | 0.9 | 초당 운동량 감소 |
+| playerRadius | 30 | 플레이어 충돌 반경 cm |
+| playerHeight | 120 | 플레이어 충돌 높이 cm |
+| fallenTime | 1.5 | 넘어짐 지속 시간, 초 |
+| patrolSpeed | 170 | 정찰 속도 cm/s |
+| chaseSpeed | 400 | 추격 속도 cm/s |
+| suspiciousSpeed | 600 | 의심 위치 조사 속도 cm/s |
+| monsterAcceleration | 650 | 가속도 cm/s² |
+| monsterBraking | 1100 | 감속도 cm/s² |
+| monsterTurnRate | 220 | 최대 회전 속도, 도/초 |
+| monsterTurnAcceleration | 900 | 최대 회전 가속도, 도/초² |
+| monsterLookAhead | 140 | 경로 선행 거리 cm |
+| monsterVisualYawOffset | 90 | 모델 정면 보정, 도 |
+| catchDistance | 130 | 노출 플레이어 잡기 거리 cm |
+| calmTime | 2 | 의심 상태에서 숨은 심박 진정 시간, 초 |
+| mouseSensitivity | 0.13 | 마우스 변위당 회전, 도 |
+| cameraDistance | 430 | 정지 카메라 거리 cm |
+| runningCameraDistance | 560 | 최고 속도 카메라 거리 cm |
+| cameraFov | 80 | 정지 수직 FOV, 도 |
+| runningCameraFov | 96 | 최고 속도 수직 FOV, 도 |
+| cameraFollow | 16 | 위치 추적 응답률, 클수록 빠름 |
+| cameraLookResponse | 35 | 시야 회전 응답률, 클수록 빠름 |
+| rearWidth | 512 | CCTV 렌더 타깃 가로 px, 정수 |
+| rearHeight | 288 | CCTV 렌더 타깃 세로 px, 정수 |
+| rearSaturation | 0.35 | CCTV 채도, 0=흑백/1=원색 |
+| rearHold | 5 | 추격 종료 후 유지 시간, 초 |
+| rearFarDistance | 1500 | 거리별 구도 변화 시작 거리 cm |
+| rearNearDistance | 250 | 거리별 구도 변화 완료 거리 cm |
+| rearCameraDistance | 470 | 먼 구도 카메라 거리 cm |
+| rearClosestDistance | 230 | 가까운 구도 카메라 거리 cm |
+| rearCameraHeight | 60 | 몬스터 중심(148cm) 위 카메라 높이 가산 cm |
+| rearAimHeight | 45 | 몬스터 중심 위 시선 높이 가산 cm |
+| rearHalfWidth | 260 | 구도 계산용 가로 반크기 cm |
+| rearHalfHeight | 230 | 구도 계산용 세로 반크기 cm |
+| rearCloseFill | 0.45 | 근거리 구도 채움 계수, 작을수록 넓게 담음 |
+| rearFollow | 10 | CCTV 위치 추적 응답률 |
+| lampDarkRadius | 1500 | 근접 소등 반경 cm, 수평 |
+| lampFlickerTime | 0.6 | 소등 전 깜빡임 시간, 초 |
+| lampIntensity | 2.8 | 전등 기본 강도 |
+| lampRange | 1250 | 점광원 범위 cm |
+| propDropHeight | 380 | 상자 초기 낙하 높이 cm, 중심 기준 |
 
-게임 컴포넌트의 자동 Tick은 사용하지 않는다. 조립 코드가 Step을 명시적으로 호출해 순서를 고정한다. 컴포넌트끼리 포인터를 주고받지 않고 값과 좁은 질의 객체를 전달한다. World가 컴포넌트와 객체를 소유하고 앱은 실행 중에만 포인터를 빌린다. 모델은 기존 AssetManager를 사용한다.
+제약: fastInterval < rhythmWindow, playerHeight >= playerRadius × 2, rearNearDistance < rearFarDistance, rearClosestDistance <= rearCameraDistance. CCTV 표시 폭은 화면의 32%, 최대 384px다. 렌더 타깃 해상도를 올리면 추가 뷰 비용이 커진다.
 
-소리 없는 적에게 실제 플레이어 좌표를 추격 목적지로 계속 주지 않는다. 플레이어 좌표는 기획의 잡기, 숨기 관찰, 근접 감속에만 사용하고 추적 목적지는 들린 위치로 갱신한다. 의심 중 숨은 심장 소리로 추격이 다시 시작되지 않게 한다.
+메뉴에서 즉시 바꿀 값은 Sensitivity, Camera follow, Look response, Model facing, CCTV saturation이다. Free movement/Play mode/AI enabled/Ignore capture/Diagnostics/Preview CCTV/Proximity lamps도 런타임 옵션이다. 조명 타입의 darkRadiusCm/flickerTime/baseIntensity는 Inspector용 등록 필드다. 현재 별도 테스트룸을 에디터에서 자동으로 여는 작업까지 연결한 것은 아니다.
 
-## 적 이동과 회전
+아직 코드에서 수정하는 값: 방/테이블/스폰 배치는 BabyDollApplication.cpp::BuildRoom 및 PlayerSpawn/MonsterSpawn, 정찰 지점/행동 타이머는 StitchBrainComponent.cpp, 격자는 GameplaySpace.cpp, 상자 개수/배치는 PhysicsProps.cpp, 심박 기준(72/100/150)과 소리 수식은 HeartComponent.cpp다. 카메라 어깨 오프셋/피치 제한/충돌 여유는 OrbitCameraComponent.cpp에 있다. 이 값은 변경 후 빌드해야 한다.
 
-SCISSORMAN은 원본 glTF에서 +X를 바라본다. 엔진 로더가 X를 반전하므로 게임에서 +90도 모델 보정을 적용해 논리 전방 +Z와 맞춘다. 이 값은 `monsterVisualYawOffset`이며 원본 모델과 엔진 로더를 수정하지 않는다.
+## 미구현: 엔진 지원이 필요한 부분과 콘텐츠 후속 작업
 
-AI는 목적지와 목표 속도만 AgentMovement에 전달한다. 경로 추종기는 통과 공간이 확보된 격자점들을 연결해 불필요한 꺾임을 줄이고, 진행 방향의 앞쪽 지점을 바라본다. 같은 목적지의 경로를 0.4초마다 초기화하던 처리를 제거했으며, 목적지가 충분히 이동하거나 실제 이동이 막혔을 때 다시 탐색한다.
+| 항목 | 현재 상태 / 남은 이유 |
+| --- | --- |
+| 정밀 캐릭터 물리 이동 | 공개 API에 캡슐 캐릭터 컨트롤러, sweep/raycast/overlap 질의가 없어 GameplaySpace를 유지한다. 계단/접지/임의 삼각형 지형 대응은 남아 있다. |
+| 물리 상자 밀기 | 캐릭터가 Jolt 바디가 아니므로 물리적인 밀기/접촉 반응은 미연결이다. 현재 상자 AABB를 장애물로 회피한다. |
+| 일반 맵 길찾기 | 엔진 NavMeshVolume/베이크·경로 API가 없다. 평면 A*를 Bistro 임의 지형/계단에 그대로 사용할 수 없다. |
+| 다수 물리 객체 | 현재 씬 최대 64바디다. 테스트룸은 바닥을 합쳐 대응했다. 대규모 맵은 엔진 용량 확장이 필요하다. |
+| 실제 소리 재생 | 확인한 공용 API에 음원 재생/공간 오디오 경로가 없어 소리 이벤트 판정과 UI만 동작한다. |
+| 전체 게임 저장/Play 복제 | 엔진 스냅샷은 준비되어 있다. 게임 AI/이동/심박/테이블 상태 등록과 참조 재연결은 후속 작업이다. 새 전등/기본 물리 객체 복제만 검사했다. |
+| CCTV 추가 효과 | 저채도/스캔라인/REC는 구현했다. 필름 그레인은 이번 범위에서 제외했다. |
+| 손동작/사다리/봉/문/열쇠/퍼즐/챕터 | 한 층 테스트룸 이후의 콘텐츠 작업이다. |
+| 최종 캐릭터/애니메이션 | 플레이어는 도형이며 SCISSORMAN 기존 클립을 임시 매핑했다. 스티치 전용 촉수/포효/파괴/제자리 선회 클립은 없다. |
 
-회전에는 최대 각속도와 각가속도를 적용한다. 큰 방향 전환에서는 속도를 줄이고, 몸의 전방으로 이동하며, 목적지 앞에서는 정지 거리에 맞춰 감속한다. 가속도, 감속도, 회전 속도, 회전 가속도, 선행 거리는 Prototype.json의 monster 설정으로 조절한다.
-
-화면에서는 위치와 회전을 같은 고정 틱 보간으로 표시한다. Idle과 이동 클립은 서로 다른 진입/종료 속도 기준을 사용해 작은 속도 변화에 깜빡이지 않는다. Walk/Run 전환 시 정규화된 재생 위상을 보존하고 실제 이동 속도에 맞춰 재생 속도를 조절한다. 별도 제자리 회전 클립이 없어 큰 선회 때는 Idle 포즈를 사용한다.
-
-## 엔진 기능이 추가될 때 바꿀 곳
-
-- 마침표 입력: PrototypeInputAdapter의 rightFoot 매핑. 현재 엔진 Key/키 변환에 마침표가 없어 S/D 개발 키를 사용한다.
-- 공용 콜라이더: GameplaySpace의 IsFree/Move/CameraDistance와 경로 연결부. 현재는 평평한 테스트룸의 박스와 수직 캡슐을 근사한 원 충돌이며 일반 삼각형 물리, 계단, 동적 강체를 지원하지 않는다.
-- 최종 포즈 API: PoseAnimatorComponent의 최종 적용부. 현재 SetRestPose와 노드 Transform으로 전달하며 원본 rest pose는 별도 보존한다.
-- 오디오: HearingComponent의 판정은 유지하고, 실제 음원 재생 어댑터를 추가한다. 현재 공용 오디오 API가 없어 스피커 출력은 없다.
-- 후방 CCTV: 앱의 공개 렌더 요청이 한 개여서 메인+후방 동시 뷰를 추가하지 않았다. 다중 뷰와 UI 텍스처 출력이 제공되면 표현 계층에 추가한다.
-- 조명: 기존 Ambient/Directional/Point API로 테스트룸을 비춘다. 점광원은 현재 최대 4개다. 전체 맵의 다수 전등과 CCTV 영상 효과는 추가 지원이 필요하다.
-
-## 이번 프로토타입에서 단순화한 부분
-
-아래는 엔진 미지원 때문에 불가능하다는 뜻이 아니라 이번 한 방 검증 범위에서 남겨 둔 작업이다.
-
-- 플레이어는 좌우 색을 나눈 도형이다. 넘어짐/숨기는 높이 변화로 표시한다.
-- SCISSORMAN의 ReactPlayer/공격 클립을 의심·포효·파괴의 임시 표현으로 사용한다. 기획의 스티치 모델, 촉수, 전용 포효/파괴 애니메이션은 없다.
-- 화면 안내는 현재 엔진 기본 ImGui 폰트에 맞춰 영어다.
-- 테이블은 첫 추격 사용 때 수명을 소모하고, 다음 점유부터 파괴 가능하다. 파괴 후 상판을 잔해로 남기고 충돌을 제거한다.
-- 재시작은 테스트룸 시작 체크포인트의 메모리 스냅샷이다. 런타임 자동 체크포인트나 디스크 영속 저장, 임의 진행 중 AI 상태 복원은 아직 구현하지 않았다.
-- 한 층만 있으며 사다리, 봉, 통로, 문/열쇠, 퍼즐, 챕터 종료는 후속 기능이다.
-- 심박 진정은 정확한 2초 뒤 100 미만을 맞추기 위해 99.9를 목표로 한다. 공포와 이동 상승은 최대값으로 결합한다. 이 경계 정책은 별도 설계 제안이며 기획 원본을 수정한 것이 아니다.
-- 원본 에셋의 doubleSided와 추가 재질 확장은 현재 엔진 재질에 대응하지 않아 변환 보고서에 경고를 남긴다.
+재시작은 시작 체크포인트의 메모리 상태 복원이다. 디스크 영속 저장과 임의 진행 시점 복원은 미구현이다. 테이블은 첫 추격 점유에서 수명을 소모하고 다음 점유부터 파괴 가능하다. 잔해에는 콜라이더를 두지 않는다. 숨은 심박은 기획의 2초 뒤 100 미만을 만족하도록 99.9로 진정시키는 구현 정책이다. UI는 기본 ImGui 폰트에 맞춰 영어다.
 
 ## 제거와 재사용
 
-모듈 제거 시 GameMain에서 기본 앱을 GameApplication으로 되돌리고 BabyDoll 헤더 두 개와 테스트 분기를 제거한다. 프로젝트와 filters에서 BabyDoll 파일 등록을 제거한 뒤 `Game/Source/BabyDoll`, `Game/Content/BabyDoll`을 삭제하면 된다. 엔진 코드는 이 모듈을 참조하지 않는다.
+CCTV는 생성/Step/Clear/HUD 호출, 조명 효과는 부착/Step/타입 등록, 물리 상자는 Initialize/Reset/SyncSpace 호출을 빼면 기능 단위로 제거할 수 있다. 공통 PrototypeTypes와 명시된 엔진 API를 함께 가져가거나 호출 측 타입으로 치환해 재사용한다.
 
-카메라, 포즈 재생, 청각, 공간 질의는 다른 모듈에서 개별 사용 가능하다. PrototypeTypes의 값 타입은 함께 가져가거나 호출 측 타입으로 치환한다. 별도 패키지나 새로운 엔진 전역 서비스를 등록하지 않는다.
+전체 제거는 GameMain 앱 선택/테스트 분기와 프로젝트 파일 등록을 제거한 뒤 게임 전용 폴더를 제거하는 방식이다. 엔진은 BabyDoll을 참조하지 않는다. 타입 등록은 콘텐츠 초기화 함수에서만 수행한다.
 
-## 에셋 출처와 재현
+## 에셋과 검증
 
-SCISSORMAN: Goth Scarecrow, https://goth-scarecrow.itch.io/scissorman, 배포 페이지 라이선스 CC0. `Game/Content/BabyDoll/Scissorman/Source.json`에 원본 GLB SHA-256과 변환 정보를 보관한다.
+SCISSORMAN: Goth Scarecrow, [배포 페이지](https://goth-scarecrow.itch.io/scissorman), CC0. 원본 SHA-256/변환 정보는 Game/Content/BabyDoll/Scissorman/Source.json에 있다. PrepareScissorman.py로 외부 glTF/bin/PNG와 30Hz 키를 생성하고 BuildPrototypeGeometry.py로 상자/링을 생성한다. 메시 1개/스킨 1개/클립 10개를 사용한다.
 
-`Tools/AssetPipeline/PrepareScissorman.py <원본 GLB>`는 외부 glTF/bin/PNG 분리와 30Hz 키 베이크를 수행한다. `BuildPrototypeGeometry.py`는 상자와 링을 재생성한다. 다운로드 원본과 네트워크 절차 중간 파일은 Git 제외된 `Intermediate/BabyDoll/SourceAssets`에 둔다. 원본 Blend 파일을 스크립트 자동 실행 상태로 열지 않는다.
+2026-11-26 Debug 빌드 및 --babydoll-test 45개 검사 통과. 입력/키 반복/솔로 매핑, 박자/실수, 청각/심박/숨기, AI 상태, 경로/회전/가감속, 30/120Hz 이동·마우스 일관성, CCTV 수명/거리 계수, Jolt 낙하/정착, 조명 깜빡임/소등/복구와 스냅샷 필드 복원을 검사했다.
 
-## 검증 결과
-
-2026-11-25에 v143 14.44 Debug 실행 빌드와 `--babydoll-test`의 28개 검사를 통과했다. 실제 엔진 GLTFLoader로 SCISSORMAN 메시 1개, 스킨 1개, 클립 10개와 테스트용 상자/링을 읽었다. 창에서 Idle/Run 미리보기 전환, 게임 진입, 정찰 이동, Space 소리의 의심 전환, 잡힘 후 시작 상태 복귀, Esc 메뉴를 확인했다. 개발 진단의 프레임률은 해당 환경에서 약 60FPS였다.
-
-자동 검사에는 입력 순서/반복 제거, 박자 가속/실수 1회, 장애물 관통 방지, 길찾기 여유, 카메라 장애물 회피, 층별 청각, 숨기 심박, 테이블 점유별 수명, 청각 기반 AI 전환, 30/120FPS 마우스 수렴이 포함된다. 실제 테이블 접근/진입/강제 파괴의 전체 플레이 동선과 장시간 플레이 감각은 추가 사용자 플레이 검증 대상이다.
+실행 창에서 모델 미리보기→플레이, 메인/CCTV 동시 출력과 저채도/스캔라인, 이동하는 몬스터, 전등 4/9 소등, 상자 3개/Jolt ready, Esc 일시정지를 확인했다. 벽 근접 CCTV 구도도 이후 보완했다. GPU 영상의 모든 위치 조합, 테이블 접근/강제 파괴 전체 동선과 장시간 플레이 감각은 추가 플레이 검증 대상이다.

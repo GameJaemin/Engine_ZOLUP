@@ -9,8 +9,11 @@
 #include "PlayerMoveComponent.h"
 #include "PoseAnimatorComponent.h"
 #include "StitchBrainComponent.h"
+#include "RearCameraComponent.h"
+#include "ProximityLightComponent.h"
 
 #include "AssetManager.h"
+#include "Component/SceneCapture2DComponent.h"
 #include "Core/Math/Vector3.h"
 
 #include <imgui.h>
@@ -64,7 +67,13 @@ void BabyDollApplication::DrawHud()
 	ImGui::SetNextWindowPos(ImVec2(origin.x + size.x * 0.5f, origin.y + size.y - 28.0f), ImGuiCond_Always, ImVec2(0.5f, 1.0f));
 	ImGui::SetNextWindowBgAlpha(0.8f);
 	ImGui::Begin("Controls", nullptr, OverlayFlags);
-	ImGui::TextColored(ImVec4(0.97f, 0.55f, 0.68f, 1.0f), freeMove ? "W A S D   Move    Shift   Run" : "S   Left foot       D   Right foot");
+	if (freeMove) { ImGui::Text("W A S D   Move    Shift   Run"); }
+	else
+	{
+		ImGui::TextColored(leftFootDown ? ImVec4(1.0f, 0.85f, 0.9f, 1.0f) : ImVec4(0.97f, 0.55f, 0.68f, 1.0f), soloControls ? "[ S ]  Left foot" : "[ S ]  P1 Left foot");
+		ImGui::SameLine();
+		ImGui::TextColored(rightFootDown ? ImVec4(0.85f, 1.0f, 1.0f, 1.0f) : ImVec4(0.4f, 0.85f, 0.9f, 1.0f), soloControls ? "[ D ]  Right foot" : "[ . ]  P2 Right foot");
+	}
 	ImGui::TextDisabled("Mouse  Look    T  Hide / Leave    Space  Test sound");
 	ImGui::TextDisabled("Esc  Pause    Tab  Diagnostics");
 	ImGui::End();
@@ -117,7 +126,19 @@ void BabyDollApplication::DrawPanel()
 			ImGui::EndCombo();
 		}
 	}
-	if (ImGui::Button(inspect ? "Start gameplay test" : "Resume", ImVec2(-1.0f, 36.0f)))
+	ImGui::SeparatorText("Play mode");
+	const bool wasSolo = soloControls;
+	if (ImGui::RadioButton("Single player (S / D)", soloControls)) { soloControls = true; }
+	if (ImGui::RadioButton("Co-op (S / period)", !soloControls)) { soloControls = false; }
+	if (wasSolo != soloControls)
+	{
+		freeMove = false;
+		player->SetMode(PlayerMode::Moving);
+		occupiedTable = -1;
+		pending = {};
+	}
+	ImGui::TextWrapped(soloControls ? "Alternate S and D to walk. Mouse looks; T or right-click hides / leaves." : "P1: S / R / T. P2: period / mouse. T hides; R is reserved for hand actions.");
+	if (ImGui::Button(inspect ? (soloControls ? "Start single player" : "Start co-op") : "Resume", ImVec2(-1.0f, 36.0f)))
 	{
 		if (inspect) { ResetRun(); }
 		inspect = paused = false;
@@ -132,7 +153,6 @@ void BabyDollApplication::DrawPanel()
 	}
 	ImGui::SeparatorText("Input and camera");
 	if (ImGui::Checkbox("Free movement (WASD / Shift)", &freeMove)) { player->SetMode(PlayerMode::Moving); occupiedTable = -1; }
-	ImGui::TextWrapped("Default: alternate S / D. The engine does not expose the period key yet.");
 	ImGui::SliderFloat("Sensitivity", &config.mouseSensitivity, 0.03f, 0.30f, "%.2f");
 	ImGui::SliderFloat("Camera follow", &config.cameraFollow, 5.0f, 30.0f, "%.0f");
 	ImGui::SliderFloat("Look response", &config.cameraLookResponse, 12.0f, 70.0f, "%.0f");
@@ -141,9 +161,13 @@ void BabyDollApplication::DrawPanel()
 	ImGui::Checkbox("AI enabled", &aiEnabled);
 	ImGui::Checkbox("Ignore capture (debug)", &godMode);
 	ImGui::Checkbox("Diagnostics", &showDebug);
+	ImGui::Checkbox("Preview CCTV (debug)", &previewRear);
+	ImGui::SliderFloat("CCTV saturation", &config.rearSaturation, 0.0f, 1.0f, "%.2f");
+	ImGui::Checkbox("Proximity lamps", &lightsEnabled);
+	if (ImGui::Button("Drop physics props again")) { dropPropsRequested = true; }
 	if (ImGui::Button("Reset test room")) { resetRequested = true; }
 	ImGui::Separator();
-	ImGui::TextWrapped("Prototype: one floor, two hiding tables, hearing AI. No real audio, tentacles or rear CCTV.");
+	ImGui::TextWrapped("Co-op input, rear CCTV, proximity lamps and Jolt props. Character movement still uses the game collision adapter. Audio and tentacles are pending.");
 	ImGui::End();
 }
 
@@ -159,6 +183,7 @@ void BabyDollApplication::OnGui()
 	style.Colors[ImGuiCol_Button] = ImVec4(0.18f, 0.34f, 0.38f, 1.0f);
 	style.Colors[ImGuiCol_ButtonHovered] = ImVec4(0.25f, 0.47f, 0.49f, 1.0f);
 	DrawHud();
+	DrawRearView();
 	if (!captured) { DrawPanel(); }
 	if (showDebug)
 	{
@@ -170,9 +195,40 @@ void BabyDollApplication::OnGui()
 		ImGui::Text("StitchBrain  %s | %.2f s", PrototypeMath::StateName(brain->GetState()), brain->GetStateTime());
 		ImGui::Text("Action %d | path nodes %zu", static_cast<int>(brain->GetAction()), brain->GetPath().size());
 		ImGui::Text("OrbitCamera  FOV %.1f", orbit->GetFov());
+		ImGui::Text("RearView  %s | hold %.2f", rearView->IsVisible() ? "active" : "off", rearView->GetRemaining());
+		int darkCount = 0;
+		for (ProximityLightComponent* lamp : lamps) { if (lamp->IsDark()) { ++darkCount; } }
+		ImGui::Text("Lamps  %d/%zu dark | physics props %zu", darkCount, lamps.size(), physicsProps.GetCount());
+		ImGui::Text("Jolt  %s", physicsHealthy ? "ready" : "FAILED - paused");
 		ImGui::Text("Table A %d / %s", tables[0]->GetRemainingUses(), tables[0]->IsBroken() ? "broken" : "intact");
 		ImGui::Text("Table B %d / %s", tables[1]->GetRemainingUses(), tables[1]->IsBroken() ? "broken" : "intact");
 		ImGui::Text("%.1f FPS", ImGui::GetIO().Framerate);
 		ImGui::End();
 	}
+}
+
+void BabyDollApplication::DrawRearView()
+{
+	if (inspect || !rearView->IsVisible()) { return; }
+	SceneCapture2DComponent* capture = rearView->GetCapture();
+	if (!capture) { return; }
+	const ImGuiViewport* viewport = ImGui::GetMainViewport();
+	const float width = (std::min)(384.0f, viewport->WorkSize.x * 0.32f);
+	const float height = width * config.rearHeight / config.rearWidth;
+	ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x - 28.0f, viewport->WorkPos.y + 118.0f), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+	ImGui::SetNextWindowBgAlpha(0.96f);
+	ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.75f, 0.15f, 0.2f, 1.0f));
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 2.0f);
+	ImGui::Begin("Rear CCTV", nullptr, OverlayFlags | ImGuiWindowFlags_NoInputs);
+	ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.35f, 1.0f), "REC   REAR CAM");
+	const ImVec2 position = ImGui::GetCursorScreenPos();
+	const Hakko::DataHub::TexID texture = capture->GetRenderTarget().FindTextureID();
+	if (texture != 0) { ImGui::Image(static_cast<ImTextureID>(texture), ImVec2(width, height)); }
+	else { ImGui::Dummy(ImVec2(width, height)); }
+	ImDrawList* draw = ImGui::GetWindowDrawList();
+	for (float y = 0.0f; y < height; y += 4.0f) { draw->AddLine(ImVec2(position.x, position.y + y), ImVec2(position.x + width, position.y + y), IM_COL32(0, 0, 0, 48), 1.0f); }
+	ImGui::Text("Distance  %.1f m", PrototypeMath::Distance(player->GetPosition(), brain->GetPosition()) / 100.0f);
+	ImGui::End();
+	ImGui::PopStyleVar();
+	ImGui::PopStyleColor();
 }

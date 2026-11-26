@@ -3,6 +3,7 @@
 #include "GameplaySpace.h"
 #include "HideTableComponent.h"
 #include "PrototypeInputAdapter.h"
+#include "PhysicsProps.h"
 
 #include "IApplication.h"
 #include "ObjectID.h"
@@ -21,6 +22,8 @@ class HearingComponent;
 class StitchBrainComponent;
 class OrbitCameraComponent;
 class PoseAnimatorComponent;
+class RearCameraComponent;
+class ProximityLightComponent;
 struct Model;
 
 struct PrototypeCheckpoint
@@ -45,7 +48,7 @@ public:
 	void OnShutdown() noexcept override;
 
 private:
-	GameObject* Box(const std::string& name, const Vector3& center, const Vector3& size, const Vector3& color, GameObject* parent = nullptr);
+	GameObject* Box(const std::string& name, const Vector3& center, const Vector3& size, const Vector3& color, GameObject* parent = nullptr, bool collides = true);
 	bool BuildRoom();
 	bool BuildMonster();
 	void SetCaptured(bool captured);
@@ -57,6 +60,7 @@ private:
 	void ApplyTableVisuals();
 	void DrawHud();
 	void DrawPanel();
+	void DrawRearView();
 	int FindInteraction() const;
 
 private:
@@ -65,6 +69,7 @@ private:
 	PrototypeConfig config;
 	PrototypeInputAdapter inputAdapter;
 	GameplaySpace space;
+	PhysicsProps physicsProps;
 	std::shared_ptr<const Model> boxModel;
 	std::shared_ptr<const Model> ringModel;
 	std::shared_ptr<const Model> monsterModel;
@@ -80,6 +85,8 @@ private:
 	StitchBrainComponent* brain = nullptr;
 	OrbitCameraComponent* orbit = nullptr;
 	PoseAnimatorComponent* animator = nullptr;
+	RearCameraComponent* rearView = nullptr;
+	std::vector<ProximityLightComponent*> lamps;
 	std::array<HideTableComponent*, 2> tables{};
 	std::array<GameObject*, 2> tableVisuals{};
 	PrototypeCheckpoint checkpoint;
@@ -109,6 +116,13 @@ private:
 	bool captured = false;
 	bool justCaptured = false;
 	bool freeMove = false;
+	bool soloControls = true;
+	bool previewRear = false;
+	bool lightsEnabled = true;
+	bool leftFootDown = false;
+	bool rightFootDown = false;
+	bool physicsHealthy = true;
+	bool dropPropsRequested = false;
 	bool showDebug = false;
 	bool aiEnabled = true;
 	bool godMode = false;

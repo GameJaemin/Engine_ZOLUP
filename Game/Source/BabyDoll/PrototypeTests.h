@@ -6,6 +6,18 @@
 #include "PlayerMoveComponent.h"
 #include "PrototypeInputAdapter.h"
 #include "StitchBrainComponent.h"
+#include "ProximityLightComponent.h"
+
+#include "Component/BoxColliderComponent.h"
+#include "Component/ComponentTypeRegistry.h"
+#include "Component/EngineComponentTypes.h"
+#include "Component/PointLightComponent.h"
+#include "Component/RigidBodyComponent.h"
+#include "Component/TransformComponent.h"
+#include "GameObject.h"
+#include "Physics/JoltRuntime.h"
+#include "Scene/SceneSnapshot.h"
+#include "World.h"
 
 #include <cstdio>
 #include <functional>
@@ -23,11 +35,15 @@ namespace PrototypeTests
 		PrototypeConfig config;
 		InputState rawInput;
 		rawInput.PressKey(Key::S);
-		rawInput.PressKey(Key::D);
-		rawInput.PressKey(Key::D);
+		rawInput.PressKey(Key::Period);
+		rawInput.PressKey(Key::Period);
 		PrototypeInputAdapter adapter;
 		const PrototypeInputFrame inputFrame = adapter.Read(rawInput);
 		check(inputFrame.command.feet == std::vector<int>{ 0, 1 }, "input adapter preserves foot order and rejects key repeat");
+		check(inputFrame.leftDown && inputFrame.rightDown, "co-op key guide receives held S and Period state");
+		InputState soloInput;
+		soloInput.PressKey(Key::D);
+		check(adapter.Read(soloInput).command.feet.empty() && adapter.Read(soloInput, true).command.feet == std::vector<int>{ 1 }, "D is only a right foot in the explicit solo profile");
 		GameplaySpace space;
 		PlayerMoveComponent player;
 		player.Reset({});
@@ -164,6 +180,62 @@ namespace PrototypeTests
 		for (int index = 0; index < 30; ++index) { camera30.Look(index == 0 ? 100.0f : 0.0f, 0.0f, 1.0f / 30.0f, config); }
 		for (int index = 0; index < 120; ++index) { camera120.Look(index == 0 ? 100.0f : 0.0f, 0.0f, 1.0f / 120.0f, config); }
 		check(std::abs(camera30.GetYaw() - camera120.GetYaw()) < 0.001f, "mouse response converges equally at 30 and 120 FPS");
+		RearViewState rear;
+		rear.Step(true, 0.0f, 5.0f);
+		check(rear.visible && rear.remaining == 5.0f, "CCTV opens immediately on chase");
+		rear.Step(false, 4.9f, 5.0f);
+		check(rear.visible, "CCTV survives the chase-end hold interval");
+		rear.Step(false, 0.11f, 5.0f);
+		check(!rear.visible, "CCTV closes after five seconds without chase");
+		check(rear.GetPush(1500.0f, config) == 0.0f && rear.GetPush(250.0f, config) == 1.0f, "rear camera framing respects far and near thresholds");
+		JoltRuntime runtime;
+		if (!runtime.Initialize()) { check(false, "Jolt runtime initializes"); return 1; }
+		ComponentTypeRegistry registry;
+		const bool registered = RegisterEngineComponentTypes(registry) && RegisterPrototypeLightType();
+		check(registered, "game lamp type registers beside engine component types");
+		if (!registered) { return 1; }
+		{
+			World original;
+			World restored;
+			GameObject* floor = original.CreateGameObject("Physics floor", {});
+			floor->GetComponent<TransformComponent>()->SetPosition({ 0.0f, -10.0f, 0.0f });
+			std::unique_ptr<BoxColliderComponent> floorBox = std::make_unique<BoxColliderComponent>();
+			check(floorBox->SetLocalHalfExtents({ 1000.0f, 10.0f, 1000.0f }), "physics floor dimensions accepted");
+			floor->AddComponent(std::move(floorBox));
+			GameObject* crate = original.CreateGameObject("Physics crate", {});
+			crate->GetComponent<TransformComponent>()->SetPosition({ 0.0f, 300.0f, 0.0f });
+			crate->GetComponent<TransformComponent>()->SetRotation({ 0.0f, 25.0f, 12.0f });
+			std::unique_ptr<BoxColliderComponent> crateBox = std::make_unique<BoxColliderComponent>();
+			check(crateBox->SetLocalHalfExtents({ 40.0f, 40.0f, 40.0f }), "rotated dynamic box dimensions accepted");
+			crate->AddComponent(std::move(crateBox));
+			crate->AddComponent(std::make_unique<RigidBodyComponent>());
+			bool physicsPassed = true;
+			for (int tick = 0; tick < 240; ++tick) { physicsPassed = original.GetPhysicsScene().Update(1.0f / 60.0f) && physicsPassed; }
+			const float crateHeight = crate->GetComponent<TransformComponent>()->GetPosition().y;
+			check(physicsPassed && crateHeight >= 38.0f && crateHeight < 75.0f, "Jolt crate falls and rests on its static floor");
+			GameObject* lampObject = original.CreateGameObject("Proximity lamp", {});
+			lampObject->AddComponent(std::make_unique<PointLightComponent>());
+			std::unique_ptr<ProximityLightComponent> lampOwner = std::make_unique<ProximityLightComponent>();
+			ProximityLightComponent* lamp = lampOwner.get();
+			lampObject->AddComponent(std::move(lampOwner));
+			check(lamp->SetDarkRadius(500.0f) && lamp->SetFlickerTime(0.4f) && lamp->SetBaseIntensity(3.0f), "lamp tuning accepts valid settings");
+			lamp->Step({}, 0.2f, true);
+			check(!lamp->IsDark(), "near lamp flickers before extinguishing");
+			lamp->Step({}, 0.3f, true);
+			check(lamp->IsDark() && lamp->GetOutputIntensity() == 0.0f, "near lamp turns off after flicker time");
+			lamp->Step({ 1000.0f, 0.0f, 0.0f }, 0.0f, true);
+			check(!lamp->IsDark() && lamp->GetOutputIntensity() == 3.0f, "lamp relights immediately outside the radius");
+			check(!lamp->SetFlickerTime(0.0f) && lamp->GetFlickerTime() == 0.4f, "invalid lamp edit preserves its previous setting");
+			const std::optional<SceneSnapshot> snapshot = CaptureWorld(original);
+			const bool cloned = snapshot.has_value() && RestoreWorld(*snapshot, restored);
+			check(cloned, "engine snapshot clones physics props and registered game lamp");
+			if (cloned)
+			{
+				const GameObject* clone = restored.FindGameObject(lampObject->GetObjectID());
+				const ProximityLightComponent* copiedLamp = clone ? clone->GetComponent<ProximityLightComponent>() : nullptr;
+				check(copiedLamp && copiedLamp->GetDarkRadius() == 500.0f && copiedLamp->GetBaseIntensity() == 3.0f, "registered game fields survive snapshot restoration");
+			}
+		}
 		std::printf("BabyDoll: %d failure(s)\n", failures);
 		return failures ? 1 : 0;
 	}

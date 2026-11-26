@@ -40,6 +40,25 @@ struct PrototypeConfig
 	float runningCameraFov = 96.0f;
 	float cameraFollow = 16.0f;
 	float cameraLookResponse = 35.0f;
+	float rearWidth = 512.0f;
+	float rearHeight = 288.0f;
+	float rearSaturation = 0.35f;
+	float rearHold = 5.0f;
+	float rearFarDistance = 1500.0f;
+	float rearNearDistance = 250.0f;
+	float rearCameraDistance = 470.0f;
+	float rearClosestDistance = 230.0f;
+	float rearCameraHeight = 60.0f;
+	float rearAimHeight = 45.0f;
+	float rearHalfWidth = 260.0f;
+	float rearHalfHeight = 230.0f;
+	float rearCloseFill = 0.45f;
+	float rearFollow = 10.0f;
+	float lampDarkRadius = 1500.0f;
+	float lampFlickerTime = 0.6f;
+	float lampIntensity = 2.8f;
+	float lampRange = 1250.0f;
+	float propDropHeight = 380.0f;
 };
 
 struct PrototypeCommand
@@ -53,6 +72,22 @@ struct PrototypeCommand
 	bool run = false;
 	bool interact = false;
 	bool pulse = false;
+};
+
+/** 카메라 수명과 구도를 GPU 없이 검사할 수 있는 값 상태다. */
+struct RearViewState
+{
+	float remaining = 0.0f;
+	bool visible = false;
+	void Step(bool chasing, float deltaTime, float hold)
+	{
+		remaining = chasing ? hold : (std::max)(0.0f, remaining - deltaTime);
+		visible = chasing || remaining > 0.0f;
+	}
+	float GetPush(float distance, const PrototypeConfig& config) const
+	{
+		return std::clamp((config.rearFarDistance - distance) / (config.rearFarDistance - config.rearNearDistance), 0.0f, 1.0f);
+	}
 };
 
 namespace PrototypeMath

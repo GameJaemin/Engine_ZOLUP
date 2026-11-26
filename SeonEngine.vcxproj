@@ -379,4 +379,12 @@
     <ClCompile Include="Game\Source\BabyDoll\StitchBrainComponent.cpp" />
     <ClInclude Include="Game\Source\BabyDoll\StitchBrainComponent.h" />
   </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Game\Source\BabyDoll\PhysicsProps.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\PhysicsProps.h" />
+    <ClCompile Include="Game\Source\BabyDoll\ProximityLightComponent.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\ProximityLightComponent.h" />
+    <ClCompile Include="Game\Source\BabyDoll\RearCameraComponent.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\RearCameraComponent.h" />
+  </ItemGroup>
 </Project>
