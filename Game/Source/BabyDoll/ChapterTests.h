@@ -19,14 +19,36 @@ inline void RunChapterTests(const std::function<void(bool,const char*)>& check)
 		{TraversalKind::Crawl,{500.0f,0.0f,0.0f},{1000.0f,0.0f,0.0f},{}},
 		{TraversalKind::Bar,{},{0.0f,330.0f,0.0f},{}} };
 	check(travel.Begin(0,player),"ladder can only begin from moving state at an endpoint");
+	check(travel.UsesFixedCamera()&&player.GetYaw()==0.0f&&travel.GetCameraShot(player.GetPosition())->position.z<player.GetPosition().z,
+		"ascending ladder faces its rungs and selects a camera behind the doll");
 	PrototypeCommand foot; foot.feet={0}; travel.Step(foot,1.0f/120.0f,config,flat,player);
 	for(int frame=0;frame<18;++frame) {travel.Step({},1.0f/120.0f,config,flat,player);}
 	check(std::abs(player.GetPosition().y-42.0f)<0.01f,"alternating ladder input climbs exactly 42 cm");
 	for (int i=1;i<16;++i) { foot.feet={i%2}; travel.Step(foot,1.0f/120.0f,config,flat,player); for(int frame=0;frame<18;++frame) {travel.Step({},1.0f/120.0f,config,flat,player);} }
 	check(!travel.IsActive() && player.GetMode()==PlayerMode::Moving && player.GetPosition().y==640.0f,"ladder automatically exits at the upper landing");
 	check(travel.Begin(0,player) && travel.UsesFixedCamera(),"descending a ladder selects its fixed camera");
+	const auto upperShot=travel.GetCameraShot(player.GetPosition());
+	const auto lowerShot=travel.GetCameraShot({0.0f,120.0f,0.0f});
+	check(upperShot&&lowerShot&&std::abs(upperShot->position.y-lowerShot->position.y-520.0f)<0.01f
+		&&std::abs(lowerShot->target.y-180.0f)<0.01f,
+		"descending ladder camera and aim move down with the doll instead of staying at the upper landing");
 	for(int i=0;i<16;++i) { foot.feet={i%2}; travel.Step(foot,1.0f/120.0f,config,flat,player); for(int frame=0;frame<18;++frame) {travel.Step({},1.0f/120.0f,config,flat,player);} }
 	check(!travel.IsActive() && std::abs(player.GetPosition().y)<0.01f,"descending ladder exits safely at the lower landing");
+	check(!travel.GetCameraShot(player.GetPosition()),"ladder landing releases the special camera back to orbit");
+	for(float facing:{0.0f,90.0f,-135.0f})
+	{
+		TraversalComponent oriented; oriented.links={travel.links[0]}; oriented.links[0].ladderFacingYaw=facing;
+		for(bool descending:{false,true})
+		{
+			PlayerMoveComponent climber; climber.Reset(descending?oriented.links[0].end:oriented.links[0].start);
+			climber.SetYaw(facing+120.0f); oriented.Reset(); oriented.Begin(0,climber);
+			climber.SetYaw(facing+60.0f); oriented.Step(foot,1.0f/120.0f,config,flat,climber);
+			const auto shot=oriented.GetCameraShot(climber.GetPosition());
+			check(std::abs(std::remainder(climber.GetYaw()-facing,360.0f))<0.01f&&shot
+				&&(shot->position-shot->target).Dot(PrototypeMath::Direction(facing))<-299.0f,
+				"ladder keeps its facing and rear camera for either travel direction and rotated placement");
+		}
+	}
 	player.Reset({}); travel.Reset(); travel.Begin(0,player);
 	for(int i=0;i<12;++i) { foot.feet={i%2}; travel.Step(foot,1.0f/120.0f,config,flat,player); for(int frame=0;frame<18;++frame) {travel.Step({},1.0f/120.0f,config,flat,player);} }
 	const float beforeSlip=player.GetPosition().y;
@@ -69,9 +91,9 @@ inline void RunChapterTests(const std::function<void(bool,const char*)>& check)
 	const Vector3 inside=player.GetPosition();
 	check(!crawl.Leave(player,passage)&&crawl.IsActive()&&player.GetMode()==PlayerMode::Crawling&&PrototypeMath::Distance(player.GetPosition(),inside)<0.01f,
 		"clicking inside a crawl passage cannot switch the player to standing movement");
-	for(int frame=480;frame<1400&&crawl.IsActive();++frame) {crawlFrame(frame);}
+	for(int frame=480;frame<660&&crawl.IsActive();++frame) {crawlFrame(frame);}
 	check(!crawl.IsActive()&&player.GetMode()==PlayerMode::Moving&&passage.IsFree(player.GetPosition(),30.0f,120.0f)&&player.GetPosition().x>240.0f,
-		"crawl exits to a clear standing landing beyond the visible tunnel roof");
+		"crawl reaches a clear standing landing within 5.5 seconds of alternating input");
 	crawl.Reset(); player.Reset(crawl.links[0].end); crawl.Begin(0,player);
 	for(int frame=0;frame<1400&&crawl.IsActive();++frame) {crawlFrame(frame);}
 	check(!crawl.IsActive()&&player.GetPosition().x<-640.0f&&player.GetMode()==PlayerMode::Moving,"reverse crawl also exits outside the opposite entrance");

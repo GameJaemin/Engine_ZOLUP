@@ -19,7 +19,7 @@ bool WritePrototypeCheckpoint(const std::filesystem::path& path, const Prototype
 		writer.Key(key); writer.StartArray(); for (double value : values) { writer.Double(value); } writer.EndArray();
 	};
 	writer.StartObject(); writer.Key("version"); writer.Int(2);
-	writer.Key("layout"); writer.String("babydoll-chapter-test-1");
+	writer.Key("layout"); writer.String("babydoll-graybox-1");
 	array("player",{state.playerPosition.x,state.playerPosition.y,state.playerPosition.z,static_cast<double>(state.playerLastFoot),static_cast<double>(state.progress.stage)});
 	array("hands",{static_cast<double>(state.hands[0]),static_cast<double>(state.hands[1])});
 	array("door",{state.door.locked?1.0:0.0,state.door.targetOpen?1.0:0.0,state.door.opening});
@@ -64,7 +64,7 @@ bool ReadPrototypeCheckpoint(const std::filesystem::path& path, PrototypeCheckpo
 	const std::string json((std::istreambuf_iterator<char>(input)),{});
 	rapidjson::Document d; d.Parse(json.c_str());
 	if (d.HasParseError() || !d.IsObject() || !d.HasMember("version") || !d["version"].IsInt() || d["version"].GetInt()!=2
-		|| !d.HasMember("layout") || !d["layout"].IsString() || std::string_view(d["layout"].GetString())!="babydoll-chapter-test-1") { return false; }
+		|| !d.HasMember("layout") || !d["layout"].IsString() || std::string_view(d["layout"].GetString())!="babydoll-graybox-1") { return false; }
 	const auto valid = [&](const char* name, unsigned count)
 	{
 		if (!d.HasMember(name) || !d[name].IsArray() || d[name].Size()!=count) { return false; }

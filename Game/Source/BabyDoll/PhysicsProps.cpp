@@ -17,7 +17,7 @@ bool PhysicsProps::Initialize(World& world, std::shared_ptr<const Model> box, Ga
 	for (int index = 0; index < 3; ++index)
 	{
 		MaterialParameters parameters;
-		parameters.baseColor = index % 2 == 0 ? Vector3{ 0.48f, 0.23f, 0.12f } : Vector3{ 0.1f, 0.4f, 0.45f };
+		parameters.baseColor = index % 2 == 0 ? Vector3{0.38f,0.38f,0.38f} : Vector3{0.46f,0.46f,0.46f};
 		parameters.metallic = 0.0f;
 		parameters.roughness = 0.85f;
 		const std::shared_ptr<const Material> material = std::make_shared<const Material>("Jolt crate", std::string(), std::move(parameters));

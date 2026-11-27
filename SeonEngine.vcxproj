@@ -410,6 +410,7 @@
     <ClInclude Include="Game\Source\BabyDoll\VoxelDollComponent.h" />
     <ClCompile Include="Game\Source\BabyDoll\TraversalComponent.cpp" />
     <ClInclude Include="Game\Source\BabyDoll\TraversalComponent.h" />
+    <ClInclude Include="Game\Source\BabyDoll\GrayboxLayout.h" />
     <ClInclude Include="Game\Source\BabyDoll\HandInventoryComponent.h" />
     <ClInclude Include="Game\Source\BabyDoll\DoorComponent.h" />
     <ClInclude Include="Game\Source\BabyDoll\LayerNavigation.h" />

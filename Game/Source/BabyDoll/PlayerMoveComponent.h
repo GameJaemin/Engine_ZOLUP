@@ -31,6 +31,7 @@ private:
 	float actualSpeed = 0.0f;
 	float momentum = 0.0f;
 	float sinceFoot = 10.0f;
+	float stepInterval = 0.6f;
 	float stateTime = 0.0f;
 	int lastFoot = -1;
 	bool mistake = false;

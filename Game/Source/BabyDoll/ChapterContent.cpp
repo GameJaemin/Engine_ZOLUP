@@ -46,7 +46,7 @@ bool BabyDollApplication::BuildChapter()
 		Box("Research room shell", (wall.minimum+wall.maximum)*0.5f, wall.maximum-wall.minimum, {0.09f,0.12f,0.17f}, nullptr, false);
 	}
 	traversal->links = {
-		{TraversalKind::Ladder,{1700.0f,0.0f,400.0f},{1700.0f,640.0f,400.0f},{1960.0f,700.0f,50.0f},180.0f,{0.0f,0.0f,150.0f},{1700.0f,450.0f,400.0f},80.0f},
+		{TraversalKind::Ladder,{1700.0f,0.0f,400.0f},{1700.0f,640.0f,400.0f},{1730.0f,700.0f,750.0f},180.0f,{0.0f,0.0f,150.0f},{1700.0f,700.0f,400.0f},80.0f},
 		{TraversalKind::Crawl,{-650.0f,0.0f,1100.0f},{250.0f,0.0f,1100.0f},{-900.0f,35.0f,1100.0f},180.0f,{}, {-200.0f,35.0f,1100.0f},30.0f},
 		{TraversalKind::Bar,{250.0f,0.0f,-1250.0f},{250.0f,330.0f,-1250.0f},{}}
 	};

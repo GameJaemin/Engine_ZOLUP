@@ -5,6 +5,21 @@ namespace
 	float Distance3(const Vector3& a, const Vector3& b) { return PrototypeMath::Length(a - b); }
 }
 
+std::optional<TraversalCameraShot> TraversalComponent::GetCameraShot(const Vector3& playerPosition) const
+{
+	if (!UsesFixedCamera()) { return std::nullopt; }
+	const TraversalLink& link=links[active];
+	TraversalCameraShot shot{link.cameraPosition,link.cameraTarget,link.cameraFov};
+	if (link.kind==TraversalKind::Ladder)
+	{
+		// 오르기/내리기 모두 사다리 정면을 향하고 카메라는 그 반대편에 둔다.
+		shot.target = playerPosition+Vector3{0.0f,link.cameraFollowHeight,0.0f};
+		shot.position = shot.target-PrototypeMath::Direction(link.ladderFacingYaw)*link.ladderCameraDistance;
+		shot.framingHeight=140.0f;
+	}
+	return shot;
+}
+
 int TraversalComponent::Find(const Vector3& position, float yaw, const GameplaySpace* space) const
 {
 	int selected = -1;
@@ -66,6 +81,7 @@ bool TraversalComponent::Begin(int index, PlayerMoveComponent& player, const Pro
 		const Vector3 direction=(fromEnd?link.start-link.end:link.end-link.start);
 		player.SetYaw(std::atan2(direction.x,direction.z)*57.2957795f);
 	}
+	else if(link.kind==TraversalKind::Ladder) { player.SetYaw(link.ladderFacingYaw); }
 	player.Teleport(initialPosition);
 	return true;
 }
@@ -103,6 +119,7 @@ void TraversalComponent::Step(const PrototypeCommand& command, float deltaTime, 
 	// 지상 회복 속도는 기획 미정이므로 추가하지 않는다. 새 판/복귀 때 용량을 초기화한다.
 	if (!IsActive()) { return; }
 	const TraversalLink& link = links[active];
+	if(link.kind==TraversalKind::Ladder) { player.SetYaw(link.ladderFacingYaw); }
 	if(stumbleTime>0.0f) {stumbleTime=(std::max)(0.0f,stumbleTime-deltaTime); if(stumbleTime<=0.0f) {player.SetMode(PlayerMode::Crawling);} return;}
 	if (link.kind == TraversalKind::Bar)
 	{

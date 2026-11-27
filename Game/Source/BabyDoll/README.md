@@ -217,8 +217,8 @@ SCISSORMAN: Goth Scarecrow, [배포 페이지](https://goth-scarecrow.itch.io/sc
 | caughtFaceHeight | 250 | Head 노드가 없는 모델의 대체 조준 높이(cm) |
 | caughtCameraDistance | 70 | 얼굴 앞 초기 카메라 거리(cm), 이후 72%까지 접근 |
 | caughtFov | 48 | 초기 수직 화각(도), 이후 8도 좁아짐 |
-| caughtShakeStrength | 7.5 | 위치 흔들림 크기(cm), 0으로 끄기 |
-| caughtShakeAngle | 5 | 회전 흔들림 크기(도), 곰돌이는 pitch/yaw/roll에 분배, 0으로 끄기 |
+| caughtShakeStrength | 14 | 위치 흔들림 크기(cm), 0으로 끄기 |
+| caughtShakeAngle | 8 | 회전 흔들림 크기(도), 곰돌이는 pitch/yaw/roll에 분배, 0으로 끄기 |
 | caughtFadeStart | 1.15 | 암전 시작 시간(초) |
 | caughtFadeTime | 0.35 | 암전 소요 시간(초) |
 
@@ -273,7 +273,7 @@ VoxelDollComponent는 위치·속도·몸/시야 방향·플레이어 상태를 
 
 Play 흐름은 기존 방 탐색 → 창고 열쇠를 원하는 손으로 획득 → 해당 손으로 빨간 문 해제 → 계단 또는 사다리로 상층 이동 → 엘리베이터 영역 진입으로 챕터 종료다. 별도의 미정 퍼즐/엘리베이터 잠금 조건은 만들지 않았다. 몬스터는 다른 층의 플레이어를 계단으로 따라가며 잠긴 문도 연다. 사다리로 층을 바꾸거나 통로에 들어가면 추격 포기 포효를 거친다. 매달린 플레이어에게는 지면의 마지막 소리 위치로 접근하고 숨기 판정을 적용한다. 통로 안에서 넘어져도 통로 보호가 유지된다.
 
-카메라는 사다리 하강과 좁은 통로에서 링크에 지정한 위치·조준점·화각으로 0.5초에 걸쳐 전환하고 마우스 회전을 무시한다. 빠져나오면 기존 Orbit으로 복귀한다. HUD의 목표 문구/AI 상태는 진단에서만 보인다. 매달리기 중에만 스태미나 게이지를 표시하며 CCTV는 저채도·스캔라인·REC·그레인 오버레이를 사용한다.
+카메라는 사다리 상승·하강과 좁은 통로에서 전용 구도로 0.5초에 걸쳐 전환하고 마우스 회전을 무시한다. 사다리에서는 이동 방향과 관계없이 몸과 머리가 ladderFacingYaw(기본 0도, 현재 맵 +Z의 가로대 방향)를 바라본다. 카메라는 이 방향의 반대편 ladderCameraDistance(기본 300cm)에 두고 플레이어 위치 + cameraFollowHeight(기본 60cm)를 바라본다. 사다리에서는 cameraPosition/cameraTarget 대신 이 상대 구도를 사용한다. 바닥/벽이 시야를 가리면 거리를 줄이고 시야가 열리면 부드럽게 늘리며, 가까운 구간은 몸 높이 140cm를 담도록 화각을 최대 110도까지 확보한다. 통로는 기존 고정 위치·조준점·화각을 유지한다. 빠져나오면 기존 Orbit으로 복귀한다. HUD의 목표 문구/AI 상태는 진단에서만 보인다. 매달리기 중에만 스태미나 게이지를 표시하며 CCTV는 저채도·스캔라인·REC·그레인 오버레이를 사용한다.
 
 복셀 플레이어는 느린 좌우 한 걸음 반응과 속도 구간별 보행 표현, 공포 대기·기상·손 사용·사다리·기어가기·매달리기 자세를 추가했다. 복셀 스티치는 추격 중 15m~6.5m에서 몸/촉수가 열리고, 의심 중에는 유지하며 정찰에서 초당 0.55로 닫힌다. 애니메이터용 최종 스켈레탈 클립을 만든 것은 아니며 독립 부위의 절차 애니메이션으로 기능을 검증한다. SCISSORMAN은 삭제하지 않고 개발 메뉴의 Voxel Stitches 체크를 끄거나 모델 미리보기에서 사용할 수 있다. 모델 생성은 BuildVoxelDoll.py / BuildVoxelStitch.py다.
 
@@ -295,18 +295,30 @@ Prototype.json에서 심박 기준/소리 곡선/사다리/통로/매달리기 �
 
 ## 곰돌이 점프스케어: 촉수 정면 구도
 
-복셀 곰돌이의 잡힘 구도는 얼굴 밀착 대신 벌어진 몸/촉수 앞에서 조준점 기준 420cm 거리를 유지한다. 조준점은 몸 높이 205cm, 전방 35cm이며 화각은 66도로 고정한다. 잡힘 시작에 외형을 완전히 열어 촉수가 즉시 보이게 하고, 미리보기에서도 잡힘 동안 열린 상태를 유지한다. 촉수가 렌즈로 접근하는 동작이나 카메라 끌림 없이 카메라만 강하게 흔든다. 좌우/상하 이동과 제한된 pitch/yaw/roll 흔들림으로 곰돌이가 화면 중앙 근처에 남게 한다. 기존 1.8초 연출·암전·체크포인트 복귀는 유지한다.
+복셀 곰돌이의 잡힘 구도는 얼굴 밀착 대신 벌어진 몸/촉수 앞에서 조준점 기준 420cm 거리를 유지한다. 조준점은 몸 높이 225cm, 전방 35cm이며 화각은 54도로 고정한다. 잡힘 시작에 외형을 완전히 열어 촉수가 즉시 보이게 하고, 미리보기에서도 잡힘 동안 열린 상태를 유지한다. 촉수가 렌즈로 접근하는 동작이나 카메라 끌림 없이 카메라만 강하게 흔든다. 좌우/상하 이동과 제한된 pitch/yaw/roll 흔들림으로 곰돌이가 화면 중앙 근처에 남게 한다. 기존 1.8초 연출·암전·체크포인트 복귀는 유지한다.
 
-Prototype.json의 caughtTentacleDistance, caughtTentacleAimHeight, caughtTentacleFov로 구도를 조정한다. caughtTentacleMinimumDistance는 이전 구도와의 설정 호환용이며 현재 고정 구도에서는 사용하지 않는다. caughtShakeStrength(기본 7.5cm)와 caughtShakeAngle(기본 5도)로 흔들림을 조정한다. 시작 거리보다 최소 거리가 크면 설정을 거부한다. 기본 방향이 벽에 막히면 주변 방향 중 여유 있는 촬영 방향을 우선 선택한다. 전용 조명의 범위도 늘려 떨어진 카메라에서 몸이 어두워지지 않도록 했다. 가져온 SCISSORMAN은 기존 머리 추적/밀착 구도를 유지한다. CaughtCameraComponent는 모델 이름 대신 선택적 CaughtCameraFraming 값만 받는다.
+Prototype.json의 caughtTentacleDistance, caughtTentacleAimHeight, caughtTentacleFov로 구도를 조정한다. caughtTentacleMinimumDistance는 이전 구도와의 설정 호환용이며 현재 고정 구도에서는 사용하지 않는다. caughtShakeStrength(기본 14cm)와 caughtShakeAngle(기본 8도)로 흔들림을 조정한다. 시작 거리보다 최소 거리가 크면 설정을 거부한다. 기본 방향이 벽에 막히면 주변 방향 중 여유 있는 촬영 방향을 우선 선택한다. 전용 조명의 범위도 늘려 떨어진 카메라에서 몸이 어두워지지 않도록 했다. 가져온 SCISSORMAN은 기존 머리 추적/밀착 구도를 유지한다. CaughtCameraComponent는 모델 이름 대신 선택적 CaughtCameraFraming 값만 받는다.
 
 검증: Release 빌드와 자동 검사 147개 통과. 여러 방향과 연출 시점에서 고정 거리·화각, 중앙 구도와 일시정지 중 흔들림 재현을 확인한다.
 
 ## 실행 배포본 만들기
 
-Release x64를 빌드한 뒤 `Tools/AssetPipeline/PackageBabyDoll.ps1`을 실행한다. 기본 출력은 `Binaries/Packages/BabyDoll_Windows_날짜_시간/`과 같은 이름의 ZIP이다. 기존 배포본은 덮어쓰지 않는다. `-OutputDirectory`로 새 출력 경로, `-CrtDirectory`로 x64 Microsoft.VC143.CRT 재배포 폴더를 지정할 수 있다.
+게임을 종료한 뒤 `Tools/AssetPipeline/UpdateBabyDoll.ps1`을 실행한다. Release 빌드와 자동 검사, 임시 배포본 검증을 마친 뒤 `Binaries/Packages/BabyDoll_Latest/`와 `BabyDoll_Latest.zip`을 갱신한다. 이전 BabyDoll 배포 폴더/ZIP과 `Binaries/v143/x64`의 Release 이외 출력, 불필요한 PDB/보조 EXE 및 예전 임시 빌드 명령 파일은 제거한다. 삭제/이동은 검증된 출력 경로 안에서만 수행한다. 가장 최근 체크포인트는 로컬 최신 실행 폴더에 보존하고 배포 ZIP에는 포함하지 않는다. 소스·에셋·정규 Intermediate 빌드 캐시는 유지한다. `PackageBabyDoll.ps1`은 갱신 스크립트 내부의 배포 조립용으로 사용한다.
 
 ZIP 전체를 풀고 `Play.cmd`를 실행한다. EXE, DXC/VC 런타임 DLL, 런타임 셰이더, BabyDoll 콘텐츠와 라이브러리 고지를 포함한다. 소스·PDB·Bistro/에디터 에셋은 포함하지 않으므로 기본 BabyDoll 실행용이다. 현재 Paths 구현은 `Binaries/v143/x64/Release/SeonEngine.exe` 위치를 기준으로 루트를 계산하므로 EXE만 꺼내거나 폴더 구조를 바꾸면 안 된다. 대상은 Windows x64와 DirectX 12 GPU이며 다른 PC에서의 호환성 검사는 별도로 필요하다.
 
 2026-11-27 검증: Release 빌드 성공, 배포 폴더의 실행 파일에서 자동 검사 88개 통과. 별도 배포 폴더에서 실제 시작 화면과 맵·SCISSORMAN·전등·UI 로딩을 확인했다. 엔진과 렌더러 코드는 변경하지 않았다.
 
 체크포인트 재시작 수정 검증: Release 빌드 및 자동 검사 155개 통과. 저장 당시 추격/포효/예약 소리, 높은 심박, 근접 AI 배치와 안전한 저장 위치 유지, 새 소리 반응, 다른 층 순찰, 재배치 불가능한 지형을 확인했다.
+
+사다리 하강 카메라 수정 검증: Release 빌드 및 배포본 자동 검사 160개 통과. 하강 높이 추적, 상층 바닥/천장 주변 시야와 몸체 구도, 일시정지 중 위치 유지 및 사다리 이탈 후 Orbit 복귀를 확인한다.
+
+사다리 방향/후방 구도 수정 검증: Release 및 최신 배포본 각각 자동 검사 167개 통과. 상승·하강, 회전 배치, 사다리 정면 유지, 후방 구도와 개구부 시야/화각을 확인한다. 이후 배포 갱신은 UpdateBabyDoll.ps1로 단일 최신 경로를 재사용한다.
+
+## 전시관 그레이박스 시연
+
+시작 구역 → 꺾이는 전시 통로 → 서쪽 열쇠 구역 → 잠긴 문 → 상층 엘리베이터. 칸막이는 스티치와 다음 구역을 일찍 볼 수 없게 하고, 테이블과 낮은 통로는 기존 회피 동작을 검증하는 데 쓴다. 계단과 사다리는 상층 이동 선택지다. 배치는 검토용이며 기존 저장의 좌표를 사용하지 않도록 맵 ID를 분리했다.
+
+시작 또는 일시정지 메뉴의 Layout overview (for review)를 누르면 지붕을 치운 2m 격자 조감도가 열린다. 시뮬레이션은 일시정지 상태다. Return to gameplay view에서 원래 조명을 복원한다. GrayboxLayout.h에서 칸막이와 전등 위치를 조정하고 Prototype.json에서 주변광·방향광·전등 세기와 범위를 조정한다. 전등 근접 반응 반경은 15m다.
+
+빠른 입력이 끊기면 관측한 입력 간격에 맞춰 감속을 일찍 시작한다. 느린 교대 보행의 최소 속도와 같은 발 반복 실수는 유지한다. 카메라 방향으로 즉시 조향하고 이동 속도는 보간한다.

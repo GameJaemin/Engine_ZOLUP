@@ -53,7 +53,8 @@ void BabyDollApplication::DrawHud()
 		return;
 	}
 	draw->AddText(ImVec2(origin.x + 28.0f, origin.y + 22.0f), Pink, "B A B Y D O L L");
-	draw->AddText(ImVec2(origin.x + 28.0f, origin.y + 43.0f), Muted, "THE EXHIBITION  /  ESCAPE PROTOTYPE");
+	draw->AddText(ImVec2(origin.x + 28.0f, origin.y + 43.0f), Muted, grayboxReview?"LAYOUT REVIEW / 200cm GRID / SIMULATION PAUSED":GrayboxLayout::Zone(player->GetPosition()));
+	if(grayboxReview) {return;}
 	if (!inspect && showDebug)
 	{
 		draw->AddText(ImVec2(origin.x + 28.0f, origin.y + 68.0f), Cyan, progress.Objective());
@@ -157,6 +158,14 @@ void BabyDollApplication::DrawHud()
 void BabyDollApplication::DrawPanel()
 {
 	const ImGuiViewport* viewport = ImGui::GetMainViewport();
+	if (grayboxReview)
+	{
+		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x - 28.0f, viewport->WorkPos.y + 22.0f), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+		ImGui::Begin("Layout controls", nullptr, OverlayFlags);
+		if (ImGui::Button("Return to gameplay view")) { grayboxReview = false; }
+		ImGui::End();
+		return;
+	}
 	ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 28.0f, viewport->WorkPos.y + 185.0f), ImGuiCond_Always);
 	ImGui::SetNextWindowSize(ImVec2(355.0f, 0.0f), ImGuiCond_Always);
 	ImGui::SetNextWindowSizeConstraints(ImVec2(355.0f, 100.0f), ImVec2(355.0f, (std::max)(200.0f, viewport->WorkSize.y - 120.0f)));
@@ -173,7 +182,7 @@ void BabyDollApplication::DrawPanel()
 		return;
 	}
 	ImGui::TextWrapped("One body. Two players. Explore the exhibition and reach the hidden elevator upstairs.");
-	ImGui::TextWrapped("Gold pillars lead to storage. Use the hand holding the key at the red gate. Stairs and the gold ladder lead upstairs. Low tunnels and tables can break a chase.");
+	ImGui::TextWrapped("GRAYBOX WALKTHROUGH: arrival > exhibition loop > key gallery > locked gate > upper gallery. Slow steps stay quiet; tables and the low passage offer escape routes.");
 	ImGui::TextDisabled("Audio is not available in this build.");
 	ImGui::TextWrapped("Use the noise ring, threat cue, lights and rear CCTV to read danger. Space makes a loud distraction.");
 	ImGui::Separator();
@@ -192,6 +201,10 @@ void BabyDollApplication::DrawPanel()
 		}
 	}
 	ImGui::SeparatorText("Play mode");
+	if(ImGui::Button("Layout overview (for review)",ImVec2(-1.0f,28.0f)))
+	{
+		grayboxReview=true; paused=true; inspect=false; SetCaptured(false);
+	}
 	const bool wasSolo = soloControls;
 	if (ImGui::RadioButton("Single player (S / D)", soloControls)) { soloControls = true; }
 	if (ImGui::RadioButton("Co-op (S / period)", !soloControls)) { soloControls = false; }
@@ -204,6 +217,7 @@ void BabyDollApplication::DrawPanel()
 	if (ImGui::Button(inspect || gameTime == 0.0f ? "Begin escape" : "Resume", ImVec2(-1.0f, 36.0f)))
 	{
 		if (inspect) { ResetRun(); }
+		grayboxReview=false;
 		inspect = paused = false;
 		SetCaptured(true);
 	}

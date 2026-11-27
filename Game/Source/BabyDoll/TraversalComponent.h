@@ -14,6 +14,17 @@ struct TraversalLink
 	Vector3 exitOffset;
 	Vector3 cameraTarget;
 	float cameraFov=65.0f;
+	float cameraFollowHeight=60.0f;
+	float ladderFacingYaw=0.0f;
+	float ladderCameraDistance=300.0f;
+};
+
+struct TraversalCameraShot
+{
+	Vector3 position;
+	Vector3 target;
+	float fov=65.0f;
+	float framingHeight=0.0f;
 };
 
 /** 특수 이동의 위치/발 이력/스태미나만 관리한다. 모델과 카메라는 값을 받아 표현한다. */
@@ -28,7 +39,8 @@ public:
 	void Reset(float capacity=10.0f) { active = -1; progress = sinceFoot = stumbleTime = 0.0f; stamina=capacity; lastFoot = -1; slips = 0; }
 	bool IsActive() const { return active >= 0; }
 	bool IsHidden() const { return active >= 0 && links[active].kind != TraversalKind::Ladder; }
-	bool UsesFixedCamera() const { return active >= 0 && (links[active].kind == TraversalKind::Crawl || (links[active].kind == TraversalKind::Ladder && reverse)); }
+	bool UsesFixedCamera() const { return active >= 0 && links[active].kind != TraversalKind::Bar; }
+	std::optional<TraversalCameraShot> GetCameraShot(const Vector3& playerPosition) const;
 	const TraversalLink* GetLink() const { return active >= 0 ? &links[active] : nullptr; }
 	float GetStamina() const { return stamina; }
 	float GetSpeed() const { return speed; }

@@ -14,14 +14,35 @@ void OrbitCameraComponent::Reset(const Vector3& target, float initialYaw, const 
 	fov = config.cameraFov;
 	runBlend = 0.0f;
 	fixedBlend = 0.0f;
+	fixedArmLength = 0.0f;
 }
 
-void OrbitCameraComponent::BlendFixed(CameraComponent& camera, const std::optional<Vector3>& requested, const Vector3& target, float deltaTime, float requestedFov)
+void OrbitCameraComponent::BlendFixed(CameraComponent& camera, const std::optional<Vector3>& requested, const Vector3& target, float deltaTime, float requestedFov, const GameplaySpace* space, float framingHeight)
 {
 	if (requested)
 	{
 		fixedPosition = *requested;
+		if (space)
+		{
+			const Vector3 offset=*requested-target;
+			const float length=PrototypeMath::Length(offset);
+			if (length>0.01f)
+			{
+				const Vector3 direction=offset/length;
+				const float available=space->CameraDistance(target,direction,length,18.0f);
+				// 바닥/벽 앞에서는 즉시 당기고, 시야가 다시 열리면 부드럽게 원래 거리로 돌아간다.
+				fixedArmLength=fixedBlend<=0.0f||available<fixedArmLength?available:
+					fixedArmLength+(available-fixedArmLength)*PrototypeMath::Response(5.0f,deltaTime);
+				fixedPosition=target+direction*fixedArmLength;
+			}
+		}
 		fixedFov=requestedFov;
+		if (framingHeight>0.0f)
+		{
+			// 사다리 개구부에서 카메라가 당겨져도 몸이 잘리지 않도록 화각을 확보한다.
+			const float fitted=2.0f*std::atan2(framingHeight*0.5f,(std::max)(1.0f,PrototypeMath::Length(target-fixedPosition)))*57.2957795f;
+			fixedFov=(std::max)(requestedFov,(std::min)(110.0f,fitted));
+		}
 		const Vector3 direction = target - fixedPosition;
 		fixedRotation = { std::atan2(-direction.y, (std::max)(1.0f, PrototypeMath::Distance(target, fixedPosition))) * 57.2957795f,
 			std::atan2(direction.x, direction.z) * 57.2957795f, 0.0f };

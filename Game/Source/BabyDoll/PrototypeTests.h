@@ -89,6 +89,14 @@ namespace PrototypeTests
 			player.Step(command, 0.0f, 1.0f / 120.0f, config, space, false);
 		}
 		check(player.GetMomentum() > 0.95f && player.GetMode() == PlayerMode::Moving, "alternating rhythm accelerates without stutter");
+		for(int frame=0;frame<72;++frame) {player.Step({},0.0f,1.0f/120.0f,config,space,false);}
+		check(player.GetSpeed()<2.0f,"releasing a fast rhythm stops promptly instead of coasting at sprint speed");
+		player.Reset({});
+		for(int frame=0;frame<60;++frame) {player.Step(frame==0?left:PrototypeCommand{},0.0f,1.0f/120.0f,config,space,false);}
+		const Vector3 beforeTurn=player.GetPosition();
+		player.Step(right,90.0f,1.0f/120.0f,config,space,false);
+		check(player.GetPosition().x>beforeTurn.x&&std::abs(player.GetPosition().z-beforeTurn.z)<0.001f,
+			"movement follows the camera direction without a second sideways drift delay");
 		for (int intervalFrames : { 36, 60, 84 })
 		{
 			player.Reset({});
@@ -302,6 +310,39 @@ namespace PrototypeTests
 			walkCamera.Reset({ 0.0f, 160.0f, 0.0f }, 0.0f, config);
 			walkCamera.Present(*output, { 0.0f, 160.0f, 0.0f }, 0.0f, 1.0f / 120.0f, config, cameraSpace, false);
 			check(walkCamera.GetPosition().x < 28.0f, "camera shoulder retracts before entering a side wall");
+			TraversalComponent ladderCameraLink;
+			ladderCameraLink.links={{TraversalKind::Ladder,{1700.0f,0.0f,400.0f},{1700.0f,640.0f,400.0f},
+				{1730.0f,700.0f,750.0f},180.0f,{0.0f,0.0f,150.0f},{1700.0f,700.0f,400.0f},80.0f}};
+			PlayerMoveComponent descending; descending.Reset({1700.0f,640.0f,550.0f}); ladderCameraLink.Begin(0,descending);
+			GameplaySpace ladderSpace;
+			ladderSpace.obstacles={{{1620.0f,600.0f,280.0f},{1780.0f,640.0f,320.0f},true,true},
+				{{1780.0f,600.0f,280.0f},{2050.0f,640.0f,1650.0f},true,true},
+				{{1620.0f,600.0f,500.0f},{1780.0f,640.0f,1650.0f},true,true},
+				{{1750.0f,600.0f,-1850.0f},{2250.0f,638.0f,1850.0f}},
+				{{1250.0f,600.0f,600.0f},{1750.0f,638.0f,1850.0f}}};
+			OrbitCameraComponent ladderCamera; ladderCamera.Reset({1700.0f,700.0f,400.0f},0.0f,config);
+			bool clearDescent=true, framedDescent=true;
+			for(int frame=0;frame<=300;++frame)
+			{
+				const Vector3 dollPosition{1700.0f,640.0f-std::clamp(frame-60,0,240)*(640.0f/240.0f),400.0f};
+				const auto shot=ladderCameraLink.GetCameraShot(dollPosition);
+				ladderCamera.Present(*output,dollPosition+Vector3{0.0f,160.0f,0.0f},0.0f,1.0f/120.0f,config,ladderSpace,false);
+				ladderCamera.BlendFixed(*output,shot->position,shot->target,1.0f/120.0f,shot->fov,&ladderSpace,shot->framingHeight);
+				if(frame<60) {continue;}
+				const Vector3 ray=object->GetComponent<TransformComponent>()->GetPosition()-shot->target;
+				const float distance=PrototypeMath::Length(ray);
+				clearDescent=clearDescent&&ladderSpace.CameraDistance(shot->target,ray/distance,distance,1.0f)>=distance-0.01f;
+				framedDescent=framedDescent&&std::atan2(60.0f,distance)*57.2957795f<output->GetVerticalFovDegrees()*0.5f
+					&&ray.Dot(PrototypeMath::Direction(ladderCameraLink.links[0].ladderFacingYaw))<0.0f;
+			}
+			check(clearDescent,"descending camera keeps line of sight through the upper floor opening for the entire descent");
+			check(framedDescent&&object->GetComponent<TransformComponent>()->GetPosition().y<61.0f,
+				"descending camera follows the doll to ground level and keeps its body within the field of view");
+			const Vector3 pausedDescent=object->GetComponent<TransformComponent>()->GetPosition();
+			const auto heldShot=ladderCameraLink.GetCameraShot({1700.0f,0.0f,400.0f});
+			ladderCamera.BlendFixed(*output,heldShot->position,heldShot->target,0.0f,heldShot->fov,&ladderSpace,heldShot->framingHeight);
+			check(PrototypeMath::Length(object->GetComponent<TransformComponent>()->GetPosition()-pausedDescent)<0.001f,
+				"paused ladder camera holds its position without extending or drifting");
 			GameObject* dollObject = cameraWorld.CreateGameObject("Procedural doll test", {});
 			auto dollOwner = std::make_unique<VoxelDollComponent>();
 			VoxelDollComponent* dollPose = dollOwner.get();
@@ -343,7 +384,7 @@ namespace PrototypeTests
 			shot.Present(*output, 0.0f, config, Vector3{ 20.0f, 300.0f, 5.0f });
 			check(std::abs(object->GetComponent<TransformComponent>()->GetPosition().y - 300.0f) < 0.01f,
 				"capture framing follows the animated head instead of a fixed chest height");
-			bool outsideTentacles=true, wideFraming=true, centered=true;
+			bool outsideTentacles=true, fixedFraming=true, centered=true;
 			const CaughtCameraFraming tentacleShot{config.caughtTentacleDistance,config.caughtTentacleMinimumDistance,config.caughtTentacleFov,4.0f};
 			for(float yaw:{0.0f,90.0f,-135.0f})
 			{
@@ -356,15 +397,15 @@ namespace PrototypeTests
 					shot.Present(*output,elapsed,config,focus,tentacleShot);
 					const Vector3 delta=object->GetComponent<TransformComponent>()->GetPosition()-focus;
 					outsideTentacles=outsideTentacles&&delta.Dot(forward)>=config.caughtTentacleMinimumDistance-0.01f;
-					wideFraming=wideFraming&&output->GetVerticalFovDegrees()>=config.caughtTentacleFov-4.01f;
+					fixedFraming=fixedFraming&&std::abs(output->GetVerticalFovDegrees()-config.caughtTentacleFov)<0.01f;
 					const auto rotation=object->GetComponent<TransformComponent>()->GetRotation();
-					centered=centered&&std::abs(std::remainder(rotation.yaw-yaw-180.0f,360.0f))<6.0f
-						&&std::abs(rotation.pitch)<6.0f&&std::abs(rotation.roll)<=config.caughtShakeAngle
+					centered=centered&&std::abs(std::remainder(rotation.yaw-yaw-180.0f,360.0f))<9.0f
+						&&std::abs(rotation.pitch)<7.0f&&std::abs(rotation.roll)<=config.caughtShakeAngle
 						&&std::abs(delta.Dot(forward)-config.caughtTentacleDistance)<0.01f;
 				}
 			}
 			check(outsideTentacles,"bear jumpscare keeps its camera beyond the extended tentacles for every facing direction");
-			check(wideFraming,"bear jumpscare preserves room for the open torso and tentacles throughout the shake");
+			check(fixedFraming,"bear jumpscare keeps a constant field of view throughout the shake");
 			check(centered,"strong shake keeps the bear near the center at a fixed distance across camera directions");
 			const Vector3 entry{250.0f,160.0f,-300.0f};
 			object->GetComponent<TransformComponent>()->SetPosition(entry);

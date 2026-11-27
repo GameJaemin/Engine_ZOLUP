@@ -12,7 +12,7 @@ struct CaughtCameraFraming
 {
 	float distance = 420.0f;
 	float minimumDistance = 380.0f;
-	float fov = 66.0f;
+	float fov = 54.0f;
 	float fovTightening = 4.0f;
 };
 

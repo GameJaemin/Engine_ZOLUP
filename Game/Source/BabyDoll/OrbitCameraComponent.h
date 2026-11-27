@@ -17,7 +17,7 @@ public:
 	float GetYaw() const { return view.yaw; }
 	const Vector3& GetPosition() const { return position; }
 	float GetFov() const { return fov; }
-	void BlendFixed(CameraComponent& camera, const std::optional<Vector3>& fixedPosition, const Vector3& target, float deltaTime, float fixedFov=65.0f);
+	void BlendFixed(CameraComponent& camera, const std::optional<Vector3>& fixedPosition, const Vector3& target, float deltaTime, float fixedFov=65.0f, const GameplaySpace* space=nullptr, float framingHeight=0.0f);
 
 private:
 	EulerAngles view{ 12.0f, 0.0f, 0.0f };
@@ -29,6 +29,7 @@ private:
 	float fov = 80.0f;
 	float runBlend = 0.0f;
 	float fixedBlend = 0.0f;
+	float fixedArmLength = 0.0f;
 	Vector3 fixedPosition;
 	EulerAngles fixedRotation;
 	float fixedFov=65.0f;

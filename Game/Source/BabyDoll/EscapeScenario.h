@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GameplaySpace.h"
+#include "GrayboxLayout.h"
 #include <array>
 
 /** 한 층 탈출 프로토타입의 배치와 목표. 월드/렌더러 없이 진행 규칙을 검사한다. */
@@ -16,12 +17,14 @@ struct EscapeLayout
 
 	std::vector<PrototypeObstacle> Partitions() const
 	{
-		return {
+		std::vector<PrototypeObstacle> result{
 			{ {-825.0f, 0.0f, -1800.0f}, {-775.0f, 520.0f, 700.0f} },
 			{ {-825.0f, 0.0f, 1300.0f}, {-775.0f, 520.0f, 1800.0f} },
 			{ {775.0f, 0.0f, -1800.0f}, {825.0f, 520.0f, -1400.0f} },
 			{ {775.0f, 0.0f, -800.0f}, {825.0f, 520.0f, 1800.0f} }
 		};
+		result.insert(result.end(),GrayboxLayout::Screens.begin(),GrayboxLayout::Screens.end());
+		return result;
 	}
 	PrototypeObstacle Door() const { return { doorPosition + Vector3{-25.0f, 0.0f, -300.0f}, doorPosition + Vector3{25.0f, 430.0f, 300.0f} }; }
 };

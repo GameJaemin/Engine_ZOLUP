@@ -844,6 +844,7 @@
   <ItemGroup>
     <ClCompile Include="Game\Source\BabyDoll\TraversalComponent.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile>
     <ClInclude Include="Game\Source\BabyDoll\TraversalComponent.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+    <ClInclude Include="Game\Source\BabyDoll\GrayboxLayout.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
     <ClInclude Include="Game\Source\BabyDoll\HandInventoryComponent.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
     <ClInclude Include="Game\Source\BabyDoll\DoorComponent.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
     <ClInclude Include="Game\Source\BabyDoll\LayerNavigation.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>

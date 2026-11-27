@@ -25,6 +25,8 @@
 #include "Component/BoxColliderComponent.h"
 #include "Component/DirectionalLightComponent.h"
 #include "Component/PointLightComponent.h"
+#include "Component/SkyboxComponent.h"
+#include "Component/SpotLightComponent.h"
 #include "Component/StaticMeshComponent.h"
 #include "Component/SkinComponent.h"
 #include "Component/TransformComponent.h"
@@ -37,6 +39,7 @@
 #include "Prefab/Prefab.h"
 #include "Renderer/Material.h"
 #include "Renderer/RenderScene.h"
+#include "Texture/Texture.h"
 #include "World.h"
 
 #include <imgui.h>
@@ -71,9 +74,10 @@ BabyDollApplication::~BabyDollApplication() = default;
 GameObject* BabyDollApplication::Box(const std::string& name, const Vector3& center, const Vector3& size, const Vector3& color, GameObject* parent, bool collides)
 {
 	MaterialParameters parameters;
-	parameters.baseColor = color;
-	parameters.metallic = 0.05f;
-	parameters.roughness = 0.72f;
+	const float gray=0.26f+0.5f*(color.x*0.21f+color.y*0.72f+color.z*0.07f);
+	parameters.baseColor = name.find("Key")!=std::string::npos ? color : Vector3{gray,gray,gray};
+	parameters.metallic = 0.0f;
+	parameters.roughness = 0.95f;
 	const std::shared_ptr<const Material> material = std::make_shared<const Material>(name, std::string(), std::move(parameters));
 	Prefab prefab;
 	prefab.model = boxModel;
@@ -84,11 +88,19 @@ GameObject* BabyDollApplication::Box(const std::string& name, const Vector3& cen
 	GameObject* object = world->InstantiatePrefab(prefab, { name, transform });
 	if (object && parent) { object->SetParent(parent); }
 	if (object && collides) { Attach<BoxColliderComponent>(*object); }
+	if(object&&(name.find("ceiling")!=std::string::npos||name=="Upper floor around ladder opening"||(name=="Research room shell"&&size.y<100.0f)))
+	{
+		reviewRoofs.push_back({object->GetObjectID(),center});
+	}
 	return object;
 }
 
 bool BabyDollApplication::BuildRoom()
 {
+	const auto backdrop = AssetManager::Get().LoadTexture("Game/Content/BabyDoll/Materials/GrayboxBackdrop.png", TextureFormat::RGBA8SRGB);
+	GameObject* background = world->CreateGameObject("Graybox backdrop", {});
+	if (!backdrop || !background) { return false; }
+	Attach<SkyboxComponent>(*background)->SetFaces({backdrop, backdrop, backdrop, backdrop, backdrop, backdrop});
 	const Vector3 navy{ 0.045f, 0.065f, 0.10f };
 	const Vector3 brass{ 0.42f, 0.25f, 0.12f };
 	for (int x = 0; x < 11; ++x)
@@ -100,6 +112,8 @@ bool BabyDollApplication::BuildRoom()
 		}
 	}
 	// 엔진 물리 씬의 64바디 한도에 맞춰 바닥 타일 99개를 연속된 한 바디로 합친다.
+	for(int x=-2000;x<=2000;x+=200) {Box("200cm floor grid",{static_cast<float>(x),0.6f,0.0f},{1.5f,0.8f,3600.0f},{0.46f,0.46f,0.46f},nullptr,false);}
+	for(int z=-1600;z<=1600;z+=200) {Box("200cm floor grid",{0.0f,0.6f,static_cast<float>(z)},{4400.0f,0.8f,1.5f},{0.46f,0.46f,0.46f},nullptr,false);}
 	GameObject* floorBody = world->CreateGameObject("Continuous physics floor", {});
 	if (!floorBody) { return false; }
 	floorBody->GetComponent<TransformComponent>()->SetPosition({ 0.0f, -12.0f, 0.0f });
@@ -153,11 +167,13 @@ bool BabyDollApplication::BuildRoom()
 	GameObject* lighting = world->CreateGameObject("Gallery lighting", {});
 	if (!lighting) { return false; }
 	AmbientLightComponent* ambient = Attach<AmbientLightComponent>(*lighting);
-	ambient->SetColor({ 0.45f, 0.55f, 0.75f });
-	ambient->SetIntensity(0.55f);
+	sceneAmbient=ambient;
+	ambient->SetColor({ 0.65f, 0.65f, 0.65f });
+	ambient->SetIntensity(config.ambientIntensity);
 	DirectionalLightComponent* sun = Attach<DirectionalLightComponent>(*lighting);
-	sun->SetColor({ 0.85f, 0.80f, 0.75f });
-	sun->SetIntensity(1.6f);
+	sceneFill=sun;
+	sun->SetColor({ 1.0f, 1.0f, 1.0f });
+	sun->SetIntensity(config.directionalIntensity);
 	lighting->GetComponent<TransformComponent>()->SetRotation({ 55.0f, -30.0f, 0.0f });
 	// 재질과 발광 텍스처는 처음 한 번 만들고 모든 전등이 상태별로 공유한다.
 	std::array<std::array<std::shared_ptr<const Material>, 3>, 2> lampMaterials;
@@ -173,16 +189,16 @@ bool BabyDollApplication::BuildRoom()
 			if (!lampMaterials[color][level]) { return false; }
 		}
 	}
-	for (int index = 0; index < 9; ++index)
+	for (std::size_t index = 0; index < GrayboxLayout::Lamps.size(); ++index)
 	{
-		const Vector3 point{ (index % 3 - 1) * 1500.0f, 550.0f, (index / 3 - 1) * 1100.0f };
+		const Vector3 point=GrayboxLayout::Lamps[index];
 		GameObject* lightObject = world->CreateGameObject("Gallery lamp", {});
 		if (!lightObject) { return false; }
 		lightObject->GetComponent<TransformComponent>()->SetPosition(point);
 		PointLightComponent* light = Attach<PointLightComponent>(*lightObject);
 		light->SetRange(config.lampRange);
 		light->SetIntensity(config.lampIntensity);
-		light->SetColor(index % 2 == 0 ? Vector3{ 1.0f, 0.5f, 0.35f } : Vector3{ 0.3f, 0.8f, 1.0f });
+		light->SetColor({1.0f,0.93f,0.82f});
 		ProximityLightComponent* proximity = Attach<ProximityLightComponent>(*lightObject);
 		proximity->SetDarkRadius(config.lampDarkRadius);
 		proximity->SetFlickerTime(config.lampFlickerTime);
@@ -190,12 +206,14 @@ bool BabyDollApplication::BuildRoom()
 		lamps.push_back(proximity);
 		if (!Box("Lamp housing", { 0.0f, 41.0f, 0.0f }, { 150.0f, 18.0f, 90.0f }, { 0.09f, 0.1f, 0.12f }, lightObject)) { return false; }
 		GameObject* diffuser = Box("Emissive lamp diffuser", { 0.0f, 29.0f, 0.0f }, { 130.0f, 6.0f, 70.0f }, {}, lightObject, false);
-		if (!diffuser || !proximity->BindEmissiveVisual(*diffuser, lampMaterials[index % 2])) { return false; }
+		if (!diffuser || !proximity->BindEmissiveVisual(*diffuser, lampMaterials[0])) { return false; }
 	}
 	for (const PrototypeObstacle& wall : layout.Partitions())
 	{
 		space.obstacles.push_back(wall);
-		if (!Box("Room partition", (wall.minimum + wall.maximum) * 0.5f, wall.maximum - wall.minimum, { 0.13f, 0.15f, 0.23f })) { return false; }
+		if (!Box("Room partition", (wall.minimum + wall.maximum) * 0.5f, wall.maximum - wall.minimum, { 0.42f, 0.42f, 0.42f },nullptr,false)) { return false; }
+		Box("Partition cap",{(wall.minimum.x+wall.maximum.x)*0.5f,wall.maximum.y+2.0f,(wall.minimum.z+wall.maximum.z)*0.5f},
+			{wall.maximum.x-wall.minimum.x+4.0f,4.0f,wall.maximum.z-wall.minimum.z+4.0f},{0.72f,0.72f,0.72f},nullptr,false);
 	}
 	doorObstacle = space.obstacles.size();
 	space.obstacles.push_back(layout.Door());
@@ -220,6 +238,19 @@ bool BabyDollApplication::BuildMonster()
 	monsterObject = world->CreateGameObject("SCISSORMAN", {});
 	if (!monsterObject) { return false; }
 	brain = Attach<StitchBrainComponent>(*monsterObject);
+	GameObject* frontLight = world->CreateGameObject("Stitch red front light", {});
+	if (!frontLight) { return false; }
+	monsterFrontLight = Attach<SpotLightComponent>(*frontLight);
+	monsterFrontLight->SetColor({1.0f, 0.018f, 0.025f});
+	monsterFrontLight->SetRange(730.0f);
+	monsterFrontLight->SetOuterConeAngleDegrees(38.0f);
+	monsterFrontLight->SetIntensity(2.1f);
+	GameObject* frontFill = world->CreateGameObject("Stitch red close fill", {});
+	if (!frontFill) { return false; }
+	monsterFrontFill = Attach<PointLightComponent>(*frontFill);
+	monsterFrontFill->SetColor({1.0f, 0.018f, 0.025f});
+	monsterFrontFill->SetRange(235.0f);
+	monsterFrontFill->SetIntensity(0.65f);
 	Prefab prefab;
 	prefab.model = monsterModel;
 	monsterVisual = world->InstantiatePrefab(prefab, { std::string("ScissormanVisual"), Transform{} });
@@ -308,6 +339,12 @@ bool BabyDollApplication::OnInitialize(Engine& inEngine)
 	GameObject* cameraObject = world->CreateGameObject("Prototype camera", {});
 	GameObject* soundObject = world->CreateGameObject("Gameplay hearing", {});
 	if (!playerObject || !cameraObject || !soundObject) { return false; }
+	GameObject* playerFillObject = world->CreateGameObject("Player local fill", {});
+	if (!playerFillObject || !playerFillObject->SetParent(playerObject)) { return false; }
+	playerFillLight = Attach<PointLightComponent>(*playerFillObject);
+	playerFillLight->SetColor({0.82f, 0.89f, 1.0f});
+	playerFillLight->SetIntensity(0.16f);
+	playerFillLight->SetRange(180.0f);
 	player = Attach<PlayerMoveComponent>(*playerObject);
 	traversal = Attach<TraversalComponent>(*playerObject);
 	inventory = Attach<HandInventoryComponent>(*playerObject);
@@ -362,6 +399,7 @@ bool BabyDollApplication::OnInitialize(Engine& inEngine)
 
 void BabyDollApplication::SetCaptured(bool newCaptured)
 {
+	if (newCaptured) { grayboxReview = false; }
 	captured = newCaptured;
 	justCaptured = newCaptured;
 	engine->SetCursorConfined(newCaptured);
@@ -372,6 +410,7 @@ void BabyDollApplication::SetCaptured(bool newCaptured)
 
 void BabyDollApplication::ResetRun(bool clearSaved)
 {
+	chaseViewWeight = 0.0f;
 	if (clearSaved) { ClearCheckpointFile(); }
 	progress = {};
 	inventory->Restore({});
@@ -440,6 +479,7 @@ void BabyDollApplication::ApplyProgressVisuals()
 
 void BabyDollApplication::RestoreCheckpoint()
 {
+	chaseViewWeight = 0.0f;
 	progress = checkpoint.progress;
 	inventory->Restore(checkpoint.hands);
 	exitDoor->Restore(checkpoint.door);
@@ -744,14 +784,32 @@ void BabyDollApplication::Present(float deltaTime)
 	}
 	for (ProximityLightComponent* lamp : lamps) { lamp->Step(monsterPosition, paused ? 0.0f : deltaTime, lightsEnabled && !inspect); }
 	playerObject->GetComponent<TransformComponent>()->SetPosition(playerPosition);
-	const float playerYaw = PrototypeMath::ApproachAngle(previousPlayerYaw, player->GetYaw(), interpolation);
+	const float playerYaw = player->GetMode()==PlayerMode::Ladder ? player->GetYaw() : PrototypeMath::ApproachAngle(previousPlayerYaw, player->GetYaw(), interpolation);
 	playerObject->GetComponent<TransformComponent>()->SetRotation({ 0.0f, playerYaw, 0.0f });
 	const PlayerMode mode = player->GetMode();
+	const bool lowPose = mode == PlayerMode::Hidden || mode == PlayerMode::Exiting
+		|| (traversal->GetLink() && traversal->GetLink()->kind == TraversalKind::Crawl);
+	auto* playerFillTransform = playerFillLight->GetGameObject()->GetComponent<TransformComponent>();
+	playerFillTransform->SetPosition({0.0f, lowPose ? 86.0f : 138.0f, 0.0f});
+	playerFillLight->SetRange(lowPose ? 125.0f : 180.0f);
+	playerFillLight->SetEnabled(!inspect && !grayboxReview && mode != PlayerMode::Caught);
 	doll->Present(playerPosition, traversal->IsActive()?traversal->GetSpeed():player->GetSpeed(), playerYaw, traversal->UsesFixedCamera()?playerYaw:orbit->GetYaw(), mode, paused ? 0.0f : deltaTime, config,
 		std::clamp((heart->GetBPM()-90.0f)/30.0f,0.0f,1.0f),player->GetLastFoot(),traversal->GetLink()&&traversal->GetLink()->kind==TraversalKind::Crawl);
 	monsterObject->GetComponent<TransformComponent>()->SetPosition(monsterPosition);
 	const float monsterYaw = PrototypeMath::ApproachAngle(previousMonsterYaw, brain->GetYaw(), interpolation);
-	monsterObject->GetComponent<TransformComponent>()->SetRotation({ 0.0f, (mode == PlayerMode::Caught ? caughtCamera->GetFacingYaw() : monsterYaw) + visualYawOffset, 0.0f });
+	const bool chasing = brain->GetState() == StitchState::Chase;
+	const bool showThreat = !inspect && !grayboxReview && mode != PlayerMode::Caught && progress.stage != EscapeStage::Cleared;
+	const float chaseTarget = chasing && showThreat ? 1.0f : 0.0f;
+	chaseViewWeight += (chaseTarget - chaseViewWeight) * PrototypeMath::Response(chaseTarget > chaseViewWeight ? 10.0f : 4.0f, deltaTime);
+	auto* frontLightTransform = monsterFrontLight->GetGameObject()->GetComponent<TransformComponent>();
+	frontLightTransform->SetPosition(monsterPosition + PrototypeMath::Direction(monsterYaw) * 105.0f + Vector3{0.0f, 165.0f, 0.0f});
+	frontLightTransform->SetRotation({22.0f, monsterYaw, 0.0f});
+	monsterFrontLight->SetEnabled(showThreat);
+	const float presentedMonsterYaw = mode == PlayerMode::Caught ? caughtCamera->GetFacingYaw() : monsterYaw;
+	auto* frontFillTransform = monsterFrontFill->GetGameObject()->GetComponent<TransformComponent>();
+	frontFillTransform->SetPosition(monsterPosition + PrototypeMath::Direction(presentedMonsterYaw) * 105.0f + Vector3{0.0f, 155.0f, 0.0f});
+	monsterFrontFill->SetEnabled(showThreat || (mode == PlayerMode::Caught && !inspect && !grayboxReview));
+	monsterObject->GetComponent<TransformComponent>()->SetRotation({ 0.0f, presentedMonsterYaw + visualYawOffset, 0.0f });
 	float playbackRate = 1.0f;
 	if (!inspect && mode != PlayerMode::Caught)
 	{
@@ -810,10 +868,23 @@ void BabyDollApplication::Present(float deltaTime)
 	else
 	{
 		orbit->Present(*camera, target, std::clamp(player->GetSpeed() / config.maxSpeed, 0.0f, 1.0f), deltaTime, config, space, inspect);
-		const auto* link = traversal->GetLink();
-		orbit->BlendFixed(*camera, !inspect && traversal->UsesFixedCamera() && link ? std::optional<Vector3>{link->cameraPosition} : std::nullopt,
-			link?link->cameraTarget:playerPosition, paused ? 0.0f : deltaTime,link?link->cameraFov:65.0f);
+		const auto shot = !inspect ? traversal->GetCameraShot(playerPosition) : std::nullopt;
+		orbit->BlendFixed(*camera, shot ? std::optional<Vector3>{shot->position} : std::nullopt,
+			shot?shot->target:playerPosition, paused ? 0.0f : deltaTime,shot?shot->fov:65.0f,&space,shot?shot->framingHeight:0.0f);
 	}
+	if(grayboxReview)
+	{
+		auto* transform=camera->GetGameObject()->GetComponent<TransformComponent>();
+		transform->SetPosition({-2900.0f,4100.0f,-3200.0f});
+		transform->SetRotation({46.0f,42.0f,0.0f});
+		camera->SetVerticalFovDegrees(58.0f);
+	}
+	for(const auto& roof:reviewRoofs)
+	{
+		if(GameObject* object=world->FindGameObject(roof.first)) {object->GetComponent<TransformComponent>()->SetPosition(roof.second+(grayboxReview?Vector3{0.0f,-10000.0f,0.0f}:Vector3{}));}
+	}
+	if(sceneAmbient) {sceneAmbient->SetIntensity(grayboxReview?0.8f:config.ambientIntensity);}
+	if(sceneFill) {sceneFill->SetIntensity(grayboxReview?0.8f:config.directionalIntensity);}
 	caughtLight->SetIntensity(mode == PlayerMode::Caught && !inspect ? 1.5f : 0.0f);
 	caughtLight->SetRange(voxelMonster?900.0f:400.0f);
 }
@@ -840,7 +911,7 @@ void BabyDollApplication::OnUpdate(const InputState& input, float deltaTime)
 	if (frame.togglePause && progress.stage != EscapeStage::Cleared)
 	{
 		if (captured) { paused = true; SetCaptured(false); }
-		else if (!inspect) { paused = false; SetCaptured(true); }
+		else if (!inspect) { grayboxReview=false; paused = false; SetCaptured(true); }
 	}
 	if (frame.toggleDiagnostics) { showDebug = !showDebug; }
 	const bool orbitInput = captured && !justCaptured;
@@ -880,7 +951,24 @@ std::optional<SceneRenderRequest> BabyDollApplication::GetRenderRequest()
 	if (!world || !camera) { return std::nullopt; }
 	CameraViewInfo view;
 	if (!camera->GetCameraViewInfo(view)) { return std::nullopt; }
-	return SceneRenderRequest{ world->GetRenderScene(), view, nullptr };
+	// Main layer uses the room lights. Default environment IBL otherwise lights the room even with all lamps off.
+	Hakko::DataHub::SetLayerEnvIntensity(grayboxReview || inspect ? 0.65f : 0.0f);
+	SceneRenderRequest request{ world->GetRenderScene(), view, nullptr };
+	if (!inspect && !grayboxReview && player->GetMode() == PlayerMode::Caught)
+	{
+		request.postProcessPasses.push_back({
+			"Game/Content/BabyDoll/Shaders/ChaseView_PS.hlsl",
+			{0.0f, 0.82f * PrototypeMath::Response(15.0f, caughtTime), 0.0f}
+		});
+	}
+	else if (!inspect && !grayboxReview && progress.stage != EscapeStage::Cleared && chaseViewWeight > 0.005f)
+	{
+		request.postProcessPasses.push_back({
+			"Game/Content/BabyDoll/Shaders/ChaseView_PS.hlsl",
+			{0.055f * chaseViewWeight, 0.76f * chaseViewWeight, std::floor(gameTime * 24.0f)}
+		});
+	}
+	return request;
 }
 
 void BabyDollApplication::OnShutdown() noexcept
@@ -893,7 +981,11 @@ void BabyDollApplication::OnShutdown() noexcept
 	doll = nullptr;
 	traversal=nullptr; inventory=nullptr; objectSounds=nullptr; exitDoor=nullptr; stitchVisual=nullptr; stitchVisualObject=nullptr;
 	caughtLight = nullptr;
+	monsterFrontLight = nullptr;
+	monsterFrontFill = nullptr;
+	playerFillLight = nullptr;
 	lamps.clear();
+	sceneAmbient=nullptr; sceneFill=nullptr; reviewRoofs.clear();
 	player = nullptr;
 	heart = nullptr;
 	hearing = nullptr;

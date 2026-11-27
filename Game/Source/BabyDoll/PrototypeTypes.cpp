@@ -102,6 +102,8 @@ bool LoadPrototypeConfig(PrototypeConfig& config)
 		{ "lampDarkRadius", &candidate.lampDarkRadius, 50.0f, 5000.0f },
 		{ "lampFlickerTime", &candidate.lampFlickerTime, 0.05f, 5.0f },
 		{ "lampIntensity", &candidate.lampIntensity, 0.0f, 20.0f },
+		{ "ambientIntensity", &candidate.ambientIntensity, 0.0f, 2.0f },
+		{ "directionalIntensity", &candidate.directionalIntensity, 0.0f, 5.0f },
 		{ "lampRange", &candidate.lampRange, 100.0f, 4000.0f },
 		{ "propDropHeight", &candidate.propDropHeight, 150.0f, 500.0f },
 		{ "caughtDuration", &candidate.caughtDuration, 1.0f, 2.0f },
@@ -112,8 +114,8 @@ bool LoadPrototypeConfig(PrototypeConfig& config)
 		{ "caughtTentacleMinimumDistance", &candidate.caughtTentacleMinimumDistance, 300.0f, 1000.0f },
 		{ "caughtTentacleAimHeight", &candidate.caughtTentacleAimHeight, 100.0f, 300.0f },
 		{ "caughtTentacleFov", &candidate.caughtTentacleFov, 35.0f, 100.0f },
-		{ "caughtShakeStrength", &candidate.caughtShakeStrength, 0.0f, 8.0f },
-		{ "caughtShakeAngle", &candidate.caughtShakeAngle, 0.0f, 6.0f },
+		{ "caughtShakeStrength", &candidate.caughtShakeStrength, 0.0f, 16.0f },
+		{ "caughtShakeAngle", &candidate.caughtShakeAngle, 0.0f, 9.0f },
 		{ "caughtFadeStart", &candidate.caughtFadeStart, 0.1f, 1.8f },
 		{ "caughtFadeTime", &candidate.caughtFadeTime, 0.1f, 1.0f }
 	};

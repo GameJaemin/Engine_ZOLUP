@@ -43,7 +43,7 @@ struct PrototypeConfig
 	float ladderSlip = 90.0f;
 	float ladderNoiseCount = 5.0f;
 	float hangDuration = 10.0f;
-	float crawlSpeed = 100.0f;
+	float crawlSpeed = 175.0f;
 	bool linkCalmToHideSuspicion = true;
 	float patrolSpeed = 170.0f;
 	float chaseSpeed = 400.0f;
@@ -92,8 +92,10 @@ struct PrototypeConfig
 	float rearFollow = 10.0f;
 	float lampDarkRadius = 1500.0f;
 	float lampFlickerTime = 0.6f;
-	float lampIntensity = 2.8f;
-	float lampRange = 1250.0f;
+	float lampIntensity = 1.5f;
+	float ambientIntensity = 0.025f;
+	float directionalIntensity = 0.0f;
+	float lampRange = 1050.0f;
 	float propDropHeight = 380.0f;
 	float caughtDuration = 1.8f;
 	float caughtFaceHeight = 250.0f;
@@ -101,10 +103,10 @@ struct PrototypeConfig
 	float caughtFov = 48.0f;
 	float caughtTentacleDistance = 420.0f;
 	float caughtTentacleMinimumDistance = 380.0f;
-	float caughtTentacleAimHeight = 205.0f;
-	float caughtTentacleFov = 66.0f;
-	float caughtShakeStrength = 7.5f;
-	float caughtShakeAngle = 5.0f;
+	float caughtTentacleAimHeight = 225.0f;
+	float caughtTentacleFov = 54.0f;
+	float caughtShakeStrength = 14.0f;
+	float caughtShakeAngle = 8.0f;
 	float caughtFadeStart = 1.15f;
 	float caughtFadeTime = 0.35f;
 };

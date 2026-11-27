@@ -39,6 +39,7 @@ bool RearCameraComponent::Step(bool chasing, bool preview, const Vector3& player
 		cameraID = cameraObject->GetObjectID();
 		std::unique_ptr<CameraComponent> camera = std::make_unique<CameraComponent>();
 		camera->SetClipDistances(5.0f, 8000.0f);
+		if (!camera->SetPostProcessShaderPath("Game/Content/BabyDoll/Shaders/RearLowLight_PS.hlsl")) { Clear(); return false; }
 		cameraObject->AddComponent(std::move(camera));
 		std::unique_ptr<SceneCapture2DComponent> capture = std::make_unique<SceneCapture2DComponent>();
 		if (!capture->SetWidth(static_cast<std::uint32_t>(config.rearWidth)) || !capture->SetHeight(static_cast<std::uint32_t>(config.rearHeight))) { Clear(); return false; }
