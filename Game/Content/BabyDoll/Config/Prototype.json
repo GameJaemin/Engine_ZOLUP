@@ -78,7 +78,7 @@
   "lampDarkRadius": 1500,
   "lampFlickerTime": 0.6,
   "lampIntensity": 1.5,
-  "ambientIntensity": 0.025,
+  "ambientIntensity": 0.04,
   "directionalIntensity": 0,
   "lampRange": 1050,
   "propDropHeight": 380,

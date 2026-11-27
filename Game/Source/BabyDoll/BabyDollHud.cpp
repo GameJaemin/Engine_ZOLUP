@@ -29,7 +29,31 @@ namespace
 	constexpr ImU32 Pink = IM_COL32(247, 139, 174, 255);
 	constexpr ImU32 Cyan = IM_COL32(105, 219, 224, 255);
 	constexpr ImU32 Muted = IM_COL32(157, 167, 185, 255);
+	constexpr float FootCueHalfWidth = 25.0f;
 	constexpr ImGuiWindowFlags OverlayFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
+
+	void DrawFootCue(ImDrawList& draw, const ImVec2& center, bool left, bool next, const char* key)
+	{
+		const ImU32 accent = left ? Pink : Cyan;
+		const ImU32 mark = next ? accent : IM_COL32(146, 153, 165, 155);
+		const ImVec2 minimum(center.x - FootCueHalfWidth, center.y - 34.0f);
+		const ImVec2 maximum(center.x + FootCueHalfWidth, center.y + 34.0f);
+		draw.AddRectFilled(minimum, maximum, IM_COL32(13, 16, 22, next ? 230 : 158), 10.0f);
+		draw.AddRect(minimum, maximum, next ? accent : IM_COL32(130, 138, 151, 85), 10.0f, 0, next ? 2.0f : 1.0f);
+
+		const float side = left ? 1.0f : -1.0f;
+		draw.AddEllipseFilled(ImVec2(center.x - side * 2.0f, center.y - 9.0f), ImVec2(8.0f, 12.0f), mark, side * 0.18f);
+		draw.AddEllipseFilled(ImVec2(center.x + side * 1.0f, center.y + 2.0f), ImVec2(5.0f, 7.0f), mark);
+		draw.AddCircleFilled(ImVec2(center.x + side * 6.0f, center.y - 23.0f), 3.7f, mark);
+		draw.AddCircleFilled(ImVec2(center.x - side * 1.0f, center.y - 25.0f), 2.9f, mark);
+		draw.AddCircleFilled(ImVec2(center.x - side * 7.0f, center.y - 23.0f), 2.4f, mark);
+		draw.AddCircleFilled(ImVec2(center.x - side * 11.0f, center.y - 19.0f), 1.9f, mark);
+
+		const float fontSize = ImGui::GetFontSize() * 1.3f;
+		ImFont* font = ImGui::GetFont();
+		const float width = font->CalcTextSizeA(fontSize, 100.0f, 0.0f, key).x;
+		draw.AddText(font, fontSize, ImVec2(center.x - width * 0.5f, center.y + 13.0f), mark, key);
+	}
 }
 
 void BabyDollApplication::DrawHud()
@@ -58,11 +82,11 @@ void BabyDollApplication::DrawHud()
 	if (!inspect && showDebug)
 	{
 		draw->AddText(ImVec2(origin.x + 28.0f, origin.y + 68.0f), Cyan, progress.Objective());
-		const Vector3 goal = !progress.HasKey() ? layout.keyPosition : progress.IsDoorOpen() ? layout.escapePosition : layout.doorPosition;
+		const Vector3 goal = !progress.HasKey() ? layout.keyPosition : progress.IsDoorOpen() ? EscapeLayout::ElevatorPosition : layout.doorPosition;
 		const Vector3 delta = goal - player->GetPosition();
 		const float angle = std::remainder(std::atan2(delta.x, delta.z) * 57.2957795f - orbit->GetYaw(), 360.0f);
 		char guide[160];
-		std::snprintf(guide, sizeof(guide), "%s  |  %.1f m  |  %s", !progress.HasKey() ? "BRASS KEY" : progress.IsDoorOpen() ? "ESCAPE" : "EXIT GATE", PrototypeMath::Length(delta) / 100.0f,
+		std::snprintf(guide, sizeof(guide), "%s  |  %.1f m  |  %s", !progress.HasKey() ? "BRASS KEY" : progress.IsDoorOpen() ? "ELEVATOR" : "EXIT GATE", PrototypeMath::Length(delta) / 100.0f,
 			std::abs(angle) < 20.0f ? "AHEAD" : std::abs(angle) > 150.0f ? "BEHIND" : angle > 0.0f ? "RIGHT" : "LEFT");
 		draw->AddText(ImVec2(origin.x + 28.0f, origin.y + 88.0f), Muted, guide);
 		if (soundPulseTime > 0.0f) { draw->AddText(ImVec2(origin.x + 28.0f, origin.y + 113.0f), Pink, "LOUD NOISE - the creature may have heard you"); }
@@ -97,24 +121,29 @@ void BabyDollApplication::DrawHud()
 	ImGui::Dummy(ImVec2(150.0f, 46.0f));
 	ImGui::TextDisabled("%s", player->GetMode() == PlayerMode::Hidden || traversal->IsHidden() ? "HIDDEN" : player->GetMode() == PlayerMode::Ladder ? "CLIMBING" : player->GetMode() == PlayerMode::Fallen ? "STUMBLED" : player->GetMode() == PlayerMode::Caught ? "CAUGHT" : "EXPOSED");
 	ImGui::End();
-	ImGui::SetNextWindowPos(ImVec2(origin.x + size.x * 0.5f, origin.y + size.y - 28.0f), ImGuiCond_Always, ImVec2(0.5f, 1.0f));
+	const PlayerMode mode = player->GetMode();
+	const bool traversalSteps = mode == PlayerMode::Ladder || mode == PlayerMode::Crawling;
+	const bool showFootCues = captured && !paused && progress.stage != EscapeStage::Cleared
+		&& (traversalSteps || (mode == PlayerMode::Moving && !freeMove));
+	const int lastFoot = traversalSteps ? traversal->GetLastFoot() : player->GetLastFoot();
+	const float centerX = origin.x + size.x * 0.5f;
+	const float bottom = origin.y + size.y - 28.0f;
+	ImGui::SetNextWindowPos(ImVec2(centerX, bottom), ImGuiCond_Always, ImVec2(0.5f, 1.0f));
 	ImGui::SetNextWindowBgAlpha(0.8f);
-	ImGui::Begin("Controls", nullptr, OverlayFlags);
-	if (freeMove) { ImGui::Text("W A S D   Move    Shift   Run"); }
-	else
-	{
-		ImGui::TextColored(leftFootDown ? ImVec4(1.0f, 0.85f, 0.9f, 1.0f) : ImVec4(0.97f, 0.55f, 0.68f, 1.0f), soloControls ? "[ S ]  Left foot" : "[ S ]  P1 Left foot");
-		ImGui::SameLine();
-		ImGui::TextColored(rightFootDown ? ImVec4(0.85f, 1.0f, 1.0f, 1.0f) : ImVec4(0.4f, 0.85f, 0.9f, 1.0f), soloControls ? "[ D ]  Right foot" : "[ . ]  P2 Right foot");
-		if (player->GetMode() == PlayerMode::Fallen) { ImGui::TextColored(ImVec4(1.0f, 0.65f, 0.55f, 1.0f), "Same foot twice - recovering..."); }
-		else
-		{
-			const int lastFoot = traversal->IsActive()?traversal->GetLastFoot():player->GetLastFoot();
-			ImGui::TextDisabled("Next step: %s", lastFoot < 0 ? "either foot" : lastFoot == 0 ? (soloControls ? "D - right foot" : ". - right foot") : "S - left foot");
-		}
-	}
+	ImGui::Begin("Controls", nullptr, OverlayFlags | ImGuiWindowFlags_NoInputs);
+	if (mode == PlayerMode::Fallen) { ImGui::TextColored(ImVec4(1.0f, 0.65f, 0.55f, 1.0f), "Same foot twice - recovering..."); }
+	else if (freeMove && !traversalSteps) { ImGui::TextUnformatted("W A S D   Move    Shift   Run"); }
 	ImGui::TextDisabled(soloControls ? "Mouse  Look    Right click  Use / Hide / Leave" : "Mouse  Look    T  Use / Hide / Leave");
 	ImGui::TextDisabled("Esc  Pause    Tab  Diagnostics");
+	if (showFootCues)
+	{
+		const ImVec2 panelPosition = ImGui::GetWindowPos();
+		const ImVec2 panelSize = ImGui::GetWindowSize();
+		const float cueY = panelPosition.y + panelSize.y * 0.5f;
+		constexpr float EdgeToCueCenter = 8.0f + FootCueHalfWidth;
+		DrawFootCue(*draw, ImVec2(panelPosition.x - EdgeToCueCenter, cueY), true, lastFoot != 0, "S");
+		DrawFootCue(*draw, ImVec2(panelPosition.x + panelSize.x + EdgeToCueCenter, cueY), false, lastFoot != 1, soloControls ? "D" : ".");
+	}
 	ImGui::End();
 	if(player->GetMode()==PlayerMode::Hanging)
 	{

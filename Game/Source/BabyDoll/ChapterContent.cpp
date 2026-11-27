@@ -34,13 +34,7 @@ bool BabyDollApplication::BuildChapter()
 		Box("Stair tread", {1500.0f,top-10.0f,-980.0f+step*40.0f}, {300.0f,20.0f,40.0f}, {0.22f,0.24f,0.29f}, nullptr, false);
 		space.obstacles.push_back({{1350.0f,top-20.0f,-1000.0f+step*40.0f},{1650.0f,top,-960.0f+step*40.0f},true,true});
 	}
-	const PrototypeObstacle roomWalls[]{
-		{{1000.0f,640.0f,280.0f},{1050.0f,1240.0f,1700.0f}},
-		{{2050.0f,640.0f,280.0f},{2100.0f,1240.0f,1700.0f}},
-		{{1050.0f,640.0f,1650.0f},{2050.0f,1240.0f,1700.0f}},
-		{{1050.0f,1240.0f,280.0f},{2050.0f,1280.0f,1700.0f}}
-	};
-	for (const auto& wall : roomWalls)
+	for (const auto& wall : GrayboxLayout::UpperRoomShell)
 	{
 		space.obstacles.push_back(wall);
 		Box("Research room shell", (wall.minimum+wall.maximum)*0.5f, wall.maximum-wall.minimum, {0.09f,0.12f,0.17f}, nullptr, false);
@@ -74,7 +68,9 @@ bool BabyDollApplication::BuildChapter()
 	Box("Silver shaft",{},{10.0f,40.0f,10.0f},{0.65f,0.8f,0.9f},secondKeyVisual,false);
 	Box("Silver head",{0.0f,27.0f,0.0f},{30.0f,25.0f,10.0f},{0.65f,0.8f,0.9f},secondKeyVisual,false);
 	Box("Research desk",{1200.0f,680.0f,1200.0f},{160.0f,65.0f,110.0f},{0.3f,0.18f,0.15f},nullptr,false);
-	Box("Elevator floor",elevatorPosition+Vector3{0.0f,2.0f,0.0f},{260.0f,4.0f,260.0f},{0.3f,0.65f,0.5f},nullptr,false);
+	constexpr Vector3 elevatorPosition = EscapeLayout::ElevatorPosition;
+	constexpr float elevatorWidth = EscapeLayout::ElevatorHalfWidth * 2.0f;
+	Box("Elevator floor",elevatorPosition+Vector3{0.0f,2.0f,0.0f},{elevatorWidth,4.0f,elevatorWidth},{0.3f,0.65f,0.5f},nullptr,false);
 	for (float x : {-140.0f,140.0f}) { Box("Elevator frame",elevatorPosition+Vector3{x,180.0f,100.0f},{20.0f,360.0f,220.0f},{0.35f,0.25f,0.12f},nullptr,false); }
 	Box("Elevator header",elevatorPosition+Vector3{0.0f,360.0f,100.0f},{300.0f,20.0f,220.0f},{0.35f,0.25f,0.12f},nullptr,false);
 	escapeVisual->GetComponent<TransformComponent>()->SetScale({0.001f,0.001f,0.001f});

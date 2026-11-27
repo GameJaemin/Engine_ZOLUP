@@ -189,17 +189,25 @@ bool BabyDollApplication::BuildRoom()
 			if (!lampMaterials[color][level]) { return false; }
 		}
 	}
-	for (std::size_t index = 0; index < GrayboxLayout::Lamps.size(); ++index)
+	const auto partitions = layout.Partitions();
+	// Only partitions and the gate separate playable spaces. The perimeter encloses the entire gallery.
+	std::vector<PrototypeObstacle> lightWalls = partitions;
+	lightWalls.insert(lightWalls.end(), GrayboxLayout::UpperRoomShell.begin(), GrayboxLayout::UpperRoomShell.end());
+	lightWalls.push_back(layout.Door());
+	const Vector3 lightColor{1.0f, 0.93f, 0.82f};
+	for (const Vector3& point : GrayboxLayout::Lamps)
 	{
-		const Vector3 point=GrayboxLayout::Lamps[index];
 		GameObject* lightObject = world->CreateGameObject("Gallery lamp", {});
 		if (!lightObject) { return false; }
 		lightObject->GetComponent<TransformComponent>()->SetPosition(point);
-		PointLightComponent* light = Attach<PointLightComponent>(*lightObject);
-		light->SetRange(config.lampRange);
-		light->SetIntensity(config.lampIntensity);
-		light->SetColor({1.0f,0.93f,0.82f});
-		ProximityLightComponent* proximity = Attach<ProximityLightComponent>(*lightObject);
+		const auto placement = GrayboxLayout::FitGalleryPointLight(point, config.lampRange, lightWalls);
+		GameObject* emitter = world->CreateGameObject("Gallery lamp emitter", {});
+		if (!emitter || !emitter->SetParent(lightObject)) { return false; }
+		emitter->GetComponent<TransformComponent>()->SetPosition(placement.position - point);
+		auto* light = Attach<PointLightComponent>(*emitter);
+		if (!light->SetRange(placement.range)) { return false; }
+		light->SetColor(lightColor);
+		ProximityLightComponent* proximity = Attach<ProximityLightComponent>(*emitter);
 		proximity->SetDarkRadius(config.lampDarkRadius);
 		proximity->SetFlickerTime(config.lampFlickerTime);
 		proximity->SetBaseIntensity(config.lampIntensity);
@@ -208,7 +216,7 @@ bool BabyDollApplication::BuildRoom()
 		GameObject* diffuser = Box("Emissive lamp diffuser", { 0.0f, 29.0f, 0.0f }, { 130.0f, 6.0f, 70.0f }, {}, lightObject, false);
 		if (!diffuser || !proximity->BindEmissiveVisual(*diffuser, lampMaterials[0])) { return false; }
 	}
-	for (const PrototypeObstacle& wall : layout.Partitions())
+	for (const PrototypeObstacle& wall : partitions)
 	{
 		space.obstacles.push_back(wall);
 		if (!Box("Room partition", (wall.minimum + wall.maximum) * 0.5f, wall.maximum - wall.minimum, { 0.42f, 0.42f, 0.42f },nullptr,false)) { return false; }
@@ -709,6 +717,18 @@ void BabyDollApplication::Simulate(const PrototypeCommand& command, float deltaT
 		player->Teleport(Vector3::Lerp(exitStart, exitDestination, alpha * alpha * (3.0f - 2.0f * alpha)));
 		if (alpha >= 1.0f) { player->SetMode(PlayerMode::Moving); occupiedTable = -1; }
 	}
+	// Entering the elevator ends this tick before the pursuer can catch up to the player.
+	if (progress.TryEscapeElevator(player->GetPosition(), player->GetMode()))
+	{
+		clearTime = gameTime;
+		paused = true;
+		rearView->Clear();
+		// 고정 틱 처리 도중 입력 누적기를 초기화하지 않는다.
+		captured = false;
+		engine->SetCursorConfined(false);
+		engine->SetCursorVisible(true);
+		return;
+	}
 	const bool hidden = player->GetMode() == PlayerMode::Hidden || traversal->IsHidden();
 	const int playerFloor = static_cast<int>(std::floor((player->GetPosition().y + 1.0f) / 640.0f));
 	const int monsterFloor = static_cast<int>(std::floor((brain->GetPosition().y + 1.0f) / 640.0f));
@@ -755,17 +775,6 @@ void BabyDollApplication::Simulate(const PrototypeCommand& command, float deltaT
 	}
 	if (checkpointRequested && player->GetMode() == PlayerMode::Moving) { SaveCheckpoint(); checkpointRequested = false; }
 	if (!upperCheckpointSaved && playerFloor == 1 && player->GetMode() == PlayerMode::Moving) { upperCheckpointSaved = true; SaveCheckpoint(); }
-	if (playerFloor == 1 && player->GetMode() == PlayerMode::Moving && PrototypeMath::Distance(player->GetPosition(), elevatorPosition) < 100.0f)
-	{
-		progress.stage = EscapeStage::Cleared;
-		clearTime = gameTime;
-		paused = true;
-		rearView->Clear();
-		// 고정 틱 처리 도중 입력 누적기를 초기화하지 않는다.
-		captured = false;
-		engine->SetCursorConfined(false);
-		engine->SetCursorVisible(true);
-	}
 }
 
 void BabyDollApplication::Present(float deltaTime)

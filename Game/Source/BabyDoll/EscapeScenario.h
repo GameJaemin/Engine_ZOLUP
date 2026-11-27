@@ -12,6 +12,8 @@ struct EscapeLayout
 	Vector3 escapePosition{ 1750.0f, 0.0f, -1100.0f };
 	float interactionDistance = 220.0f;
 	float escapeRadius = 180.0f;
+	static constexpr Vector3 ElevatorPosition{1700.0f, 640.0f, 1350.0f};
+	static constexpr float ElevatorHalfWidth = 130.0f;
 	static constexpr std::array<Vector3, 4> Exhibits{{ {-1100.0f, 0.0f, -200.0f}, {1100.0f, 0.0f, 200.0f}, {-300.0f, 0.0f, 700.0f}, {500.0f, 0.0f, -700.0f} }};
 	static constexpr std::array<Vector3, 2> Tables{{ {-350.0f, 0.0f, -300.0f}, {-1650.0f, 0.0f, 600.0f} }};
 
@@ -38,6 +40,15 @@ struct EscapeProgress
 	bool UnlockExit() { if (stage != EscapeStage::ReturnToExit) { return false; } stage = EscapeStage::ReachExit; return true; }
 	bool IsDoorOpen() const { return stage == EscapeStage::ReachExit || stage == EscapeStage::Cleared; }
 	bool HasKey() const { return stage != EscapeStage::FindKey; }
+	bool TryEscapeElevator(const Vector3& position, PlayerMode mode)
+	{
+		const Vector3 offset = position - EscapeLayout::ElevatorPosition;
+		if (stage == EscapeStage::Cleared || (mode != PlayerMode::Moving && mode != PlayerMode::Fallen)
+			|| std::abs(offset.y) > 5.0f || std::abs(offset.x) > EscapeLayout::ElevatorHalfWidth
+			|| std::abs(offset.z) > EscapeLayout::ElevatorHalfWidth) { return false; }
+		stage = EscapeStage::Cleared;
+		return true;
+	}
 	bool TryEscape(const Vector3& position, PlayerMode mode, const EscapeLayout& layout)
 	{
 		if (stage != EscapeStage::ReachExit || mode != PlayerMode::Moving || position.x <= layout.doorPosition.x + 100.0f || PrototypeMath::Distance(position, layout.escapePosition) > layout.escapeRadius) { return false; }

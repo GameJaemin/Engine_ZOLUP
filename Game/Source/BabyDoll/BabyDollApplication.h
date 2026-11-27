@@ -129,7 +129,6 @@ private:
 	bool useVoxelStitch = true;
 	GameObject* secondKeyVisual = nullptr;
 	GameObject* secondCarriedKey = nullptr;
-	Vector3 elevatorPosition{ 1700.0f, 640.0f, 1350.0f };
 	bool upperCheckpointSaved = false;
 	bool checkpointRequested = false;
 	PointLightComponent* caughtLight = nullptr;
