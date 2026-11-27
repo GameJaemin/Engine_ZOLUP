@@ -29,6 +29,8 @@
     <ClCompile Include="Editor\Source\Panels\ViewportPanel.cpp" />
     <ClCompile Include="Game\Source\PlayerObject.cpp" />
     <ClCompile Include="Engine\Source\Asset.cpp" />
+    <ClCompile Include="Engine\Source\SavedAssetReference.cpp" />
+    <ClCompile Include="Engine\Source\Font.cpp" />
     <ClCompile Include="Engine\Source\Animation\AnimationClip.cpp" />
     <ClCompile Include="Engine\Source\Mesh\StaticMesh.cpp" />
     <ClCompile Include="Engine\Source\Texture\Texture.cpp" />
@@ -36,6 +38,7 @@
     <ClCompile Include="Engine\Source\AssetManager.cpp" />
     <ClCompile Include="Engine\Source\Engine.cpp" />
     <ClCompile Include="Engine\Source\Audio\AudioSystem.cpp" />
+    <ClCompile Include="Engine\Source\Audio\MiniaudioImplementation.cpp" />
     <ClCompile Include="Engine\Source\Physics\JoltBroadPhaseLayers.cpp">
       <PreprocessorDefinitions>JPH_OBJECT_STREAM;JPH_FLOATING_POINT_EXCEPTIONS_ENABLED;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
@@ -95,11 +98,15 @@
     <ClCompile Include="Engine\Source\Renderer\HakkoResources.cpp" />
     <ClCompile Include="Engine\Source\Renderer\PostProcessPasses.cpp" />
     <ClCompile Include="Engine\Source\Renderer\TextureRenderTarget2D.cpp" />
+    <ClCompile Include="Engine\Source\Renderer\MaterialFile.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Engine\Source\Camera\CameraViewInfo.h" />
     <ClInclude Include="Engine\Source\Core\Math\MathUtility.h" />
     <ClInclude Include="Engine\Source\Asset.h" />
+    <ClInclude Include="Engine\Source\Font.h" />
+    <ClInclude Include="Engine\Source\AssetReference.h" />
+    <ClInclude Include="Engine\Source\SavedAssetReference.h" />
     <ClInclude Include="Engine\Source\Image\Image.h" />
     <ClInclude Include="Engine\Source\Image\ImageLoader.h" />
     <ClInclude Include="Engine\Source\AssetManager.h" />
@@ -176,6 +183,7 @@
     <ClInclude Include="Engine\Source\WindowsApplication.h" />
     <ClInclude Include="Engine\Source\World.h" />
     <ClInclude Include="Engine\Source\Renderer\Material.h" />
+    <ClInclude Include="Engine\Source\Renderer\MaterialFile.h" />
     <ClInclude Include="Engine\Source\Renderer\RenderScene.h" />
     <ClInclude Include="Engine\Source\Renderer\SceneRenderRequest.h" />
     <ClInclude Include="Engine\Source\Renderer\TextureRenderTarget2D.h" />
@@ -292,8 +300,12 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <LocalDebuggerCommandArguments>--editor</LocalDebuggerCommandArguments>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>

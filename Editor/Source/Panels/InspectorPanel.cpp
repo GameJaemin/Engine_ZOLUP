@@ -149,7 +149,7 @@ namespace
 		else if constexpr (std::is_same_v<Value, AssetReference>)
 		{
 			// 에셋을 고르는 창이 아직 없어 지정 여부만 읽기 전용으로 보여 준다.
-			ImGui::TextDisabled("%s", edited.asset != nullptr ? "Assigned" : "None");
+			ImGui::TextDisabled("%s", edited.GetAsset() != nullptr ? "Assigned" : "None");
 			return false;
 		}
 		else if constexpr (std::is_same_v<Value, ComponentReference>)

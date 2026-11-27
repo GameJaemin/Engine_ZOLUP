@@ -415,19 +415,19 @@ bool ReadPrefabDefinition(const std::filesystem::path& absolutePath, PrefabDefin
 				return false;
 			}
 
-			const auto baseColorTexture = entry.FindMember("baseColorTexture");
-			const std::string_view error = baseColorTexture == entry.MemberEnd()
+			const auto material = entry.FindMember("material");
+			const std::string_view error = material == entry.MemberEnd()
 				? "is required"
-				: ValidatePrefabAssetPath(baseColorTexture->value);
+				: ValidatePrefabAssetPath(material->value);
 			if (!error.empty())
 			{
-				Log::Write(LogLevel::Error, "Prefab", std::format("{}: materialOverrides[{}].baseColorTexture {}", pathText, i, error));
+				Log::Write(LogLevel::Error, "Prefab", std::format("{}: materialOverrides[{}].material {}", pathText, i, error));
 				return false;
 			}
 
 			definition.materialOverrides.push_back({
 				.meshIndex = static_cast<std::size_t>(meshIndex->value.GetUint64()),
-				.baseColorTexturePath = std::string(baseColorTexture->value.GetString(), baseColorTexture->value.GetStringLength())
+				.materialPath = std::string(material->value.GetString(), material->value.GetStringLength())
 			});
 		}
 	}

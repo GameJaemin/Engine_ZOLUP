@@ -2,6 +2,7 @@
 
 #include <Windows.h>
 
+#include <format>
 #include <iostream>
 
 namespace
@@ -68,6 +69,9 @@ void Log::Write(LogLevel level, std::string_view category, std::string_view mess
 {
 	if (level < minimumLevel) { return; }
 
+	SYSTEMTIME localTime{};
+	GetLocalTime(&localTime);
+
 	const HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
 	CONSOLE_SCREEN_BUFFER_INFO consoleInfo{};
 
@@ -75,7 +79,8 @@ void Log::Write(LogLevel level, std::string_view category, std::string_view mess
 	const bool hasConsoleAttributes = GetConsoleScreenBufferInfo(output, &consoleInfo) != FALSE;
 
 	// 색상을 바꾸기 전에 버퍼에 남은 글자를 실제로 출력한다.
-	std::cout << '[' << category << "] " << std::flush;
+	std::cout << std::format("[{:02}:{:02}:{:02}.{:03}] ", localTime.wHour, localTime.wMinute, localTime.wSecond, localTime.wMilliseconds)
+		<< '[' << category << "] " << std::flush;
 
 	bool colorChanged = false;
 	if (hasConsoleAttributes)

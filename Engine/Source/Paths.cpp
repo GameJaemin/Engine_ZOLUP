@@ -38,6 +38,39 @@ bool Paths::GetAbsolutePath(std::string_view relativePath, std::filesystem::path
 	return true;
 }
 
+std::optional<std::string> Paths::FindDiskPath(std::string_view relativePath)
+{
+	// FindFirstFileW는 *와 ?를 패턴으로 해석해 다른 파일을 찾을 수 있으므로 거부한다.
+	if (relativePath.find_first_of("*?") != std::string_view::npos) { return std::nullopt; }
+
+	// 디스크를 보지 않고 .과 ..을 정리한다. 파일 이름이 없거나 절대 경로면 거부한다.
+	const std::filesystem::path requested = std::filesystem::path(std::u8string(relativePath.begin(), relativePath.end())).lexically_normal();
+	if (!requested.has_filename() || requested.has_root_path()) { return std::nullopt; }
+
+	std::filesystem::path current;
+	if (!GetRootDirectory(current)) { return std::nullopt; }
+
+	// 루트부터 한 단계씩 내려가며 각 이름을 디스크의 표기로 바꾼다.
+	// FindFirstFileW에 정확한 이름 하나를 넘기면 대소문자가 달라도 찾고, cFileName에 디스크의 이름을 돌려준다.
+	std::filesystem::path diskPath;
+	for (const std::filesystem::path& part : requested)
+	{
+		// 정리한 뒤에도 남은 ..는 루트 밖을 가리킨다.
+		if (part == "..") { return std::nullopt; }
+
+		WIN32_FIND_DATAW found;
+		const HANDLE search = FindFirstFileW((current / part).c_str(), &found);
+		if (search == INVALID_HANDLE_VALUE) { return std::nullopt; }
+		FindClose(search);
+
+		current /= found.cFileName;
+		diskPath /= found.cFileName;
+	}
+
+	const std::u8string diskPathUtf8 = diskPath.generic_u8string();
+	return std::string(diskPathUtf8.begin(), diskPathUtf8.end());
+}
+
 std::string Paths::MakeAssetKey(std::string_view path)
 {
 	const std::u8string pathUtf8(path.begin(), path.end());
@@ -58,4 +91,19 @@ std::string Paths::MakeAssetKey(std::string_view path)
 	}
 
 	return key;
+}
+
+std::string Paths::MakeSubAssetPath(std::string_view filePath, std::string_view subAssetName)
+{
+	std::string path(filePath);
+	path += SubAssetSeparator;
+	path += subAssetName;
+	return path;
+}
+
+std::optional<std::pair<std::string_view, std::string_view>> Paths::SplitSubAssetPath(std::string_view path)
+{
+	const std::size_t separator = path.rfind(SubAssetSeparator);
+	if (separator == std::string_view::npos) { return std::nullopt; }
+	return std::pair{ path.substr(0, separator), path.substr(separator + 1) };
 }

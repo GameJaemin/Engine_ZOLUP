@@ -257,7 +257,7 @@ namespace PrototypeTests
 				"capture framing follows the animated head instead of a fixed chest height");
 			GameObject* rig = cameraWorld.CreateGameObject("Head pose test", {});
 			rig->GetComponent<TransformComponent>()->SetPosition({ 10.0f, 20.0f, 30.0f });
-			std::shared_ptr<Model> rigModel = std::make_shared<Model>();
+			std::shared_ptr<Model> rigModel = std::make_shared<Model>("Capture test rig", "");
 			rigModel->sceneNodes.resize(2);
 			rigModel->sceneNodes[0].localTransform.position = { 0.0f, 100.0f, 0.0f };
 			rigModel->sceneNodes[1].name = "Head";

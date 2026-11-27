@@ -75,6 +75,7 @@ const ComponentTypeInfo* ComponentTypeRegistry::AddType(std::string_view name, s
 
 	std::unique_ptr<ComponentTypeInfo> info = std::make_unique<ComponentTypeInfo>();
 	info->name = std::string(name);
+	info->type = type;
 	info->parent = parent;
 	info->create = std::move(create);
 	info->isInstance = std::move(isInstance);

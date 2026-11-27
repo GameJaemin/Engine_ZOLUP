@@ -27,7 +27,7 @@ class RearCameraComponent;
 class ProximityLightComponent;
 class CaughtCameraComponent;
 class PointLightComponent;
-struct Model;
+class Model;
 
 struct PrototypeCheckpoint
 {

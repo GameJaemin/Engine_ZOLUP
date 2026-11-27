@@ -11,8 +11,8 @@
 #include <string>
 #include <vector>
 
-struct Material;
-struct Model;
+class Material;
+class Model;
 class StaticMesh;
 class Texture;
 enum class CameraProjectionMode : unsigned char;
@@ -134,7 +134,8 @@ struct PrefabMaterialOverride
 {
 	// 0부터 시작하는 모델 메시 번호다. 실제 메시 범위는 모델을 읽은 뒤 확인한다.
 	std::size_t meshIndex;
-	std::string baseColorTexturePath;
+	// 이 메시에 쓸 재질의 경로다.
+	std::string materialPath;
 };
 
 struct PrefabSkyboxDefinition
@@ -150,7 +151,7 @@ struct PrefabStaticMeshDefinition
 	// 0부터 시작하는 모델 메시 번호다.
 	std::size_t meshIndex;
 	// 생략하면 모델의 기본 재질을 사용한다.
-	std::optional<std::string> baseColorTexturePath;
+	std::optional<std::string> materialPath;
 };
 
 struct PrefabAnimationDefinition

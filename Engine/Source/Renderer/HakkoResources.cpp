@@ -1,5 +1,6 @@
 #include "HakkoResources.h"
 
+#include "Asset.h"
 #include "Core/Log.h"
 #include "Mesh/StaticMesh.h"
 #include "Paths.h"
@@ -12,41 +13,26 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <format>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 namespace
 {
-	// Hakko의 메시와 텍스처 이름에 쓸 UTF-8 경로 키를 wchar_t 문자열로 변환한다.
-	std::wstring MakeHakkoAssetName(const std::string& path)
+	// Hakko에 등록할 에셋 리소스 이름이다. 경로 대신 에셋 객체의 실행 중 번호를 써서, 파일 없이 만든 에셋도 등록할 수 있다.
+	// 같은 파일은 AssetManager가 같은 객체로 돌려주므로 번호가 같으면 같은 리소스다.
+	std::string MakeHakkoAssetName(std::string_view kind, const Asset& asset)
 	{
-		const std::string assetKey = Paths::MakeAssetKey(path);
-		const std::u8string assetKeyUtf8(assetKey.begin(), assetKey.end());
-		const std::filesystem::path keyPath(assetKeyUtf8);
-		return keyPath.generic_wstring();
+		return std::format("Asset.{}.{}", kind, asset.GetInstanceID());
 	}
 
-	/** 텍스처 조합 이름에 쓸 "경로 키|형식" 조각을 만든다. 지원하지 않는 형식이면 출력값을 유지하고 false를 반환한다. */
-	bool MakeTexturePropNamePart(const Texture& texture, std::string& outName)
+	// Hakko의 텍스처와 메시 이름은 wchar_t 문자열이다. 위 이름은 ASCII 글자만 쓰므로 글자마다 그대로 넓힌다.
+	std::wstring ToWideName(const std::string& name)
 	{
-		std::string name = Paths::MakeAssetKey(texture.GetPath());
-
-		switch (texture.GetFormat())
-		{
-		case TextureFormat::RGBA8UNorm:
-			name += "|RGBA8UNorm";
-			break;
-		case TextureFormat::RGBA8SRGB:
-			name += "|RGBA8SRGB";
-			break;
-		default:
-			return false;
-		}
-
-		outName = std::move(name);
-		return true;
+		return std::wstring(name.begin(), name.end());
 	}
 
 	bool PrepareTexture(const Texture& texture, Hakko::DataHub::TexID& outTextureID)
@@ -64,11 +50,6 @@ namespace
 			return false;
 		}
 
-		if (texture.GetPath().empty())
-		{
-			Log::Write(LogLevel::Error, "RenderScene", "Texture registration requires an asset path");
-			return false;
-		}
 		if (texture.GetWidth() == 0 || texture.GetHeight() == 0)
 		{
 			Log::Write(LogLevel::Error, "RenderScene", "Texture dimensions must be nonzero");
@@ -96,21 +77,9 @@ namespace
 			return false;
 		}
 
-		const std::string& path = texture.GetPath();
-		std::wstring name = MakeHakkoAssetName(path);
-
-		// 같은 파일도 GPU 형식이 다르면 별도 자원으로 구분한다.
-		switch (format)
-		{
-		case TextureFormat::RGBA8UNorm:
-			name += L"|RGBA8UNorm";
-			break;
-		case TextureFormat::RGBA8SRGB:
-			name += L"|RGBA8SRGB";
-			break;
-		default:
-			return false;
-		}
+		// 같은 파일도 형식이 다르면 서로 다른 Texture 객체라 번호만으로 구분된다.
+		const std::string hakkoName = MakeHakkoAssetName("Texture", texture);
+		const std::wstring name = ToWideName(hakkoName);
 
 		const Hakko::DataHub::TexID existingTextureID = Hakko::DataHub::GetTexId(name);
 		if (existingTextureID != 0)
@@ -154,7 +123,8 @@ namespace
 		const Hakko::DataHub::TexID textureID = Hakko::DataHub::CreateTexture(name.c_str(), std::move(renderTexture));
 		if (textureID == 0)
 		{
-			Log::Write(LogLevel::Error, "RenderScene", "Failed to register texture: " + path);
+			// 파일 없이 만든 텍스처는 경로가 비어 있어 이름과 경로를 함께 남긴다.
+			Log::Write(LogLevel::Error, "RenderScene", std::format("Failed to register texture {} ('{}')", hakkoName, texture.GetPath()));
 			return false;
 		}
 
@@ -170,14 +140,8 @@ namespace
 
 bool HakkoResources::PrepareStaticMesh(const StaticMesh& mesh)
 {
-	const std::string& path = mesh.GetPath();
-	if (path.empty())
-	{
-		Log::Write(LogLevel::Error, "RenderScene", "Static mesh registration requires an asset path");
-		return false;
-	}
-
-	const std::wstring name = MakeHakkoAssetName(path);
+	const std::string hakkoName = MakeHakkoAssetName("StaticMesh", mesh);
+	const std::wstring name = ToWideName(hakkoName);
 	if (Hakko::DataHub::GetMeshId(name) != 0) { return true; }
 
 	// 스킨 메시는 정점마다 뼈 번호와 가중치를 더한 스킨 정점으로 등록한다. skinWeights는 vertices와 같은 개수와 순서다.
@@ -225,7 +189,7 @@ bool HakkoResources::PrepareStaticMesh(const StaticMesh& mesh)
 
 	if (meshId == 0)
 	{
-		Log::Write(LogLevel::Error, "RenderScene", "Failed to register static mesh: " + path);
+		Log::Write(LogLevel::Error, "RenderScene", std::format("Failed to register static mesh {} ('{}')", hakkoName, mesh.GetPath()));
 
 		return false;
 	}
@@ -239,7 +203,7 @@ bool HakkoResources::PrepareStaticMesh(const StaticMesh& mesh)
 
 Hakko::DataHub::MeshID HakkoResources::FindStaticMeshId(const StaticMesh& mesh)
 {
-	return Hakko::DataHub::GetMeshId(MakeHakkoAssetName(mesh.GetPath()));
+	return Hakko::DataHub::GetMeshId(ToWideName(MakeHakkoAssetName("StaticMesh", mesh)));
 }
 
 bool HakkoResources::PrepareTextureProp(const Material* material, Hakko::DataHub::TexPropID& outTexturePropID)
@@ -252,49 +216,40 @@ bool HakkoResources::PrepareTextureProp(const Material* material, Hakko::DataHub
 	// 색상 텍스처가 없으면 흰색을 곱해 재질의 기본 색상 계수를 그대로 적용한다.
 	Hakko::DataHub::TexID baseColorTextureID = RESERVED_TEX_NONE_DIFFUSE_ID;
 	std::string name = "__DEFAULT_BASE_COLOR";
-	if (material->baseColorTexture != nullptr)
+	if (material->parameters.baseColorTexture != nullptr)
 	{
-		const Texture& texture = *material->baseColorTexture;
+		const Texture& texture = *material->parameters.baseColorTexture;
 		if (!PrepareTexture(texture, baseColorTextureID)) { return false; }
-		if (!MakeTexturePropNamePart(texture, name)) { return false; }
+		name = MakeHakkoAssetName("Texture", texture);
 	}
 
 	// 노멀 텍스처가 없으면 평평한 기본 노멀을 쓰고 조합 이름도 색 텍스처 조각만 쓴다.
 	// 있으면 이름에 노멀 조각을 더해, 색이 같고 노멀만 다른 재질이 같은 조합을 쓰지 않게 한다.
 	Hakko::DataHub::TexID normalTextureID = RESERVED_TEX_NONE_NORMAL_ID;
-	if (material->normalTexture != nullptr)
+	if (material->parameters.normalTexture != nullptr)
 	{
-		const Texture& normalTexture = *material->normalTexture;
+		const Texture& normalTexture = *material->parameters.normalTexture;
 		if (!PrepareTexture(normalTexture, normalTextureID)) { return false; }
-
-		std::string normalName;
-		if (!MakeTexturePropNamePart(normalTexture, normalName)) { return false; }
-		name += "|N=" + normalName;
+		name += "|N=" + MakeHakkoAssetName("Texture", normalTexture);
 	}
 
 	// ORM 텍스처가 없으면 흰색(모두 1)을 써서 차폐 없이 거칠기와 금속성 계수를 그대로 적용한다.
 	// 있으면 이름에 ORM 조각을 더해, 색과 노멀이 같고 ORM만 다른 재질이 같은 조합을 쓰지 않게 한다.
-	// 노멀과 ORM 조각은 형식이 같을 수 있어 N=, O= 표시로 자리를 구분한다.
+	// 같은 텍스처가 여러 칸에 쓰일 수 있어 N=, O=, E= 표시로 자리를 구분한다.
 	Hakko::DataHub::TexID ormTextureID = RESERVED_TEX_NONE_DIFFUSE_ID;
-	if (material->ormTexture != nullptr)
+	if (material->parameters.ormTexture != nullptr)
 	{
-		const Texture& ormTexture = *material->ormTexture;
+		const Texture& ormTexture = *material->parameters.ormTexture;
 		if (!PrepareTexture(ormTexture, ormTextureID)) { return false; }
-
-		std::string ormName;
-		if (!MakeTexturePropNamePart(ormTexture, ormName)) { return false; }
-		name += "|O=" + ormName;
+		name += "|O=" + MakeHakkoAssetName("Texture", ormTexture);
 	}
 
 	Hakko::DataHub::TexID emissiveTextureID = RESERVED_TEX_NONE_EMISSION_ID;
-	if (material->emissiveTexture != nullptr)
+	if (material->parameters.emissiveTexture != nullptr)
 	{
-		const Texture& emissiveTexture = *material->emissiveTexture;
+		const Texture& emissiveTexture = *material->parameters.emissiveTexture;
 		if (!PrepareTexture(emissiveTexture, emissiveTextureID)) { return false; }
-
-		std::string emissiveName;
-		if (!MakeTexturePropNamePart(emissiveTexture, emissiveName)) { return false; }
-		name += "|E=" + emissiveName;
+		name += "|E=" + MakeHakkoAssetName("Texture", emissiveTexture);
 	}
 
 	const Hakko::DataHub::TexPropID existingTexturePropID = Hakko::DataHub::GetTexPropId(name);
@@ -349,7 +304,7 @@ bool HakkoResources::PrepareSkyboxTexture(const std::array<const Texture*, 6>& f
 	for (std::size_t index = 0; index < faces.size(); ++index)
 	{
 		const Texture* face = faces[index];
-		if (face == nullptr || face->GetPath().empty() ||
+		if (face == nullptr ||
 			face->GetWidth() != size || face->GetHeight() != size ||
 			face->GetFormat() != format)
 		{
@@ -358,21 +313,14 @@ bool HakkoResources::PrepareSkyboxTexture(const std::array<const Texture*, 6>& f
 		}
 	}
 
-	const wchar_t* formatName =
-		format == TextureFormat::RGBA8SRGB ? L"RGBA8SRGB" : L"RGBA8UNorm";
-
-	std::wstring name = L"Skybox|";
-	name += formatName;
-
-	// 면 순서를 등록 이름에 반영하고 각 경로의 길이로 경계를 구분한다.
+	// 면 순서대로 번호를 이어 붙인다. 번호는 숫자뿐이라 경계를 따로 표시할 필요가 없다.
+	// 형식은 면 텍스처 객체가 정하므로 이름에 넣지 않는다.
+	std::string skyboxName = "Asset.Skybox";
 	for (const Texture* face : faces)
 	{
-		const std::wstring faceKey = MakeHakkoAssetName(face->GetPath());
-		name += L"|";
-		name += std::to_wstring(faceKey.size());
-		name += L":";
-		name += faceKey;
+		skyboxName += "." + std::to_string(face->GetInstanceID());
 	}
+	const std::wstring name = ToWideName(skyboxName);
 
 	const Hakko::DataHub::TexID existingID = Hakko::DataHub::GetTexId(name);
 	if (existingID != 0)

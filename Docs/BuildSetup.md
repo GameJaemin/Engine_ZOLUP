@@ -18,9 +18,15 @@ Visual Studio Installer에서 워크로드와 해당 구성 요소를 설치합�
 2. 구성을 `Debug` 또는 `Release`, 플랫폼을 `x64`로 선택합니다.
 3. **빌드 -> 솔루션 빌드**를 실행합니다.
 
+## Visual Studio에서 실행
+
+Debug 및 Release x64에서 로컬 Windows 디버거로 F5를 누르면 기본 인자 `--editor`로 에디터가 열립니다. 다른 모드로 실행하려면 **프로젝트 속성 > 구성 속성 > 디버깅 > 명령 인수**에서 현재 구성의 인자를 원하는 값으로 바꿉니다. 예를 들어 `--third-person`을 입력하면 Bistro 데모가 열립니다.
+
+개인 인자는 Git에서 제외되는 `SeonEngine.vcxproj.user`에 구성별로 저장됩니다. 공유 기본값으로 돌아가려면 Visual Studio를 닫고 이 파일에서 해당 구성의 `LocalDebuggerCommandArguments` 항목을 제거합니다.
+
 ## 소스와 헤더 경로
 
-프로세스 진입점은 `Game/Source/GameMain.cpp`에 둡니다. `SeonEngine.exe`는 기본적으로 `GameApplication`을 실행하고, `SeonEngine.exe --editor`는 `EditorApplication`을 실행합니다. 하나의 실행 프로젝트에서 `Engine/Source`, `Game/Source` 및 `Editor/Source`의 소스를 함께 빌드합니다.
+프로세스 진입점은 `Game/Source/GameMain.cpp`에 둡니다. `SeonEngine.exe`를 인자 없이 직접 실행하면 BabyDoll 시작 화면이 열리고, `--editor` 인자를 주면 `EditorApplication`이 실행됩니다. 하나의 실행 프로젝트에서 `Engine/Source`, `Game/Source` 및 `Editor/Source`의 소스를 함께 빌드합니다.
 
 Debug, Release의 추가 포함 디렉터리에 `$(ProjectDir)Engine\Source`와 `$(ProjectDir)Editor\Source`를 지정합니다. 엔진 공용 수학 코드는 `Engine/Source/Core/Math`에 두고, 다른 폴더에서 사용할 때는 `#include "Core/Math/Vector3.h"`처럼 소스 루트 기준 경로로 포함합니다.
 
@@ -45,8 +51,11 @@ Debug, Release의 추가 포함 디렉터리에 `$(ProjectDir)Engine\Source`와 
 | `imgui` | 에디터 UI에 사용할 Dear ImGui. `docking-experimental`, `win32-binding`, `dx12-binding` 기능을 설치 |
 | `imguizmo` | 에디터 뷰포트의 3D Transform 기즈모 |
 | `joltphysics` | 충돌 검사와 물리 시뮬레이션용 정적 라이브러리 |
+| `miniaudio` | 오디오 출력 장치와 소리 파일 재생. 헤더만 설치됨 |
 
 MSBuild는 Jolt 헤더를 사용하는 `JoltRuntime.cpp`, `JoltObjectLayers.cpp`, `JoltBroadPhaseLayers.cpp` 및 `JoltPhysicsScene.cpp`에 `JPH_OBJECT_STREAM`과 `JPH_FLOATING_POINT_EXCEPTIONS_ENABLED`를 지정합니다. 이 정의는 설치된 패키지의 `share/Jolt/JoltConfig.cmake`에 있는 공개 컴파일 정의를 따릅니다.
+
+miniaudio 패키지는 `.lib` 없이 `miniaudio.h`만 설치합니다. 함수 구현은 [MiniaudioImplementation.cpp](../Engine/Source/Audio/MiniaudioImplementation.cpp)에서 `MINIAUDIO_IMPLEMENTATION`을 정의한 뒤 헤더를 포함해 한 번만 컴파일합니다. 다른 파일에서는 이 매크로 없이 헤더만 포함합니다. Windows 오디오 DLL은 실행 중에 불러오므로 추가 링크 설정은 없습니다.
 
 [`vcpkg-configuration.json`](../Engine/ThirdParty/vcpkg-configuration.json)은 저장소의 ImGuizmo 오버레이 포트를 등록합니다. [오버레이 포트](../Engine/ThirdParty/vcpkg-overlays/imguizmo/portfile.cmake)는 원본 ImGuizmo 1.10에 [회전 링 패치](../Engine/ThirdParty/vcpkg-overlays/imguizmo/rotation-rings.patch)를 적용한 뒤 빌드합니다.
 
@@ -93,6 +102,10 @@ MSBuild가 자동으로 읽는 [Directory.Build.props](../Directory.Build.props)
 저장소 루트의 [.editorconfig](../.editorconfig)는 UTF-8(BOM 없음), CRLF와 파일 끝 줄바꿈을 지정합니다. C++ 헤더와 소스는 탭으로 들여쓰고 탭 표시 폭은 4칸입니다. 이 파일을 지원하는 편집기를 사용합니다. 기존 파일의 인코딩은 자동으로 일괄 변환되지 않으므로 CP949 파일을 가져올 때는 원래 인코딩으로 읽은 뒤 UTF-8로 변환합니다.
 
 [Directory.Build.props](../Directory.Build.props)의 공통 C++ 컴파일 옵션 `/utf-8`은 Debug와 Release의 소스 및 실행 문자 집합을 UTF-8로 지정합니다. 프로젝트의 `CharacterSet=Unicode`는 Windows API의 문자 형식 선택에 사용되며 소스 파일 인코딩 설정과 별개입니다. Win32의 `W` 계열 API에 전달하는 wide 문자열은 계속 UTF-16을 사용합니다.
+
+## C++ 병렬 컴파일
+
+`Debug|x64`는 MSVC의 `/MP` 옵션으로 여러 C++ 소스 파일을 병렬 컴파일합니다. 이 설정은 `SeonEngine.vcxproj`의 `MultiProcessorCompilation`에서 지정합니다.
 
 ## 설정 확인
 

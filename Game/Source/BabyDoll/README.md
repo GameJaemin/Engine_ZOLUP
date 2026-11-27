@@ -19,7 +19,11 @@
 
 ## 실행과 기능별 확인
 
-기본 실행 파일: `Binaries/v143/x64/Debug/SeonEngine.exe`. 시작 화면에서 협동 또는 Single player를 선택하고 Begin escape로 시작한다. Esc로 일시정지/재개하며, 완주 화면의 Play again으로 새 판을 시작한다. 모델 미리보기와 WASD/무적/AI 끄기 등은 Developer tools에 있다. 기존 Bistro 데모는 `--third-person`, 에디터는 `--editor`, 자동 검사는 `--babydoll-test`다.
+Visual Studio에서 F5를 누르면 기본 인자 `--editor`로 에디터가 열린다. [Visual Studio 실행 설정](../../../Docs/BuildSetup.md#visual-studio에서-실행)
+
+`Binaries/v143/x64/Debug/SeonEngine.exe`를 인자 없이 실행하면 BabyDoll 시작 화면이 열린다. `Single player (S / D)` 또는 `Co-op (S / period)`을 선택한 뒤 `Begin escape`를 누른다. `Esc`로 일시정지하거나 재개할 수 있고, 완주 화면에서 `Play again`을 누르면 새 판이 시작된다.
+
+모델 미리보기는 `Developer tools`에서 `Model preview`를 선택하면 열린다. WASD 이동, 무적 및 AI 끄기 옵션도 `Developer tools`에 있다. Bistro 데모는 `--third-person`, BabyDoll 자동 검사는 `--babydoll-test`로 실행한다.
 
 ```powershell
 ./Tools/AssetPipeline/BuildBabyDoll.ps1
@@ -57,7 +61,7 @@ R 손동작은 예약만 했다. 1인용은 오른발 D와 우클릭 상호작�
 OnInitialize
   설정 로드 → 방/콜라이더/전등 → 몬스터/포즈
   플레이어·심박·CCTV·메인 카메라 부착 → 물리 상자
-  시작 상태 복원 → 물리 준비 → 모델 미리보기
+  시작 상태 복원 -> 물리 준비 -> BabyDoll 시작 화면
 
 OnUpdate (렌더 프레임마다)
   입력/마우스 읽기 → 명령 누적 → 시야 목표 갱신

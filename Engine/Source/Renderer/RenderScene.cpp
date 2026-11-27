@@ -629,7 +629,7 @@ bool RenderScene::PrepareDrawRequests(const CameraViewInfo& cameraViewInfo, cons
 		objectData.metalic = 0.0f;
 
 		const std::shared_ptr<const Material>& material = component->GetMaterial();
-		const bool isBlended = material != nullptr && material->alphaMode == MaterialAlphaMode::Blend;
+		const bool isBlended = material != nullptr && material->parameters.alphaMode == MaterialAlphaMode::Blend;
 		const bool usesObjectLights = isBlended || Hakko::DataHub::LayerList[layer].pipelineType == Hakko::DataHub::Layer_PipelineType_Forward;
 		Vector3 localBoundsCenter;
 		if (usesObjectLights)
@@ -654,11 +654,12 @@ bool RenderScene::PrepareDrawRequests(const CameraViewInfo& cameraViewInfo, cons
 
 		if (material != nullptr)
 		{
-			const Vector3& color = material->baseColor;
+			const MaterialParameters& parameters = material->parameters;
+			const Vector3& color = parameters.baseColor;
 
-			objectData.blendColor = { color.x, color.y, color.z, isBlended ? material->baseColorAlpha : 1.0f };
-			objectData.roughness = material->roughness;
-			objectData.metalic = material->metallic;
+			objectData.blendColor = { color.x, color.y, color.z, isBlended ? parameters.baseColorAlpha : 1.0f };
+			objectData.roughness = parameters.roughness;
+			objectData.metalic = parameters.metallic;
 		}
 
 		std::unordered_map<const StaticMeshComponent*, Hakko::DataHub::DataBoxID>& objectDataIds = objectDataIdsByLayer[layer];

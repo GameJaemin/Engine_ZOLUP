@@ -163,6 +163,12 @@ bool Engine::Initialize(bool enableGui)
 
 	if (!joltRuntime.Initialize()) { return false; }
 
+	// 출력 장치가 없어도 화면과 입력은 동작해야 하므로 경고만 남기고 계속한다.
+	if (!audioSystem.Initialize())
+	{
+		Log::Write(LogLevel::Warning, "Engine", "Audio is disabled");
+	}
+
 	if (!windowsApplication.Initialize()) { return false; }
 
 	int clientWidth = 0;
@@ -378,6 +384,9 @@ bool Engine::Shutdown()
 
 	// 렌더러 Finalize가 ImGui 텍스처를 정리한 뒤에 Context를 파괴한다.
 	imguiSystem.Shutdown();
+
+	// Run에서 애플리케이션 정리가 끝난 뒤 장치를 닫는다.
+	audioSystem.Shutdown();
 
 	// Run에서 애플리케이션 정리가 끝난 뒤 Jolt의 전역 등록을 해제한다.
 	joltRuntime.Shutdown();

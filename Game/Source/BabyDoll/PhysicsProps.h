@@ -8,7 +8,7 @@
 #include <memory>
 
 class World;
-struct Model;
+class Model;
 
 struct PhysicsPropBinding
 {

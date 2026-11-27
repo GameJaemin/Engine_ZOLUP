@@ -14,7 +14,6 @@
 
 class AssetManager;
 class GameObject;
-struct Material;
 
 // 프리팹 로더 내부용이다. 컴포넌트마다 읽기, 에셋 로드, 붙이기 함수를 둔다.
 // 읽기와 로드는 실패하면 원인을 로그에 남기고 false를 반환한다.
@@ -30,9 +29,6 @@ struct Material;
 
 /** 유한하고 float 범위 안의 숫자면 true를 반환한다. */
 [[nodiscard]] bool IsPrefabFiniteFloat(const rapidjson::Value& value);
-
-/** baseMaterial을 복사해 기본 색 텍스처만 바꾼다. 텍스처를 읽지 못하면 nullptr를 반환한다. */
-[[nodiscard]] std::shared_ptr<const Material> LoadMaterialWithBaseColorTexture(AssetManager& assets, const Material& baseMaterial, std::string_view texturePath);
 
 // staticMesh
 [[nodiscard]] bool ReadStaticMeshProperties(const rapidjson::Value& properties, std::string_view context, PrefabStaticMeshDefinition& mesh);

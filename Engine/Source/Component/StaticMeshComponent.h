@@ -4,7 +4,7 @@
 
 #include <memory>
 
-struct Material;
+class Material;
 class RenderScene;
 class StaticMesh;
 

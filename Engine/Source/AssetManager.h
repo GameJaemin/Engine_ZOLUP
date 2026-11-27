@@ -1,8 +1,11 @@
 #pragma once
 
 #include "Animation/AnimationClip.h"
+#include "Asset.h"
 #include "GLTF/GLTFLoader.h"
 
+#include <compare>
+#include <cstdint>
 #include <filesystem>
 #include <map>
 #include <memory>
@@ -12,7 +15,8 @@
 #include <utility>
 #include <vector>
 
-struct Material;
+class Font;
+class Material;
 struct Prefab;
 class StaticMesh;
 class Texture;
@@ -22,16 +26,29 @@ enum class TextureFormat;
  * glTF 파일 하나에서 불러온 메시들과 배치표와 애니메이션 클립들과 스킨들이다. 모두 엔진 좌표계(왼손, cm)다.
  * 장면에 놓기 전의 원본이며, 배치는 배치표를 읽어 만든 GameObject가 맡는다.
  */
-struct Model
+class Model : public Asset
 {
-	// glTF meshes 번호 순서다. 각 경로는 "파일경로#번호"이며, 렌더러가 경로로 메시를 구분하기 때문이다.
+public:
+	/**
+	 * 파일 이름에서 확장자를 뺀 UTF-8 이름과 저장소 루트 기준 UTF-8 상대 경로(구분자 /)를 받는다.
+	 * 경로는 메시와 클립 경로의 "|번호" 앞부분과 같으며, AssetManager의 캐시 키(정규화한 절대 경로로 만든 키)와는 다르다.
+	 */
+	Model(std::string newName, std::string newPath);
+
+public:
+	// glTF meshes 번호 순서다. 각 경로는 "파일경로|번호"이며, 이 경로로 같은 메시를 다시 얻고 저장한다.
 	std::vector<std::shared_ptr<const StaticMesh>> meshes;
-	// meshes와 같은 순서이며, 각 메시의 기본 재질이다. nullptr가 아니다.
-	// 같은 glTF 재질을 쓰는 메시는 같은 객체를 공유하고, 재질이 없는 메시는 glTF 기본 재질(흰색, 금속성 1, 거칠기 1)을 공유한다.
+	// glTF 파일의 재질 목록과 같은 순서다. i번 재질의 경로는 "파일경로|i"다. 어느 메시도 쓰지 않는 재질도 들어 있다.
+	std::vector<std::shared_ptr<const Material>> materials;
+	// 재질을 지정하지 않은 메시가 쓰는 glTF 기본 재질(흰색, 금속성 1, 거칠기 1)이다. 경로는 "파일경로|default"다.
+	// 그런 메시가 없으면 nullptr이다.
+	std::shared_ptr<const Material> defaultMaterial;
+	// meshes와 같은 순서로 각 메시가 쓰는 재질이며 nullptr가 아니다.
+	// 새 객체가 아니라 materials나 defaultMaterial의 객체를 함께 가리키므로, 같은 재질을 쓰는 메시끼리 같은 객체를 공유한다.
 	std::vector<std::shared_ptr<const Material>> meshMaterials;
 	// glTF nodes 번호 순서다. 각 노드의 mesh 번호로 meshes를 찾는다.
 	std::vector<GLTFSceneNode> sceneNodes;
-	// glTF animations 번호 순서다. 각 경로는 "파일경로#번호"다. 클립의 node 번호로 sceneNodes를 찾는다.
+	// glTF animations 번호 순서다. 각 경로는 "파일경로|번호"다. 클립의 node 번호로 sceneNodes를 찾는다.
 	std::vector<std::shared_ptr<const AnimationClip>> animations;
 	// glTF skins 번호 순서다. sceneNodes의 skin 번호로 찾고, 각 스킨의 joints는 sceneNodes 번호다.
 	std::vector<std::shared_ptr<const Skin>> skins;
@@ -74,17 +91,39 @@ public:
 	 */
 	std::shared_ptr<const Model> LoadModel(std::string_view relativePath);
 
+	/**
+	 * "모델경로|번호" 경로의 메시를 돌려준다. 모델을 아직 불러오지 않았으면 불러온다.
+	 * 모델을 불러오지 못하거나, 경로 형식이 틀리거나, 번호가 범위를 벗어나면 로그를 남기고 nullptr를 반환한다.
+	 */
+	[[nodiscard]] std::shared_ptr<const StaticMesh> LoadStaticMesh(std::string_view path);
+
+	/**
+	 * "모델경로|번호" 또는 "모델경로|default" 경로의 모델 재질을 돌려준다.
+	 * 하위 이름이 없는 경로는 재질 파일(.material.json)로 읽는다(LoadMaterialFile 참고).
+	 * 모델이나 텍스처를 아직 불러오지 않았으면 불러온다.
+	 * 모델이나 텍스처를 불러오지 못하거나, 경로 형식이 틀리거나, 번호가 범위를 벗어나거나, 기본 재질을 쓰는 메시가 없으면 로그를 남기고 nullptr를 반환한다.
+	 */
+	[[nodiscard]] std::shared_ptr<const Material> LoadMaterial(std::string_view path);
+
 private:
 	/**
-	 * glTF 재질 설명으로 Material을 만든다. 색 텍스처(sRGB), 노멀 텍스처와 ORM 텍스처(선형)는 modelDirectory(저장소 루트 기준 모델 폴더) 기준으로 불러온다.
+	 * glTF 재질 설명으로 path 경로의 Material을 만든다. 색 텍스처(sRGB), 노멀 텍스처와 ORM 텍스처(선형)는 modelDirectory(저장소 루트 기준 모델 폴더) 기준으로 불러온다.
 	 * 차폐의 R과 금속성-거칠기의 G, B를 ORM으로 합성하며, 없는 입력의 채널은 1로 채운다.
 	 * 두 입력이 모두 없으면 ORM 텍스처 없이 계수만 사용한다.
 	 * 색, 노멀 또는 ORM 준비에 실패하면 nullptr를 반환한다. ORM 입력 이미지의 크기는 같아야 한다.
 	 * 발광 계수가 0이 아니면 발광 텍스처를 준비한다. 실패하면 경고하고 발광 텍스처를 비워 둔다.
 	 */
-	std::shared_ptr<const Material> CreateMaterial(const GLTFModelMaterial& source, const std::filesystem::path& modelDirectory);
+	std::shared_ptr<const Material> CreateMaterial(const GLTFModelMaterial& source, const std::filesystem::path& modelDirectory, std::string path);
+
+	/**
+	 * 재질 파일(.material.json)로 재질을 만든다. 같은 파일은 처음 만든 객체를 돌려준다.
+	 * 이름이 .material.json으로 끝나지 않거나, 파일이 틀렸거나, base가 모델 재질이 아니거나, base나 텍스처를 불러오지 못하면 로그를 남기고 nullptr를 반환한다.
+	 */
+	std::shared_ptr<const Material> LoadMaterialFile(std::string_view relativePath);
 
 	std::unordered_map<std::string, std::shared_ptr<const Model>> models;
+	// 재질 파일의 캐시 키에서 그 파일로 만든 재질로 가는 캐시다.
+	std::unordered_map<std::string, std::shared_ptr<const Material>> materialFiles;
 
 	// 텍스처
 public:
@@ -100,23 +139,51 @@ private:
 	 * 저장소 루트 기준 UTF-8 경로의 이미지를 합쳐 선형 ORM 텍스처를 만든다.
 	 * 빈 경로는 해당 이미지가 없다는 뜻이며, 같은 입력 조합은 매니저 수명 동안 재사용한다.
 	 * 두 경로가 모두 비었거나 로딩, 합성 또는 초기화에 실패하면 nullptr를 반환한다.
-	 * 생성 텍스처의 경로는 파일을 가리키지 않는 식별자다. 경로 변환과 할당 예외는 전파한다.
+	 * 만든 텍스처는 파일에서 다시 만들 수 없어 빈 경로다. 경로 변환과 할당 예외는 전파한다.
 	 */
 	std::shared_ptr<const Texture> LoadORMTexture(std::string_view occlusionPath, std::string_view metallicRoughnessPath);
 
-	/** 원본 이미지 또는 흰색 한 픽셀에 선형 RGB 발광 계수(0~1)를 적용한 sRGB 텍스처를 준비해 공유한다. */
+	/**
+	 * 원본 이미지 또는 흰색 한 픽셀에 선형 RGB 발광 계수(0~1)를 적용한 sRGB 텍스처를 준비해 공유한다.
+	 * 원본이 있고 계수가 모두 1이면 원본 텍스처를 그대로 돌려준다. 새로 만든 텍스처는 파일에서 다시 만들 수 없어 빈 경로다.
+	 */
 	std::shared_ptr<const Texture> LoadEmissiveTexture(std::string_view texturePath, const Vector3& factor);
 
 private:
+	// 발광 텍스처 하나를 구분하는 값이다. 원본 텍스처 객체와 곱한 계수가 같으면 같은 텍스처다.
+	struct EmissiveTextureKey
+	{
+		// 원본 텍스처의 Asset::GetInstanceID다. 0이면 원본 없이 흰색 한 픽셀에서 만든다.
+		std::uint64_t sourceInstanceID = 0;
+		// 선형 RGB 발광 계수다. glTF 로더가 0~1 범위를 확인한 값이라 NaN이 없다.
+		float red = 0.0f;
+		float green = 0.0f;
+		float blue = 0.0f;
+
+		auto operator<=>(const EmissiveTextureKey&) const = default;
+	};
+
 	std::map<std::pair<std::string, TextureFormat>, std::shared_ptr<const Texture>> textures;
 	// 정규화한 절대 경로를 차폐, 금속성-거칠기 순서로 묶는다. 빈 키는 입력 없음이다.
 	std::map<std::pair<std::string, std::string>, std::shared_ptr<const Texture>> ormTextures;
+	std::map<EmissiveTextureKey, std::shared_ptr<const Texture>> emissiveTextures;
+
+	// 폰트
+public:
+	/**
+	 * 저장소 루트 기준 UTF-8 상대 경로의 폰트 원본 바이트를 읽고 같은 정규화 경로 요청에 재사용한다.
+	 * 파일을 읽을 수 없거나 비어 있으면 로그를 남기고 nullptr를 반환한다. 폰트 형식 검증은 사용하는 쪽에서 한다.
+	 */
+	[[nodiscard]] std::shared_ptr<const Font> LoadFont(std::string_view relativePath);
+
+private:
+	std::unordered_map<std::string, std::shared_ptr<const Font>> fonts;
 
 	// 프리팹
 public:
 	/**
 	 * 저장소 루트 기준 UTF-8 상대 경로에서 프리팹을 불러오고 같은 경로 요청에 재사용한다.
-	 * 지정된 메시의 기본 재질을 복사해 색상 텍스처를 교체한다.
+	 * materialOverrides에 적힌 메시는 그 재질 경로의 재질로 바꾼다.
 	 * 잘못된 설정이나 참조된 에셋의 로드 실패는 nullptr를 반환한다.
 	 * 재질 오버라이드가 없으면 모델을 생략할 수 있다.
 	 */

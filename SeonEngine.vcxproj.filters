@@ -124,6 +124,12 @@
     <ClCompile Include="Engine\Source\Asset.cpp">
       <Filter>Engine\Source</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Source\SavedAssetReference.cpp">
+      <Filter>Engine\Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Font.cpp">
+      <Filter>Engine\Source</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Source\Animation\AnimationClip.cpp">
       <Filter>Engine\Source\Animation</Filter>
     </ClCompile>
@@ -143,6 +149,9 @@
       <Filter>Engine\Source</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Source\Audio\AudioSystem.cpp">
+      <Filter>Engine\Source\Audio</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Audio\MiniaudioImplementation.cpp">
       <Filter>Engine\Source\Audio</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Source\Physics\JoltBroadPhaseLayers.cpp">
@@ -179,6 +188,9 @@
       <Filter>Engine\Source\Renderer</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Source\Renderer\TextureRenderTarget2D.cpp">
+      <Filter>Engine\Source\Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Renderer\MaterialFile.cpp">
       <Filter>Engine\Source\Renderer</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Source\Component\AnimationComponent.cpp">
@@ -372,6 +384,15 @@
     <ClInclude Include="Engine\Source\Asset.h">
       <Filter>Engine\Source</Filter>
     </ClInclude>
+    <ClInclude Include="Engine\Source\Font.h">
+      <Filter>Engine\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\AssetReference.h">
+      <Filter>Engine\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\SavedAssetReference.h">
+      <Filter>Engine\Source</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\Source\Image\Image.h">
       <Filter>Engine\Source\Image</Filter>
     </ClInclude>
@@ -412,6 +433,9 @@
       <Filter>Engine\Source</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Renderer\Material.h">
+      <Filter>Engine\Source\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Renderer\MaterialFile.h">
       <Filter>Engine\Source\Renderer</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Renderer\RenderScene.h">

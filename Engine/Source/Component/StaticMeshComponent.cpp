@@ -40,8 +40,9 @@ bool StaticMeshComponent::SetMaterial(std::shared_ptr<const Material> newMateria
 			return std::isfinite(value) && value >= 0.0f && value <= 1.0f;
 		};
 
-		const Vector3& color = newMaterial->baseColor;
-		if (!isInUnitRange(color.x) || !isInUnitRange(color.y) || !isInUnitRange(color.z) || !isInUnitRange(newMaterial->roughness) || !isInUnitRange(newMaterial->metallic))
+		const MaterialParameters& parameters = newMaterial->parameters;
+		const Vector3& color = parameters.baseColor;
+		if (!isInUnitRange(color.x) || !isInUnitRange(color.y) || !isInUnitRange(color.z) || !isInUnitRange(parameters.roughness) || !isInUnitRange(parameters.metallic))
 		{
 			material.reset();
 			return false;

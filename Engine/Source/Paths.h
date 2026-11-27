@@ -1,8 +1,10 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 /** 자산 파일 경로와 조회 키를 다룬다. */
 namespace Paths
@@ -21,8 +23,25 @@ namespace Paths
 	bool GetAbsolutePath(std::string_view relativePath, std::filesystem::path& outPath);
 
 	/**
+	 * 저장소 루트 기준 UTF-8 상대 경로를 디스크에 있는 실제 이름의 대소문자로 바꿔 반환한다. 구분자는 /다.
+	 * 디스크를 조회한다. 파일이 없거나, 빈 경로, 절대 경로, 루트 밖 경로이거나, *나 ?가 있으면 nullopt를 반환한다.
+	 * 대소문자를 구분하는 폴더는 PathConvention에 따라 지원하지 않는다.
+	 */
+	std::optional<std::string> FindDiskPath(std::string_view relativePath);
+
+	/**
 	 * UTF-8 자산 경로의 .과 ..을 정리하고 구분자를 /로 통일해 조회 키를 만든다.
 	 * ASCII A-Z만 소문자로 바꾼다. 파일을 열 때는 원래 경로를 사용한다.
 	 */
 	std::string MakeAssetKey(std::string_view path);
+
+	// 에셋 경로 규칙이다. 파일 하나가 에셋 하나면 "파일경로"이고, 파일 안의 에셋이면 "파일경로|하위이름"이다.
+	// '|'는 Windows 파일 이름에 쓸 수 없으므로, 에셋 타입을 몰라도 '|'가 있으면 항상 그 자리에서 나눌 수 있다.
+	inline constexpr char SubAssetSeparator = '|';
+
+	/** 파일 안의 에셋 경로를 만든다. */
+	std::string MakeSubAssetPath(std::string_view filePath, std::string_view subAssetName);
+
+	/** 마지막 구분 기호로 파일 경로와 하위 이름을 나눈다. 구분 기호가 없으면(파일 하나가 에셋 하나) nullopt를 반환한다. */
+	std::optional<std::pair<std::string_view, std::string_view>> SplitSubAssetPath(std::string_view path);
 }

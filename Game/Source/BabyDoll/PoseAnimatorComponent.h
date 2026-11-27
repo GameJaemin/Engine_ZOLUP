@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-struct Model;
+class Model;
 class AnimationClip;
 class AnimationComponent;
 
