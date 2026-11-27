@@ -377,12 +377,8 @@ bool BabyDollApplication::OnInitialize(Engine& inEngine)
 	if (!secondCarriedKey || !BuildChapter()) { return false; }
 	Prefab ring;
 	ring.model = ringModel;
-	MaterialParameters ringParameters;
-	ringParameters.baseColor = { 0.25f, 0.8f, 0.8f };
-	ringParameters.alphaMode = MaterialAlphaMode::Blend;
-	ringParameters.baseColorAlpha = 0.6f;
-	ringParameters.metallic = 0.0f;
-	const std::shared_ptr<const Material> ringMaterial = std::make_shared<const Material>("SoundRing", std::string(), std::move(ringParameters));
+	const auto ringMaterial = AssetManager::Get().LoadMaterial("Game/Content/BabyDoll/Materials/SoundRing.material.json");
+	if (!ringMaterial) { return false; }
 	ring.meshMaterialOverrides = { ringMaterial };
 	soundRing = world->InstantiatePrefab(ring, { std::string("Sound radius"), Transform{} });
 	if (!physicsProps.Initialize(*world, boxModel, space, config)) { return false; }
