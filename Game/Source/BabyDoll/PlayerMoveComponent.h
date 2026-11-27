@@ -15,9 +15,12 @@ public:
 	PlayerMode GetMode() const { return mode; }
 	const Vector3& GetPosition() const { return position; }
 	float GetSpeed() const { return actualSpeed; }
+	float GetAttemptedSpeed() const { return PrototypeMath::Length(velocity); }
 	float GetYaw() const { return bodyYaw; }
+	void SetYaw(float yaw) { if(std::isfinite(yaw)) {bodyYaw=std::remainder(yaw,360.0f);} }
 	float GetMomentum() const { return momentum; }
 	int GetLastFoot() const { return lastFoot; }
+	void RestoreFoot(int foot) { if (foot >= -1 && foot <= 1) { lastFoot = foot; sinceFoot = 10.0f; } }
 	bool HasMistake() const { return mistake; }
 
 private:

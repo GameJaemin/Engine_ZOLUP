@@ -1,0 +1,7 @@
+{
+  "description": "Original procedural voxel teddy for the BabyDoll prototype",
+  "generator": "Tools/AssetPipeline/BuildVoxelDoll.py",
+  "voxelSizeCm": 4,
+  "animation": "Game procedural articulated animation, replaceable independently of gameplay",
+  "externalAssets": false
+}

@@ -47,20 +47,28 @@ void PlayerMoveComponent::Step(const PrototypeCommand& command, float viewYaw, f
 	{
 		for (int foot : command.feet)
 		{
-			if (sinceFoot > config.rhythmWindow) { lastFoot = -1; momentum = 0.0f; }
+			// 박자 콤보만 끊는다. 멈춰도 다음에 써야 할 발은 바뀌지 않는다.
+			const bool freshRhythm = sinceFoot > config.rhythmWindow;
+			if (freshRhythm) { momentum = 0.0f; }
 			if (foot == lastFoot)
 			{
 				SetMode(PlayerMode::Fallen);
 				mistake = true;
 				return;
 			}
-			const float quality = lastFoot < 0 ? 0.65f : std::clamp(config.fastInterval / (std::max)(sinceFoot, config.fastInterval), 0.2f, 1.0f);
+			const float quality = lastFoot < 0 || freshRhythm ? 0.65f : std::clamp(config.fastInterval / (std::max)(sinceFoot, config.fastInterval), 0.2f, 1.0f);
 			momentum = std::clamp(momentum + config.fastInterval / config.accelerationTime * quality, 0.0f, 1.0f);
 			lastFoot = foot;
 			sinceFoot = 0.0f;
 		}
 		if (sinceFoot > config.fastInterval * 1.35f) { momentum = (std::max)(0.0f, momentum - config.momentumDecay * deltaTime); }
 		targetSpeed = momentum * config.maxSpeed;
+		// 교대 입력이 이어지는 동안에는 가속 운동량과 별개로 기본 보행을 보장한다.
+		// 입력이 끊기면 하한을 해제하고 기존 감속/속도 보간으로 멈춘다.
+		if (lastFoot >= 0 && sinceFoot <= config.rhythmWindow)
+		{
+			targetSpeed = (std::max)(targetSpeed, (std::min)(config.minimumWalkSpeed, config.maxSpeed));
+		}
 	}
 	velocity = Vector3::Lerp(velocity, direction * targetSpeed, PrototypeMath::Response(targetSpeed > 0.0f ? 12.0f : 9.0f, deltaTime));
 	const Vector3 before = position;

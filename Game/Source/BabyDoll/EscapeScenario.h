@@ -47,7 +47,7 @@ struct EscapeProgress
 		{
 		case EscapeStage::FindKey: return "Find the brass key in the west storage room";
 		case EscapeStage::ReturnToExit: return "Return to the locked exit and use the key";
-		case EscapeStage::ReachExit: return "The gate is open. Reach the green escape beacon";
+		case EscapeStage::ReachExit: return "Reach the hidden elevator upstairs";
 		case EscapeStage::Cleared: return "You escaped the exhibition";
 		}
 		return "";

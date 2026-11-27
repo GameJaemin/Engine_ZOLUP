@@ -30,6 +30,8 @@ public:
 			if (event.key == leftFoot) { frame.command.feet.push_back(0); }
 			if (event.key == (solo ? Key::D : rightFoot)) { frame.command.feet.push_back(1); }
 			if (event.key == Key::T || (solo && event.key == Key::MouseRight)) { frame.command.interact = true; }
+			if (event.key == Key::R || (solo && event.key == Key::MouseLeft)) { frame.command.hands.push_back(0); }
+			if (event.key == Key::T || (solo && event.key == Key::MouseRight)) { frame.command.hands.push_back(1); }
 			if (event.key == Key::Space) { frame.command.pulse = true; }
 			if (event.key == Key::Escape) { frame.togglePause = true; }
 			if (event.key == Key::Tab) { frame.toggleDiagnostics = true; }

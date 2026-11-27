@@ -9,7 +9,10 @@
 #include "ProximityLightComponent.h"
 #include "EscapeScenarioTests.h"
 #include "CaughtCameraComponent.h"
+
 #include "PoseAnimatorComponent.h"
+#include "VoxelDollComponent.h"
+#include "ChapterTests.h"
 #include "AssetManager.h"
 #include "Component/AnimationComponent.h"
 #include "Component/StaticMeshComponent.h"
@@ -34,6 +37,7 @@ namespace PrototypeTests
 {
 	inline int Run()
 	{
+		std::setvbuf(stdout,nullptr,_IONBF,0);
 		int failures = 0;
 		const std::function<void(bool, const char*)> check = [&failures](bool condition, const char* name)
 		{
@@ -41,6 +45,7 @@ namespace PrototypeTests
 			if (!condition) { ++failures; }
 		};
 		PrototypeConfig config;
+		RunChapterTests(check);
 		InputState rawInput;
 		rawInput.PressKey(Key::S);
 		rawInput.PressKey(Key::Period);
@@ -63,6 +68,20 @@ namespace PrototypeTests
 		player.Step({}, 0.0f, 0.01f, config, space, false);
 		check(!player.HasMistake(), "mistake is not emitted every frame");
 		player.Reset({});
+		player.Step(left, 0.0f, 1.0f / 120.0f, config, space, false);
+		for (int frame = 0; frame < 240; ++frame) { player.Step({}, 0.0f, 1.0f / 120.0f, config, space, false); }
+		check(player.GetLastFoot() == 0 && player.GetSpeed() < 0.1f, "stopping clears speed but remembers the last foot");
+		player.Step(left, 0.0f, 1.0f / 120.0f, config, space, false);
+		check(player.GetMode() == PlayerMode::Fallen && player.HasMistake(), "same foot after a long pause still causes a stumble");
+		player.Reset({});
+		player.Step(left, 0.0f, 1.0f / 120.0f, config, space, false);
+		for (int frame = 0; frame < 240; ++frame) { player.Step({}, 0.0f, 1.0f / 120.0f, config, space, false); }
+		PrototypeCommand right;
+		right.feet = { 1 };
+		player.Step(right, 0.0f, 1.0f / 120.0f, config, space, false);
+		check(player.GetMode() == PlayerMode::Moving && player.GetLastFoot() == 1 && player.GetMomentum() < 0.1f,
+			"opposite foot after a pause starts a fresh acceleration combo");
+		player.Reset({});
 		for (int frame = 0; frame < 440; ++frame)
 		{
 			PrototypeCommand command;
@@ -70,6 +89,37 @@ namespace PrototypeTests
 			player.Step(command, 0.0f, 1.0f / 120.0f, config, space, false);
 		}
 		check(player.GetMomentum() > 0.95f && player.GetMode() == PlayerMode::Moving, "alternating rhythm accelerates without stutter");
+		for (int intervalFrames : { 36, 60, 84 })
+		{
+			player.Reset({});
+			bool keepsWalking = true;
+			for (int frame = 0; frame < 360; ++frame)
+			{
+				PrototypeCommand command;
+				if (frame % intervalFrames == 0) { command.feet.push_back(frame / intervalFrames % 2); }
+				player.Step(command, 0.0f, 1.0f / 120.0f, config, space, false);
+				if (frame >= 120) { keepsWalking = keepsWalking && player.GetSpeed() >= config.minimumWalkSpeed - 0.1f; }
+			}
+			check(keepsWalking && player.GetPosition().z > 500.0f && player.GetMode() == PlayerMode::Moving,
+				"slow alternating feet keep minimum walking speed at 0.3, 0.5 or 0.7 second intervals");
+		}
+		for (int frame = 0; frame < 240; ++frame) { player.Step({}, 0.0f, 1.0f / 120.0f, config, space, false); }
+		check(player.GetSpeed() < 0.1f, "walking floor releases after foot input stops");
+		PrototypeConfig walkConfig = config;
+		walkConfig.minimumWalkSpeed = 260.0f;
+		player.Reset({});
+		for (int frame = 0; frame < 180; ++frame)
+		{
+			PrototypeCommand command;
+			if (frame % 60 == 0) { command.feet.push_back(frame / 60 % 2); }
+			player.Step(command, 0.0f, 1.0f / 120.0f, walkConfig, space, false);
+		}
+		check(std::abs(player.GetSpeed() - walkConfig.minimumWalkSpeed) < 0.1f, "minimum walking speed follows tuning independently of sprint momentum");
+		player.SetMode(PlayerMode::Hidden);
+		const Vector3 hiddenPosition = player.GetPosition();
+		player.Step(left, 0.0f, 1.0f / 120.0f, config, space, false);
+		check(player.GetSpeed() == 0.0f && PrototypeMath::Distance(hiddenPosition, player.GetPosition()) == 0.0f,
+			"minimum walking speed does not move a hidden player");
 		space.obstacles.push_back({ { -200.0f, 0.0f, 100.0f }, { 200.0f, 300.0f, 200.0f } });
 		const Vector3 blocked = space.Move({}, { 0.0f, 0.0f, 500.0f }, 30.0f, 120.0f);
 		check(blocked.z <= 71.0f, "swept substeps prevent crossing a thin obstacle");
@@ -235,6 +285,42 @@ namespace PrototypeTests
 			std::unique_ptr<CameraComponent> cameraOwner = std::make_unique<CameraComponent>();
 			CameraComponent* output = cameraOwner.get();
 			object->AddComponent(std::move(cameraOwner));
+			GameplaySpace cameraSpace;
+			OrbitCameraComponent walkCamera;
+			walkCamera.Reset({ 0.0f, 160.0f, 0.0f }, 0.0f, config);
+			for (int index = 0; index < 120; ++index)
+			{
+				walkCamera.Present(*output, { 0.0f, 160.0f, 0.0f }, 200.0f / config.maxSpeed, 1.0f / 120.0f, config, cameraSpace, false);
+			}
+			check(std::abs(walkCamera.GetFov() - config.cameraFov) < 0.01f, "ordinary walking keeps a stable camera field of view");
+			for (int index = 0; index < 360; ++index)
+			{
+				walkCamera.Present(*output, { 0.0f, 160.0f, 0.0f }, 1.0f, 1.0f / 120.0f, config, cameraSpace, false);
+			}
+			check(walkCamera.GetFov() > config.runningCameraFov - 0.1f, "sprinting smoothly opens the camera field of view");
+			cameraSpace.obstacles.push_back({ { 45.0f, 0.0f, -700.0f }, { 70.0f, 300.0f, 100.0f } });
+			walkCamera.Reset({ 0.0f, 160.0f, 0.0f }, 0.0f, config);
+			walkCamera.Present(*output, { 0.0f, 160.0f, 0.0f }, 0.0f, 1.0f / 120.0f, config, cameraSpace, false);
+			check(walkCamera.GetPosition().x < 28.0f, "camera shoulder retracts before entering a side wall");
+			GameObject* dollObject = cameraWorld.CreateGameObject("Procedural doll test", {});
+			auto dollOwner = std::make_unique<VoxelDollComponent>();
+			VoxelDollComponent* dollPose = dollOwner.get();
+			dollObject->AddComponent(std::move(dollOwner));
+			dollPose->Reset({});
+			dollPose->Present({ 0.0f, 0.0f, 20.0f }, 200.0f, 0.0f, 0.0f, PlayerMode::Moving, 0.1f, config);
+			const float gaitPhase = dollPose->GetPhase();
+			dollPose->Present({ 0.0f, 0.0f, 20.0f }, 0.0f, 0.0f, 0.0f, PlayerMode::Moving, 0.1f, config);
+			check(gaitPhase > 0.0f && dollPose->GetPhase() == gaitPhase, "voxel gait follows actual distance and stops at a blocked position");
+			dollPose->Present({ 0.0f, 0.0f, 20.0f }, 200.0f, 0.0f, 0.0f, PlayerMode::Moving, 0.0f, config);
+			check(dollPose->GetPhase() == gaitPhase, "paused voxel animation holds its phase");
+			dollPose->Present({0.0f,0.0f,20.0f},100.0f,90.0f,90.0f,PlayerMode::Crawling,1.0f,config,0.0f,0,true);
+			check(dollObject->GetComponent<TransformComponent>()->GetPosition().y>25.0f,"crawl pose lifts the horizontal doll clear of the floor");
+			dollPose->Present({0.0f,0.0f,20.0f},0.0f,90.0f,90.0f,PlayerMode::Fallen,1.0f,config,0.0f,0,true);
+			check(dollObject->GetComponent<TransformComponent>()->GetPosition().y>25.0f&&dollObject->GetComponent<TransformComponent>()->GetScale().y>0.79f,
+				"crawl stumble retains the low lifted pose instead of burying or standing the doll");
+			dollPose->Reset({0.0f,0.0f,20.0f});
+			dollPose->Present({ 0.0f, 0.0f, 20.0f }, 0.0f, 0.0f, 0.0f, PlayerMode::Fallen, 0.2f, config);
+			check(dollObject->GetComponent<TransformComponent>()->GetRotation().pitch > 60.0f, "stumbling changes the doll pose instead of stretching its mesh");
 			CaughtCameraComponent shot;
 			shot.Begin({}, { 0.0f, 0.0f, 100.0f }, 180.0f);
 			shot.Present(*output, 0.0f, config);
@@ -257,6 +343,46 @@ namespace PrototypeTests
 			shot.Present(*output, 0.0f, config, Vector3{ 20.0f, 300.0f, 5.0f });
 			check(std::abs(object->GetComponent<TransformComponent>()->GetPosition().y - 300.0f) < 0.01f,
 				"capture framing follows the animated head instead of a fixed chest height");
+			bool outsideTentacles=true, wideFraming=true, centered=true;
+			const CaughtCameraFraming tentacleShot{config.caughtTentacleDistance,config.caughtTentacleMinimumDistance,config.caughtTentacleFov,4.0f};
+			for(float yaw:{0.0f,90.0f,-135.0f})
+			{
+				const Vector3 forward=PrototypeMath::Direction(yaw);
+				const Vector3 focus=Vector3{0.0f,config.caughtTentacleAimHeight,0.0f}+forward*35.0f;
+				shot.Begin({},forward*100.0f,yaw);
+				for(int frame=0;frame<=22;++frame)
+				{
+					const float elapsed=frame*0.05f;
+					shot.Present(*output,elapsed,config,focus,tentacleShot);
+					const Vector3 delta=object->GetComponent<TransformComponent>()->GetPosition()-focus;
+					outsideTentacles=outsideTentacles&&delta.Dot(forward)>=config.caughtTentacleMinimumDistance-0.01f;
+					wideFraming=wideFraming&&output->GetVerticalFovDegrees()>=config.caughtTentacleFov-4.01f;
+					const auto rotation=object->GetComponent<TransformComponent>()->GetRotation();
+					centered=centered&&std::abs(std::remainder(rotation.yaw-yaw-180.0f,360.0f))<6.0f
+						&&std::abs(rotation.pitch)<6.0f&&std::abs(rotation.roll)<=config.caughtShakeAngle
+						&&std::abs(delta.Dot(forward)-config.caughtTentacleDistance)<0.01f;
+				}
+			}
+			check(outsideTentacles,"bear jumpscare keeps its camera beyond the extended tentacles for every facing direction");
+			check(wideFraming,"bear jumpscare preserves room for the open torso and tentacles throughout the shake");
+			check(centered,"strong shake keeps the bear near the center at a fixed distance across camera directions");
+			const Vector3 entry{250.0f,160.0f,-300.0f};
+			object->GetComponent<TransformComponent>()->SetPosition(entry);
+			object->GetComponent<TransformComponent>()->SetRotation({12.0f,170.0f,0.0f});
+			output->SetVerticalFovDegrees(80.0f);
+			shot.Begin({}, {0.0f,0.0f,100.0f}, 0.0f);
+			shot.BlendFrom(*output);
+			shot.Present(*output,0.0f,config,Vector3{0.0f,205.0f,35.0f},tentacleShot);
+			check(PrototypeMath::Length(object->GetComponent<TransformComponent>()->GetPosition()-entry)<0.001f
+				&& output->GetVerticalFovDegrees()==80.0f,
+				"capture begins at the current gameplay camera without a cut");
+			shot.Present(*output,config.caughtFadeStart*0.95f,config,Vector3{0.0f,205.0f,35.0f},tentacleShot);
+			const Vector3 grabPosition=object->GetComponent<TransformComponent>()->GetPosition();
+			const float grabRoll=object->GetComponent<TransformComponent>()->GetRotation().roll;
+			shot.Present(*output,config.caughtFadeStart*0.95f,config,Vector3{0.0f,205.0f,35.0f},tentacleShot);
+			check(PrototypeMath::Length(grabPosition-object->GetComponent<TransformComponent>()->GetPosition())<0.001f
+				&& std::abs(grabRoll)<=config.caughtShakeAngle && std::abs(grabPosition.z-455.0f)<0.01f,
+				"camera shake holds its distance and repeats the same pose while paused");
 			GameObject* rig = cameraWorld.CreateGameObject("Head pose test", {});
 			rig->GetComponent<TransformComponent>()->SetPosition({ 10.0f, 20.0f, 30.0f });
 			std::shared_ptr<Model> rigModel = std::make_shared<Model>("Capture test rig", "");

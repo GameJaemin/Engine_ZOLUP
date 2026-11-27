@@ -72,7 +72,8 @@ void ProximityLightComponent::Step(const Vector3& monster, float deltaTime, bool
 {
 	if (!GetGameObject()) { return; }
 	const Vector3 position = GetGameObject()->GetComponent<TransformComponent>()->GetWorldTransform().position;
-	if (!enabled || PrototypeMath::Distance(position, monster) > darkRadius) { Reset(); }
+	const bool sameFloor = std::floor((position.y + 1.0f) / 640.0f) == std::floor((monster.y + 1.0f) / 640.0f);
+	if (!enabled || !sameFloor || PrototypeMath::Distance(position, monster) > darkRadius) { Reset(); }
 	else
 	{
 		elapsed += deltaTime;

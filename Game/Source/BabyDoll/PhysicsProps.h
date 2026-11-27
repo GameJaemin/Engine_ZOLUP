@@ -9,6 +9,7 @@
 
 class World;
 class Model;
+class ObjectSoundComponent;
 
 struct PhysicsPropBinding
 {
@@ -25,6 +26,9 @@ public:
 	void Reset(World& world);
 	void SyncSpace(const World& world, GameplaySpace& space) const;
 	std::size_t GetCount() const { return bindings.size(); }
+	std::vector<Transform> Capture(const World& world) const;
+	void Restore(World& world, const std::vector<Transform>& transforms);
+	void EmitPlayerBumps(const World& world, const Vector3& player, float attemptedSpeed, ObjectSoundComponent& sounds) const;
 
 private:
 	std::vector<PhysicsPropBinding> bindings;

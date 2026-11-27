@@ -5,6 +5,9 @@
 #include "PrototypeInputAdapter.h"
 #include "PhysicsProps.h"
 #include "EscapeScenario.h"
+#include "DoorComponent.h"
+#include "StitchBrainComponent.h"
+#include "HeartComponent.h"
 
 #include "IApplication.h"
 #include "ObjectID.h"
@@ -28,6 +31,11 @@ class ProximityLightComponent;
 class CaughtCameraComponent;
 class PointLightComponent;
 class Model;
+class VoxelDollComponent;
+class TraversalComponent;
+class HandInventoryComponent;
+class ObjectSoundComponent;
+class StitchVisualComponent;
 
 struct PrototypeCheckpoint
 {
@@ -36,6 +44,13 @@ struct PrototypeCheckpoint
 	std::array<HideTableSnapshot, 2> tables;
 	bool valid = false;
 	EscapeProgress progress;
+	std::array<int, 2> hands{};
+	DoorState door;
+	int playerLastFoot = -1;
+	StitchSnapshot monster;
+	std::vector<Transform> props;
+	HeartComponent::Snapshot heart;
+	std::uint64_t soundSequence = 0;
 };
 
 /** 조립과 실행 순서만 담당한다. 컴포넌트는 World 소유이며 이 앱이 World보다 먼저 참조를 비운다. */
@@ -55,8 +70,14 @@ private:
 	GameObject* Box(const std::string& name, const Vector3& center, const Vector3& size, const Vector3& color, GameObject* parent = nullptr, bool collides = true);
 	bool BuildRoom();
 	bool BuildMonster();
+	bool BuildChapter();
+	void UseHand(int hand);
+	void TeleportForTest(const Vector3& position);
+	void SaveCheckpoint();
+	bool LoadCheckpoint();
 	void SetCaptured(bool captured);
-	void ResetRun();
+	void ResetRun(bool clearSaved = true);
+	void ClearCheckpointFile();
 	void RestoreCheckpoint();
 	void BeginCaught();
 	void ApplyProgressVisuals();
@@ -95,6 +116,19 @@ private:
 	PoseAnimatorComponent* animator = nullptr;
 	RearCameraComponent* rearView = nullptr;
 	CaughtCameraComponent* caughtCamera = nullptr;
+	VoxelDollComponent* doll = nullptr;
+	TraversalComponent* traversal = nullptr;
+	HandInventoryComponent* inventory = nullptr;
+	ObjectSoundComponent* objectSounds = nullptr;
+	DoorComponent* exitDoor = nullptr;
+	StitchVisualComponent* stitchVisual = nullptr;
+	GameObject* stitchVisualObject = nullptr;
+	bool useVoxelStitch = true;
+	GameObject* secondKeyVisual = nullptr;
+	GameObject* secondCarriedKey = nullptr;
+	Vector3 elevatorPosition{ 1700.0f, 640.0f, 1350.0f };
+	bool upperCheckpointSaved = false;
+	bool checkpointRequested = false;
 	PointLightComponent* caughtLight = nullptr;
 	std::vector<ProximityLightComponent*> lamps;
 	std::array<HideTableComponent*, 2> tables{};
@@ -114,6 +148,7 @@ private:
 	Vector3 exitStart;
 	Vector3 exitDestination;
 	Vector3 previousPlayerPosition;
+	float previousPlayerYaw = 0.0f;
 	Vector3 previousMonsterPosition;
 	float previousMonsterYaw = 180.0f;
 	float monsterAnimationSpeed = 0.0f;
