@@ -6,6 +6,9 @@
 class AgentMovement
 {
 public:
+	struct Motion { Vector3 position; float yaw; float turnVelocity; float linearSpeed; float actualSpeed; };
+	Motion CaptureMotion() const { return {position,yaw,turnVelocity,linearSpeed,actualSpeed}; }
+	void RestoreMotion(const Motion& motion) { Reset(motion.position,motion.yaw); turnVelocity=motion.turnVelocity; linearSpeed=motion.linearSpeed; actualSpeed=motion.actualSpeed; }
 	void Reset(const Vector3& spawn, float facingYaw);
 	void InvalidatePath();
 	void Step(const Vector3& goal, float targetSpeed, float deltaTime, const PrototypeConfig& config, const GameplaySpace& space);

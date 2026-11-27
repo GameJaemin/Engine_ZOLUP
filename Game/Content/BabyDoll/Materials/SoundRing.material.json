@@ -1,0 +1,7 @@
+{
+  "baseColor": [0.04, 0.16, 0.18],
+  "alphaMode": "Blend",
+  "baseColorAlpha": 0.6,
+  "metallic": 0,
+  "emissiveTexture": "Game/Content/BabyDoll/Materials/SoundRing.png"
+}

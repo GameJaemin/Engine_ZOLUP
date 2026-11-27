@@ -8,6 +8,24 @@ struct PrototypeObstacle
 	Vector3 minimum;
 	Vector3 maximum;
 	bool enabled = true;
+	bool groundOnly = false;
+	// 양수이면 이 높이 이하의 낮은 자세만 통과한다. 카메라를 막는 실물 벽은 아니다.
+	float passHeight = 0.0f;
+};
+
+struct GroundPatch
+{
+	Vector3 minimum;
+	Vector3 maximum;
+	float startHeight = 0.0f;
+	float endHeight = 0.0f;
+	int steps = 0;
+	bool Contains(const Vector3& point) const { return point.x >= minimum.x && point.x <= maximum.x && point.z >= minimum.z && point.z <= maximum.z; }
+	float Height(const Vector3& point) const
+	{
+		const float t = std::clamp((point.z - minimum.z) / (std::max)(1.0f, maximum.z - minimum.z), 0.0f, 1.0f);
+		return startHeight + (endHeight - startHeight) * (steps > 0 ? std::ceil(t * steps - 0.0001f) / steps : t);
+	}
 };
 
 /** 테스트룸 전용 충돌/길찾기 어댑터. 렌더 객체나 다른 게임 컴포넌트를 소유하지 않는다. */
@@ -15,6 +33,8 @@ class GameplaySpace
 {
 public:
 	std::vector<PrototypeObstacle> obstacles;
+	std::vector<GroundPatch> groundPatches;
+	std::optional<float> GroundHeight(const Vector3& point, float previousHeight) const;
 	float halfWidth = 2200.0f;
 	float halfDepth = 1800.0f;
 

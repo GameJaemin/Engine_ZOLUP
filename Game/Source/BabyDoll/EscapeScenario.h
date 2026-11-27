@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GameplaySpace.h"
+#include "GrayboxLayout.h"
 #include <array>
 
 /** 한 층 탈출 프로토타입의 배치와 목표. 월드/렌더러 없이 진행 규칙을 검사한다. */
@@ -11,17 +12,21 @@ struct EscapeLayout
 	Vector3 escapePosition{ 1750.0f, 0.0f, -1100.0f };
 	float interactionDistance = 220.0f;
 	float escapeRadius = 180.0f;
+	static constexpr Vector3 ElevatorPosition{1700.0f, 640.0f, 1350.0f};
+	static constexpr float ElevatorHalfWidth = 130.0f;
 	static constexpr std::array<Vector3, 4> Exhibits{{ {-1100.0f, 0.0f, -200.0f}, {1100.0f, 0.0f, 200.0f}, {-300.0f, 0.0f, 700.0f}, {500.0f, 0.0f, -700.0f} }};
 	static constexpr std::array<Vector3, 2> Tables{{ {-350.0f, 0.0f, -300.0f}, {-1650.0f, 0.0f, 600.0f} }};
 
 	std::vector<PrototypeObstacle> Partitions() const
 	{
-		return {
+		std::vector<PrototypeObstacle> result{
 			{ {-825.0f, 0.0f, -1800.0f}, {-775.0f, 520.0f, 700.0f} },
 			{ {-825.0f, 0.0f, 1300.0f}, {-775.0f, 520.0f, 1800.0f} },
 			{ {775.0f, 0.0f, -1800.0f}, {825.0f, 520.0f, -1400.0f} },
 			{ {775.0f, 0.0f, -800.0f}, {825.0f, 520.0f, 1800.0f} }
 		};
+		result.insert(result.end(),GrayboxLayout::Screens.begin(),GrayboxLayout::Screens.end());
+		return result;
 	}
 	PrototypeObstacle Door() const { return { doorPosition + Vector3{-25.0f, 0.0f, -300.0f}, doorPosition + Vector3{25.0f, 430.0f, 300.0f} }; }
 };
@@ -35,6 +40,15 @@ struct EscapeProgress
 	bool UnlockExit() { if (stage != EscapeStage::ReturnToExit) { return false; } stage = EscapeStage::ReachExit; return true; }
 	bool IsDoorOpen() const { return stage == EscapeStage::ReachExit || stage == EscapeStage::Cleared; }
 	bool HasKey() const { return stage != EscapeStage::FindKey; }
+	bool TryEscapeElevator(const Vector3& position, PlayerMode mode)
+	{
+		const Vector3 offset = position - EscapeLayout::ElevatorPosition;
+		if (stage == EscapeStage::Cleared || (mode != PlayerMode::Moving && mode != PlayerMode::Fallen)
+			|| std::abs(offset.y) > 5.0f || std::abs(offset.x) > EscapeLayout::ElevatorHalfWidth
+			|| std::abs(offset.z) > EscapeLayout::ElevatorHalfWidth) { return false; }
+		stage = EscapeStage::Cleared;
+		return true;
+	}
 	bool TryEscape(const Vector3& position, PlayerMode mode, const EscapeLayout& layout)
 	{
 		if (stage != EscapeStage::ReachExit || mode != PlayerMode::Moving || position.x <= layout.doorPosition.x + 100.0f || PrototypeMath::Distance(position, layout.escapePosition) > layout.escapeRadius) { return false; }
@@ -47,7 +61,7 @@ struct EscapeProgress
 		{
 		case EscapeStage::FindKey: return "Find the brass key in the west storage room";
 		case EscapeStage::ReturnToExit: return "Return to the locked exit and use the key";
-		case EscapeStage::ReachExit: return "The gate is open. Reach the green escape beacon";
+		case EscapeStage::ReachExit: return "Reach the hidden elevator upstairs";
 		case EscapeStage::Cleared: return "You escaped the exhibition";
 		}
 		return "";

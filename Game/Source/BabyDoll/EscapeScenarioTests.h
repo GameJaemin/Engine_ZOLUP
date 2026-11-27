@@ -18,6 +18,39 @@ inline void RunEscapeScenarioTests(const std::function<void(bool, const char*)>&
 	room.obstacles = layout.Partitions();
 	const std::size_t gate = room.obstacles.size();
 	room.obstacles.push_back(layout.Door());
+	const Vector3 wallLamp{-1150.0f, 460.0f, 500.0f};
+	const float wallRange = GrayboxLayout::FitCeilingPointRange(wallLamp, config.lampRange, room.obstacles);
+	check((wallLamp - Vector3{-825.0f, 460.0f, 500.0f}).Length() < wallRange
+		&& (wallLamp - Vector3{-775.0f, 460.0f, 500.0f}).Length() > wallRange
+		&& (wallLamp - Vector3{-825.0f, 520.0f, 500.0f}).Length() > wallRange,
+		"ceiling point light reaches the near wall but stops before the far face and top edge");
+	const Vector3 keyLamp = GrayboxLayout::Lamps[4];
+	const float keyRange = GrayboxLayout::FitCeilingPointRange(keyLamp, config.lampRange, room.obstacles);
+	check((keyLamp - Vector3{-825.0f, 220.0f, 1000.0f}).Length() < keyRange
+		&& (keyLamp - Vector3{-775.0f, 460.0f, 685.0f}).Length() > keyRange,
+		"Key Gallery ceiling point light reaches the doorway while staying short of the partition back");
+	const Vector3 arrivalLamp = GrayboxLayout::Lamps[0];
+	const float arrivalRange = GrayboxLayout::FitCeilingPointRange(arrivalLamp, config.lampRange, room.obstacles);
+	check((arrivalLamp - Vector3{200.0f, 0.0f, -1400.0f}).Length() < arrivalRange && arrivalRange < config.lampRange,
+		"open arrival area gets a wider ceiling point light that reaches the floor");
+	std::vector<PrototypeObstacle> lightWalls = room.obstacles;
+	lightWalls.insert(lightWalls.end(), GrayboxLayout::UpperRoomShell.begin(), GrayboxLayout::UpperRoomShell.end());
+	bool lampsReachFloor = true;
+	bool upstairsStopsAtSlab = true;
+	for (const Vector3& fixture : GrayboxLayout::Lamps)
+	{
+		const auto light = GrayboxLayout::FitGalleryPointLight(fixture, config.lampRange, lightWalls);
+		const bool upstairs = fixture.y >= 640.0f;
+		const Vector3 sample{fixture.x + (upstairs ? 80.0f : 100.0f), upstairs ? 640.0f : 0.0f, fixture.z};
+		lampsReachFloor &= (light.position - sample).Length() <= light.range * (upstairs ? 0.93f : 0.80f);
+		upstairsStopsAtSlab &= !upstairs || light.position.y - light.range > 600.0f;
+	}
+	check(lampsReachFloor, "all gallery point lights reach a floor area with room for attenuation");
+	check(upstairsStopsAtSlab, "lowered upper gallery lights stay above the slab underside");
+	const auto loweredWallLight = GrayboxLayout::FitGalleryPointLight(wallLamp, config.lampRange, lightWalls);
+	check(loweredWallLight.position.y < wallLamp.y
+		&& (loweredWallLight.position - Vector3{-775.0f, loweredWallLight.position.y, 500.0f}).Length() > loweredWallLight.range,
+		"lowering a gallery light to reach the floor still keeps it out of the back of the partition");
 	for (const auto& point : EscapeLayout::Exhibits) { room.obstacles.push_back({point + Vector3{-120.0f, 0.0f, -120.0f}, point + Vector3{120.0f, 320.0f, 120.0f}}); }
 	for (const auto& point : EscapeLayout::Tables) { room.obstacles.push_back({point + Vector3{-160.0f, 100.0f, -120.0f}, point + Vector3{160.0f, 135.0f, 120.0f}}); }
 	StitchBrainComponent patrol;
@@ -84,8 +117,25 @@ inline void RunEscapeScenarioTests(const std::function<void(bool, const char*)>&
 	check(progress.UnlockExit(), "carried key unlocks the exit");
 	room.obstacles[gate].enabled = !progress.IsDoorOpen();
 	check(walkTo(layout.escapePosition), "opened exit provides a collision-safe route to the escape beacon");
-	check(!progress.TryEscape(layout.escapePosition, PlayerMode::Caught, layout), "capture wins over escape on the same tick");
+	check(!progress.TryEscape(layout.escapePosition, PlayerMode::Caught, layout), "the legacy ground-floor exit rejects a captured player");
 	check(progress.TryEscape(walker.GetPosition(), walker.GetMode(), layout) && !progress.TryEscape(walker.GetPosition(), walker.GetMode(), layout), "complete play route clears exactly once");
+	const Vector3 elevator = EscapeLayout::ElevatorPosition;
+	const Vector3 platformCorner = elevator + Vector3{120.0f, 0.0f, -120.0f};
+	StitchObservation elevatorChase;
+	elevatorChase.playerPosition = platformCorner;
+	pursuer.Reset(platformCorner + Vector3{0.0f, 0.0f, -20.0f});
+	pursuer.ChangeState(StitchState::Chase);
+	pursuer.Step(elevatorChase, 1.0f / 120.0f, config, room);
+	EscapeProgress elevatorProgress{EscapeStage::ReachExit};
+	check(pursuer.HasCaughtPlayer() && elevatorProgress.TryEscapeElevator(platformCorner, PlayerMode::Moving)
+		&& !elevatorProgress.TryEscapeElevator(platformCorner, PlayerMode::Moving),
+		"the elevator platform corner clears once even when a pursuing enemy is within capture distance");
+	EscapeProgress outsideElevator{EscapeStage::ReachExit};
+	check(!outsideElevator.TryEscapeElevator(elevator + Vector3{131.0f, 0.0f, 0.0f}, PlayerMode::Moving)
+		&& !outsideElevator.TryEscapeElevator({elevator.x, 0.0f, elevator.z}, PlayerMode::Moving)
+		&& !outsideElevator.TryEscapeElevator(elevator, PlayerMode::Caught)
+		&& outsideElevator.TryEscapeElevator(platformCorner, PlayerMode::Fallen),
+		"the elevator requires an uncaught player inside the actual upstairs platform");
 	const EscapeProgress entranceCheckpoint;
 	progress = entranceCheckpoint;
 	room.obstacles[gate].enabled = !progress.IsDoorOpen();

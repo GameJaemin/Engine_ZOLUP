@@ -11,6 +11,9 @@
 #include "StitchBrainComponent.h"
 #include "RearCameraComponent.h"
 #include "ProximityLightComponent.h"
+#include "CaughtCameraComponent.h"
+#include "TraversalComponent.h"
+#include "HandInventoryComponent.h"
 
 #include "AssetManager.h"
 #include "Component/SceneCapture2DComponent.h"
@@ -26,7 +29,31 @@ namespace
 	constexpr ImU32 Pink = IM_COL32(247, 139, 174, 255);
 	constexpr ImU32 Cyan = IM_COL32(105, 219, 224, 255);
 	constexpr ImU32 Muted = IM_COL32(157, 167, 185, 255);
+	constexpr float FootCueHalfWidth = 25.0f;
 	constexpr ImGuiWindowFlags OverlayFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
+
+	void DrawFootCue(ImDrawList& draw, const ImVec2& center, bool left, bool next, const char* key)
+	{
+		const ImU32 accent = left ? Pink : Cyan;
+		const ImU32 mark = next ? accent : IM_COL32(146, 153, 165, 155);
+		const ImVec2 minimum(center.x - FootCueHalfWidth, center.y - 34.0f);
+		const ImVec2 maximum(center.x + FootCueHalfWidth, center.y + 34.0f);
+		draw.AddRectFilled(minimum, maximum, IM_COL32(13, 16, 22, next ? 230 : 158), 10.0f);
+		draw.AddRect(minimum, maximum, next ? accent : IM_COL32(130, 138, 151, 85), 10.0f, 0, next ? 2.0f : 1.0f);
+
+		const float side = left ? 1.0f : -1.0f;
+		draw.AddEllipseFilled(ImVec2(center.x - side * 2.0f, center.y - 9.0f), ImVec2(8.0f, 12.0f), mark, side * 0.18f);
+		draw.AddEllipseFilled(ImVec2(center.x + side * 1.0f, center.y + 2.0f), ImVec2(5.0f, 7.0f), mark);
+		draw.AddCircleFilled(ImVec2(center.x + side * 6.0f, center.y - 23.0f), 3.7f, mark);
+		draw.AddCircleFilled(ImVec2(center.x - side * 1.0f, center.y - 25.0f), 2.9f, mark);
+		draw.AddCircleFilled(ImVec2(center.x - side * 7.0f, center.y - 23.0f), 2.4f, mark);
+		draw.AddCircleFilled(ImVec2(center.x - side * 11.0f, center.y - 19.0f), 1.9f, mark);
+
+		const float fontSize = ImGui::GetFontSize() * 1.3f;
+		ImFont* font = ImGui::GetFont();
+		const float width = font->CalcTextSizeA(fontSize, 100.0f, 0.0f, key).x;
+		draw.AddText(font, fontSize, ImVec2(center.x - width * 0.5f, center.y + 13.0f), mark, key);
+	}
 }
 
 void BabyDollApplication::DrawHud()
@@ -35,20 +62,37 @@ void BabyDollApplication::DrawHud()
 	const ImVec2 origin = viewport->WorkPos;
 	const ImVec2 size = viewport->WorkSize;
 	ImDrawList* draw = ImGui::GetForegroundDrawList();
+	if (player->GetMode() == PlayerMode::Caught && !inspect)
+	{
+		const ImVec2 end(origin.x + size.x, origin.y + size.y);
+		const int edgeAlpha = static_cast<int>(95.0f * (1.0f - CaughtCameraComponent::GetFade(caughtTime, config)));
+		draw->AddRect(origin, end, IM_COL32(70, 0, 4, edgeAlpha), 0.0f, 0, 30.0f);
+		draw->AddRectFilled(origin, end, IM_COL32(0, 0, 0, static_cast<int>(255.0f * CaughtCameraComponent::GetFade(caughtTime, config))));
+		if (paused)
+		{
+			const char* message = "PAUSED - Esc to resume";
+			const ImVec2 textSize = ImGui::CalcTextSize(message);
+			draw->AddText(ImVec2(origin.x + (size.x - textSize.x) * 0.5f, origin.y + size.y - 50.0f), IM_COL32(235, 235, 235, 255), message);
+		}
+		return;
+	}
 	draw->AddText(ImVec2(origin.x + 28.0f, origin.y + 22.0f), Pink, "B A B Y D O L L");
-	draw->AddText(ImVec2(origin.x + 28.0f, origin.y + 43.0f), Muted, "THE EXHIBITION  /  ESCAPE PROTOTYPE");
-	if (!inspect)
+	draw->AddText(ImVec2(origin.x + 28.0f, origin.y + 43.0f), Muted, grayboxReview?"LAYOUT REVIEW / 200cm GRID / SIMULATION PAUSED":GrayboxLayout::Zone(player->GetPosition()));
+	if(grayboxReview) {return;}
+	if (!inspect && showDebug)
 	{
 		draw->AddText(ImVec2(origin.x + 28.0f, origin.y + 68.0f), Cyan, progress.Objective());
-		const Vector3 goal = !progress.HasKey() ? layout.keyPosition : progress.IsDoorOpen() ? layout.escapePosition : layout.doorPosition;
+		const Vector3 goal = !progress.HasKey() ? layout.keyPosition : progress.IsDoorOpen() ? EscapeLayout::ElevatorPosition : layout.doorPosition;
 		const Vector3 delta = goal - player->GetPosition();
 		const float angle = std::remainder(std::atan2(delta.x, delta.z) * 57.2957795f - orbit->GetYaw(), 360.0f);
 		char guide[160];
-		std::snprintf(guide, sizeof(guide), "%s  |  %.1f m  |  %s", !progress.HasKey() ? "BRASS KEY" : progress.IsDoorOpen() ? "ESCAPE" : "EXIT GATE", PrototypeMath::Length(delta) / 100.0f,
+		std::snprintf(guide, sizeof(guide), "%s  |  %.1f m  |  %s", !progress.HasKey() ? "BRASS KEY" : progress.IsDoorOpen() ? "ELEVATOR" : "EXIT GATE", PrototypeMath::Length(delta) / 100.0f,
 			std::abs(angle) < 20.0f ? "AHEAD" : std::abs(angle) > 150.0f ? "BEHIND" : angle > 0.0f ? "RIGHT" : "LEFT");
 		draw->AddText(ImVec2(origin.x + 28.0f, origin.y + 88.0f), Muted, guide);
 		if (soundPulseTime > 0.0f) { draw->AddText(ImVec2(origin.x + 28.0f, origin.y + 113.0f), Pink, "LOUD NOISE - the creature may have heard you"); }
 	}
+	if(showDebug||inspect)
+	{
 	ImGui::SetNextWindowPos(ImVec2(origin.x + size.x - 28.0f, origin.y + 22.0f), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
 	ImGui::SetNextWindowBgAlpha(0.82f);
 	ImGui::Begin("AI status", nullptr, OverlayFlags);
@@ -57,6 +101,7 @@ void BabyDollApplication::DrawHud()
 	ImGui::TextDisabled("%s", animator->GetClipName().data());
 	if (!inspect) { ImGui::Text("Distance  %.1f m", PrototypeMath::Distance(player->GetPosition(), brain->GetPosition()) / 100.0f); }
 	ImGui::End();
+	}
 	if (inspect) { return; }
 	ImGui::SetNextWindowPos(ImVec2(origin.x + 28.0f, origin.y + size.y - 28.0f), ImGuiCond_Always, ImVec2(0.0f, 1.0f));
 	ImGui::SetNextWindowBgAlpha(0.88f);
@@ -74,30 +119,60 @@ void BabyDollApplication::DrawHud()
 		windowDraw->AddLine(ImVec2(graph.x + index - 1.0f, graph.y + 24.0f + value(index - 1)), ImVec2(graph.x + index, graph.y + 24.0f + value(index)), Pink, 1.5f);
 	}
 	ImGui::Dummy(ImVec2(150.0f, 46.0f));
-	ImGui::TextDisabled("%s", player->GetMode() == PlayerMode::Hidden ? "HIDDEN" : player->GetMode() == PlayerMode::Fallen ? "STUMBLED" : player->GetMode() == PlayerMode::Caught ? "CAUGHT" : "EXPOSED");
+	ImGui::TextDisabled("%s", player->GetMode() == PlayerMode::Hidden || traversal->IsHidden() ? "HIDDEN" : player->GetMode() == PlayerMode::Ladder ? "CLIMBING" : player->GetMode() == PlayerMode::Fallen ? "STUMBLED" : player->GetMode() == PlayerMode::Caught ? "CAUGHT" : "EXPOSED");
 	ImGui::End();
-	ImGui::SetNextWindowPos(ImVec2(origin.x + size.x * 0.5f, origin.y + size.y - 28.0f), ImGuiCond_Always, ImVec2(0.5f, 1.0f));
+	const PlayerMode mode = player->GetMode();
+	const bool traversalSteps = mode == PlayerMode::Ladder || mode == PlayerMode::Crawling;
+	const bool showFootCues = captured && !paused && progress.stage != EscapeStage::Cleared
+		&& (traversalSteps || (mode == PlayerMode::Moving && !freeMove));
+	const int lastFoot = traversalSteps ? traversal->GetLastFoot() : player->GetLastFoot();
+	const float centerX = origin.x + size.x * 0.5f;
+	const float bottom = origin.y + size.y - 28.0f;
+	ImGui::SetNextWindowPos(ImVec2(centerX, bottom), ImGuiCond_Always, ImVec2(0.5f, 1.0f));
 	ImGui::SetNextWindowBgAlpha(0.8f);
-	ImGui::Begin("Controls", nullptr, OverlayFlags);
-	if (freeMove) { ImGui::Text("W A S D   Move    Shift   Run"); }
-	else
-	{
-		ImGui::TextColored(leftFootDown ? ImVec4(1.0f, 0.85f, 0.9f, 1.0f) : ImVec4(0.97f, 0.55f, 0.68f, 1.0f), soloControls ? "[ S ]  Left foot" : "[ S ]  P1 Left foot");
-		ImGui::SameLine();
-		ImGui::TextColored(rightFootDown ? ImVec4(0.85f, 1.0f, 1.0f, 1.0f) : ImVec4(0.4f, 0.85f, 0.9f, 1.0f), soloControls ? "[ D ]  Right foot" : "[ . ]  P2 Right foot");
-	}
-	ImGui::TextDisabled("Mouse  Look    T  Use / Hide / Leave    Space  Make noise");
+	ImGui::Begin("Controls", nullptr, OverlayFlags | ImGuiWindowFlags_NoInputs);
+	if (mode == PlayerMode::Fallen) { ImGui::TextColored(ImVec4(1.0f, 0.65f, 0.55f, 1.0f), "Same foot twice - recovering..."); }
+	else if (freeMove && !traversalSteps) { ImGui::TextUnformatted("W A S D   Move    Shift   Run"); }
+	ImGui::TextDisabled(soloControls ? "Mouse  Look    Right click  Use / Hide / Leave" : "Mouse  Look    T  Use / Hide / Leave");
 	ImGui::TextDisabled("Esc  Pause    Tab  Diagnostics");
+	if (showFootCues)
+	{
+		const ImVec2 panelPosition = ImGui::GetWindowPos();
+		const ImVec2 panelSize = ImGui::GetWindowSize();
+		const float cueY = panelPosition.y + panelSize.y * 0.5f;
+		constexpr float EdgeToCueCenter = 8.0f + FootCueHalfWidth;
+		DrawFootCue(*draw, ImVec2(panelPosition.x - EdgeToCueCenter, cueY), true, lastFoot != 0, "S");
+		DrawFootCue(*draw, ImVec2(panelPosition.x + panelSize.x + EdgeToCueCenter, cueY), false, lastFoot != 1, soloControls ? "D" : ".");
+	}
 	ImGui::End();
+	if(player->GetMode()==PlayerMode::Hanging)
+	{
+		ImGui::SetNextWindowPos(ImVec2(origin.x+size.x*0.5f,origin.y+size.y-150.0f),ImGuiCond_Always,ImVec2(0.5f,1.0f));
+		ImGui::Begin("Grip",nullptr,OverlayFlags);
+		ImGui::ProgressBar(traversal->GetStamina()/config.hangDuration,ImVec2(180.0f,14.0f),"Grip"); ImGui::End();
+	}
 	if (captured)
 	{
 		const ImVec2 center(origin.x + size.x * 0.5f, origin.y + size.y * 0.5f);
 		draw->AddCircleFilled(center, 2.0f, IM_COL32(235, 240, 245, 180));
 		const int target = FindInteraction();
 		const int objective = FindObjectiveInteraction();
+		const int link=traversal->Find(player->GetPosition(),orbit->GetYaw(),&space);
+		if(traversal->IsActive()||link>=0)
+		{
+			const auto* active=traversal->GetLink();
+			const auto kind=active?active->kind:traversal->links[link].kind;
+			const char* action=kind==TraversalKind::Bar?(active?"Release bar":"Hang from bar"):kind==TraversalKind::Ladder?"Ladder - alternate feet":active?"Crawl to the exit":"Enter crawl passage";
+			const char* keys=kind==TraversalKind::Bar?(soloControls?"Left click":"R"):kind==TraversalKind::Crawl&&active?(soloControls?"S / D":"S / ."):(soloControls?"Left / Right click":"R / T");
+			char prompt[160]; std::snprintf(prompt,sizeof(prompt),"[ %s ]  %s",keys,action);
+			draw->AddText(ImVec2(center.x-120.0f,center.y+55.0f),Cyan,prompt);
+		}
 		if (target >= 0 || objective || player->GetMode() == PlayerMode::Hidden)
 		{
-			const char* text = player->GetMode() == PlayerMode::Hidden ? "[ T ]  Leave hiding place" : objective == 1 ? "[ T ]  Take brass key" : objective == 2 ? "[ T ]  Unlock exit gate" : objective == 3 ? "[ T ]  Locked - brass key required" : "[ T ]  Hide under table";
+			const char* action = player->GetMode() == PlayerMode::Hidden ? "Leave hiding place" : objective == 1 ? "Take brass key" : objective == 2 ? "Open gate" : objective == 3 ? "Locked - use the hand holding the key" : objective==4?"Close gate":"Hide under table";
+			char prompt[128];
+			std::snprintf(prompt, sizeof(prompt), "[ %s ]  %s",objective?(soloControls?"Left / Right click":"R / T"):(soloControls ? "Right click" : "T"), action);
+			const char* text = prompt;
 			const ImVec2 textSize = ImGui::CalcTextSize(text);
 			draw->AddText(ImVec2(center.x - textSize.x * 0.5f, center.y + 34.0f), Cyan, text);
 		}
@@ -107,17 +182,19 @@ void BabyDollApplication::DrawHud()
 		const ImVec2 textSize = ImGui::CalcTextSize(toast.c_str());
 		draw->AddText(ImVec2(origin.x + (size.x - textSize.x) * 0.5f, origin.y + 145.0f), Cyan, toast.c_str());
 	}
-	if (player->GetMode() == PlayerMode::Caught)
-	{
-		const int alpha = static_cast<int>(std::clamp(caughtTime / 1.2f, 0.0f, 1.0f) * 240.0f);
-		draw->AddRectFilled(origin, ImVec2(origin.x + size.x, origin.y + size.y), IM_COL32(12, 5, 12, alpha));
-		draw->AddText(ImVec2(origin.x + size.x * 0.5f - 30.0f, origin.y + size.y * 0.5f), Pink, "CAUGHT");
-	}
 }
 
 void BabyDollApplication::DrawPanel()
 {
 	const ImGuiViewport* viewport = ImGui::GetMainViewport();
+	if (grayboxReview)
+	{
+		ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x - 28.0f, viewport->WorkPos.y + 22.0f), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+		ImGui::Begin("Layout controls", nullptr, OverlayFlags);
+		if (ImGui::Button("Return to gameplay view")) { grayboxReview = false; }
+		ImGui::End();
+		return;
+	}
 	ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 28.0f, viewport->WorkPos.y + 185.0f), ImGuiCond_Always);
 	ImGui::SetNextWindowSize(ImVec2(355.0f, 0.0f), ImGuiCond_Always);
 	ImGui::SetNextWindowSizeConstraints(ImVec2(355.0f, 100.0f), ImVec2(355.0f, (std::max)(200.0f, viewport->WorkSize.y - 120.0f)));
@@ -128,13 +205,13 @@ void BabyDollApplication::DrawPanel()
 		ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.7f, 1.0f), "YOU ESCAPED");
 		ImGui::Text("Time  %02d:%02d", static_cast<int>(clearTime) / 60, static_cast<int>(clearTime) % 60);
 		ImGui::Text("Caught  %d time(s)", deaths);
-		ImGui::TextWrapped("You found the key, unlocked the gate and escaped the exhibition.");
+		ImGui::TextWrapped("You reached the hidden elevator and escaped the exhibition.");
 		if (ImGui::Button("Play again", ImVec2(-1.0f, 36.0f))) { ResetRun(); inspect = paused = false; SetCaptured(true); }
 		ImGui::End();
 		return;
 	}
-	ImGui::TextWrapped("One body. Two players. Find the brass key in west storage and escape through the red gate.");
-	ImGui::TextWrapped("Storage opens to the north through gold pillars. The exit is in the southeast. Alternate feet, watch your heartbeat, and use tables to hide.");
+	ImGui::TextWrapped("One body. Two players. Explore the exhibition and reach the hidden elevator upstairs.");
+	ImGui::TextWrapped("GRAYBOX WALKTHROUGH: arrival > exhibition loop > key gallery > locked gate > upper gallery. Slow steps stay quiet; tables and the low passage offer escape routes.");
 	ImGui::TextDisabled("Audio is not available in this build.");
 	ImGui::TextWrapped("Use the noise ring, threat cue, lights and rear CCTV to read danger. Space makes a loud distraction.");
 	ImGui::Separator();
@@ -153,6 +230,10 @@ void BabyDollApplication::DrawPanel()
 		}
 	}
 	ImGui::SeparatorText("Play mode");
+	if(ImGui::Button("Layout overview (for review)",ImVec2(-1.0f,28.0f)))
+	{
+		grayboxReview=true; paused=true; inspect=false; SetCaptured(false);
+	}
 	const bool wasSolo = soloControls;
 	if (ImGui::RadioButton("Single player (S / D)", soloControls)) { soloControls = true; }
 	if (ImGui::RadioButton("Co-op (S / period)", !soloControls)) { soloControls = false; }
@@ -165,11 +246,13 @@ void BabyDollApplication::DrawPanel()
 	if (ImGui::Button(inspect || gameTime == 0.0f ? "Begin escape" : "Resume", ImVec2(-1.0f, 36.0f)))
 	{
 		if (inspect) { ResetRun(); }
+		grayboxReview=false;
 		inspect = paused = false;
 		SetCaptured(true);
 	}
 	if (gameTime > 0.0f && ImGui::Button("Restart from entrance", ImVec2(-1.0f, 28.0f))) { ResetRun(); inspect = paused = false; SetCaptured(true); }
 	if (!ImGui::CollapsingHeader("Developer tools")) { ImGui::End(); return; }
+	if (progress.stage != EscapeStage::Cleared && ImGui::Button("Preview jumpscare", ImVec2(-1.0f, 28.0f))) { previewCaughtRequested = true; }
 	if (!inspect && ImGui::Button("Model preview", ImVec2(-1.0f, 28.0f)))
 	{
 		inspect = paused = true;
@@ -190,10 +273,22 @@ void BabyDollApplication::DrawPanel()
 	ImGui::Checkbox("Preview CCTV (debug)", &previewRear);
 	ImGui::SliderFloat("CCTV saturation", &config.rearSaturation, 0.0f, 1.0f, "%.2f");
 	ImGui::Checkbox("Proximity lamps", &lightsEnabled);
+	ImGui::Checkbox("Voxel Stitches / imported Scissorman",&useVoxelStitch);
+	if(ImGui::TreeNode("Feature test positions"))
+	{
+		if(ImGui::Button("Ladder bottom")) {TeleportForTest({1700.0f,0.0f,400.0f});}
+		if(ImGui::Button("Ladder top")) {TeleportForTest({1700.0f,640.0f,550.0f});}
+		if(ImGui::Button("Crawl entrance")) {TeleportForTest({-650.0f,0.0f,1100.0f});}
+		if(ImGui::Button("Crawl far entrance")) {TeleportForTest({250.0f,0.0f,1100.0f});}
+		if(ImGui::Button("Hanging bar")) {TeleportForTest({250.0f,0.0f,-1250.0f});}
+		if(ImGui::Button("Stair approach")) {TeleportForTest({1500.0f,0.0f,-1100.0f});}
+		if(ImGui::Button("Upper room")) {TeleportForTest({1500.0f,640.0f,700.0f});}
+		ImGui::TreePop();
+	}
 	if (ImGui::Button("Drop physics props again")) { dropPropsRequested = true; }
 	if (ImGui::Button("Reset test room")) { resetRequested = true; }
 	ImGui::Separator();
-	ImGui::TextWrapped("Co-op input, rear CCTV, proximity lamps and Jolt props. Character movement still uses the game collision adapter. Audio and tentacles are pending.");
+	ImGui::TextWrapped("Movement and stairs use the game ground adapter. Audio playback is deferred. Layout and checkpoint events are prototype test placements.");
 	ImGui::End();
 }
 
@@ -209,6 +304,7 @@ void BabyDollApplication::OnGui()
 	style.Colors[ImGuiCol_Button] = ImVec4(0.18f, 0.34f, 0.38f, 1.0f);
 	style.Colors[ImGuiCol_ButtonHovered] = ImVec4(0.25f, 0.47f, 0.49f, 1.0f);
 	DrawHud();
+	if (player->GetMode() == PlayerMode::Caught && !inspect) { return; }
 	DrawRearView();
 	if (!captured) { DrawPanel(); }
 	if (showDebug)
@@ -253,6 +349,14 @@ void BabyDollApplication::DrawRearView()
 	else { ImGui::Dummy(ImVec2(width, height)); }
 	ImDrawList* draw = ImGui::GetWindowDrawList();
 	for (float y = 0.0f; y < height; y += 4.0f) { draw->AddLine(ImVec2(position.x, position.y + y), ImVec2(position.x + width, position.y + y), IM_COL32(0, 0, 0, 48), 1.0f); }
+	for(unsigned index=0;index<320;++index)
+	{
+		const unsigned seed=index*1664525u+static_cast<unsigned>(gameTime*24.0f)*1013904223u;
+		const float x=static_cast<float>(seed%4096u)/4096.0f*width;
+		const float y=static_cast<float>((seed*22695477u+1u)%4096u)/4096.0f*height;
+		const ImU32 color=IM_COL32(230,230,230,static_cast<int>(22.0f*config.rearGrain));
+		draw->AddRectFilled(ImVec2(position.x+x,position.y+y),ImVec2(position.x+x+1.5f,position.y+y+1.5f),color);
+	}
 	ImGui::Text("Distance  %.1f m", PrototypeMath::Distance(player->GetPosition(), brain->GetPosition()) / 100.0f);
 	ImGui::End();
 	ImGui::PopStyleVar();

@@ -8,12 +8,17 @@
 
 enum class StitchState { Patrol, Suspicious, Chase };
 enum class StitchAction { Moving, Waiting, Listening, Looking, Roaring, Smashing };
-enum class PlayerMode { Moving, Fallen, Hidden, Exiting, Caught };
+enum class PlayerMode { Moving, Fallen, Hidden, Exiting, Caught, Ladder, Crawling, Hanging };
 enum class SoundKind { Foot, Heart, Mistake, Object };
 
 struct PrototypeConfig
 {
 	float maxSpeed = 680.0f;
+	float minimumWalkSpeed = 200.0f;
+	float dollStrideLength = 135.0f;
+	float dollStepSwing = 30.0f;
+	float dollBodyBob = 2.0f;
+	float dollTurnLean = 6.0f;
 	float accelerationTime = 3.3f;
 	float rhythmWindow = 0.75f;
 	float fastInterval = 0.17f;
@@ -21,6 +26,25 @@ struct PrototypeConfig
 	float playerRadius = 30.0f;
 	float playerHeight = 120.0f;
 	float fallenTime = 1.5f;
+	float heartRest = 72.0f;
+	float heartAudible = 100.0f;
+	float heartRunPeak = 120.0f;
+	float heartMaximum = 150.0f;
+	float heartFearRadius = 1000.0f;
+	float heartFearRise = 10.0f;
+	float heartHideDrop = 4.0f;
+	float heartIdleDrop = 2.5f;
+	float footRadiusMinimum = 50.0f;
+	float footRadiusMaximum = 408.0f;
+	float heartRadiusMinimum = 50.0f;
+	float heartRadiusMaximum = 1500.0f;
+	float soundCurveExponent = 2.0f;
+	float ladderStep = 42.0f;
+	float ladderSlip = 90.0f;
+	float ladderNoiseCount = 5.0f;
+	float hangDuration = 10.0f;
+	float crawlSpeed = 175.0f;
+	bool linkCalmToHideSuspicion = true;
 	float patrolSpeed = 170.0f;
 	float chaseSpeed = 400.0f;
 	float suspiciousSpeed = 600.0f;
@@ -54,6 +78,7 @@ struct PrototypeConfig
 	float rearWidth = 512.0f;
 	float rearHeight = 288.0f;
 	float rearSaturation = 0.35f;
+	float rearGrain = 0.8f;
 	float rearHold = 5.0f;
 	float rearFarDistance = 1500.0f;
 	float rearNearDistance = 250.0f;
@@ -67,9 +92,23 @@ struct PrototypeConfig
 	float rearFollow = 10.0f;
 	float lampDarkRadius = 1500.0f;
 	float lampFlickerTime = 0.6f;
-	float lampIntensity = 2.8f;
-	float lampRange = 1250.0f;
+	float lampIntensity = 1.5f;
+	float ambientIntensity = 0.025f;
+	float directionalIntensity = 0.0f;
+	float lampRange = 1050.0f;
 	float propDropHeight = 380.0f;
+	float caughtDuration = 1.8f;
+	float caughtFaceHeight = 250.0f;
+	float caughtCameraDistance = 70.0f;
+	float caughtFov = 48.0f;
+	float caughtTentacleDistance = 420.0f;
+	float caughtTentacleMinimumDistance = 380.0f;
+	float caughtTentacleAimHeight = 225.0f;
+	float caughtTentacleFov = 54.0f;
+	float caughtShakeStrength = 14.0f;
+	float caughtShakeAngle = 8.0f;
+	float caughtFadeStart = 1.15f;
+	float caughtFadeTime = 0.35f;
 };
 
 struct PrototypeCommand
@@ -82,6 +121,7 @@ struct PrototypeCommand
 	float right = 0.0f;
 	bool run = false;
 	bool interact = false;
+	std::vector<int> hands;
 	bool pulse = false;
 };
 

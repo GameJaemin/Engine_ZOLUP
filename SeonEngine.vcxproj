@@ -415,5 +415,24 @@
     <ClInclude Include="Game\Source\BabyDoll\ProximityLightComponent.h" />
     <ClCompile Include="Game\Source\BabyDoll\RearCameraComponent.cpp" />
     <ClInclude Include="Game\Source\BabyDoll\RearCameraComponent.h" />
+    <ClCompile Include="Game\Source\BabyDoll\CaughtCameraComponent.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\CaughtCameraComponent.h" />
+    <ClCompile Include="Game\Source\BabyDoll\VoxelDollComponent.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\VoxelDollComponent.h" />
+    <ClCompile Include="Game\Source\BabyDoll\TraversalComponent.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\TraversalComponent.h" />
+    <ClInclude Include="Game\Source\BabyDoll\GrayboxLayout.h" />
+    <ClInclude Include="Game\Source\BabyDoll\HandInventoryComponent.h" />
+    <ClInclude Include="Game\Source\BabyDoll\DoorComponent.h" />
+    <ClInclude Include="Game\Source\BabyDoll\LayerNavigation.h" />
+    <ClCompile Include="Game\Source\BabyDoll\ObjectSoundComponent.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\ObjectSoundComponent.h" />
+    <ClCompile Include="Game\Source\BabyDoll\ChapterContent.cpp" />
+    <ClCompile Include="Game\Source\BabyDoll\ChapterSave.cpp" />
+    <ClCompile Include="Game\Source\BabyDoll\CheckpointIO.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\CheckpointIO.h" />
+    <ClCompile Include="Game\Source\BabyDoll\StitchVisualComponent.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\StitchVisualComponent.h" />
+    <ClInclude Include="Game\Source\BabyDoll\ChapterTests.h" />
   </ItemGroup>
 </Project>

@@ -1,4 +1,5 @@
 #include "GameplaySpace.h"
+#include "LayerNavigation.h"
 
 #include <limits>
 #include <functional>
@@ -8,9 +9,13 @@
 bool GameplaySpace::IsFree(const Vector3& position, float radius, float height) const
 {
 	if (std::abs(position.x) > halfWidth - radius || std::abs(position.z) > halfDepth - radius) { return false; }
+	for(const auto& patch:groundPatches)
+	{
+		if(patch.steps>0&&patch.Contains(position)&&patch.Height(position)>position.y+25.0f) {return false;}
+	}
 	for (const PrototypeObstacle& obstacle : obstacles)
 	{
-		if (!obstacle.enabled || position.y + height <= obstacle.minimum.y || position.y >= obstacle.maximum.y) { continue; }
+		if (!obstacle.enabled || obstacle.groundOnly || (obstacle.passHeight>0.0f && height<=obstacle.passHeight) || position.y + height <= obstacle.minimum.y || position.y >= obstacle.maximum.y) { continue; }
 		const float dx = position.x - std::clamp(position.x, obstacle.minimum.x, obstacle.maximum.x);
 		const float dz = position.z - std::clamp(position.z, obstacle.minimum.z, obstacle.maximum.z);
 		if (dx * dx + dz * dz < radius * radius) { return false; }
@@ -20,10 +25,24 @@ bool GameplaySpace::IsFree(const Vector3& position, float radius, float height) 
 
 bool GameplaySpace::CanTraverse(const Vector3& start, const Vector3& end, float radius, float height) const
 {
+	if (!groundPatches.empty())
+	{
+		float ground = start.y;
+		const int samples = (std::max)(1, static_cast<int>(std::ceil(PrototypeMath::Distance(start, end) / 15.0f)));
+		for (int index = 1; index <= samples; ++index)
+		{
+			Vector3 point = Vector3::Lerp(start, end, static_cast<float>(index) / samples);
+			const auto support = GroundHeight(point, ground);
+			if (!support) { return false; }
+			point.y = ground = *support;
+			if (!IsFree(point, radius, height)) { return false; }
+		}
+		return std::abs(ground - end.y) < 25.0f;
+	}
 	if (!IsFree(start, radius, height) || !IsFree(end, radius, height)) { return false; }
 	for (const PrototypeObstacle& obstacle : obstacles)
 	{
-		if (!obstacle.enabled || start.y + height <= obstacle.minimum.y || start.y >= obstacle.maximum.y) { continue; }
+		if (!obstacle.enabled || obstacle.groundOnly || (obstacle.passHeight>0.0f && height<=obstacle.passHeight) || start.y + height <= obstacle.minimum.y || start.y >= obstacle.maximum.y) { continue; }
 		float nearTime = 0.0f;
 		float farTime = 1.0f;
 		const float origin[]{ start.x, start.z };
@@ -57,7 +76,13 @@ Vector3 GameplaySpace::Move(const Vector3& position, const Vector3& displacement
 	const Vector3 step = displacement / static_cast<float>(count);
 	for (int index = 0; index < count; ++index)
 	{
-		const Vector3 desired = result + step;
+		Vector3 desired = result + step;
+		if (!groundPatches.empty())
+		{
+			const auto ground = GroundHeight(desired, result.y);
+			if (!ground) { continue; }
+			desired.y = *ground;
+		}
 		if (IsFree(desired, radius, height)) { result = desired; continue; }
 		const Vector3 slideX{ desired.x, result.y, result.z };
 		if (IsFree(slideX, radius, height)) { result = slideX; }
@@ -74,7 +99,7 @@ float GameplaySpace::CameraDistance(const Vector3& origin, const Vector3& direct
 	{
 		if (ignoredObstacle && *ignoredObstacle == index) { continue; }
 		const PrototypeObstacle& obstacle = obstacles[index];
-		if (!obstacle.enabled) { continue; }
+		if (!obstacle.enabled || obstacle.passHeight>0.0f) { continue; }
 		float nearTime = 0.0f;
 		float farTime = available;
 		const float origins[3]{ origin.x, origin.y, origin.z };
@@ -103,6 +128,7 @@ float GameplaySpace::CameraDistance(const Vector3& origin, const Vector3& direct
 
 std::vector<Vector3> GameplaySpace::FindPath(const Vector3& start, const Vector3& destination, float radius, float height) const
 {
+	if (!groundPatches.empty()) { return FindLayeredPath(*this, start, destination, radius, height); }
 	constexpr float CellSize = 100.0f;
 	const int width = static_cast<int>(2.0f * halfWidth / CellSize) + 1;
 	const int depth = static_cast<int>(2.0f * halfDepth / CellSize) + 1;
@@ -163,4 +189,17 @@ std::vector<Vector3> GameplaySpace::FindPath(const Vector3& start, const Vector3
 	if (IsFree(destination, radius, height)) { path.push_back(destination); }
 	else if (path.empty()) { path.push_back(point(last)); }
 	return path;
+}
+
+std::optional<float> GameplaySpace::GroundHeight(const Vector3& point, float previousHeight) const
+{
+	std::optional<float> selected;
+	if (std::abs(previousHeight) <= 25.0f) { selected = 0.0f; }
+	for (const GroundPatch& patch : groundPatches)
+	{
+		if (!patch.Contains(point)) { continue; }
+		const float height = patch.Height(point);
+		if (std::abs(height - previousHeight) <= 25.0f && (!selected || height > *selected)) { selected = height; }
+	}
+	return selected;
 }

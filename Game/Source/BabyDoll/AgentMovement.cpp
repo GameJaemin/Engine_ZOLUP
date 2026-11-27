@@ -84,7 +84,7 @@ void AgentMovement::Step(const Vector3& goal, float targetSpeed, float deltaTime
 {
 	if (!std::isfinite(deltaTime) || deltaTime <= 0.0f) { return; }
 	replanTime -= deltaTime;
-	const float goalChange = PrototypeMath::Distance(plannedGoal, goal);
+	const float goalChange = PrototypeMath::Length(plannedGoal - goal);
 	if (!pathValid || (replanTime <= 0.0f && goalChange > 60.0f)) { Plan(goal, space); }
 	// 같은 목적지의 경로를 주기적으로 초기화하지 않아 격자점 뒤로 되돌아가지 않는다.
 	if (!path.empty() && space.IsFree(goal, Radius + 12.0f, Height) && space.CanTraverse(path.back(), goal, Radius + 4.0f, Height)) { path.back() = goal; }

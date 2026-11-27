@@ -869,5 +869,26 @@
     <ClInclude Include="Game\Source\BabyDoll\ProximityLightComponent.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
     <ClCompile Include="Game\Source\BabyDoll\RearCameraComponent.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile>
     <ClInclude Include="Game\Source\BabyDoll\RearCameraComponent.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+    <ClCompile Include="Game\Source\BabyDoll\CaughtCameraComponent.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile>
+    <ClInclude Include="Game\Source\BabyDoll\CaughtCameraComponent.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+    <ClCompile Include="Game\Source\BabyDoll\VoxelDollComponent.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile>
+    <ClInclude Include="Game\Source\BabyDoll\VoxelDollComponent.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Game\Source\BabyDoll\TraversalComponent.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile>
+    <ClInclude Include="Game\Source\BabyDoll\TraversalComponent.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+    <ClInclude Include="Game\Source\BabyDoll\GrayboxLayout.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+    <ClInclude Include="Game\Source\BabyDoll\HandInventoryComponent.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+    <ClInclude Include="Game\Source\BabyDoll\DoorComponent.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+    <ClInclude Include="Game\Source\BabyDoll\LayerNavigation.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+    <ClCompile Include="Game\Source\BabyDoll\ObjectSoundComponent.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile>
+    <ClInclude Include="Game\Source\BabyDoll\ObjectSoundComponent.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+    <ClCompile Include="Game\Source\BabyDoll\ChapterContent.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile>
+    <ClCompile Include="Game\Source\BabyDoll\ChapterSave.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile>
+    <ClCompile Include="Game\Source\BabyDoll\CheckpointIO.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile>
+    <ClInclude Include="Game\Source\BabyDoll\CheckpointIO.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+    <ClCompile Include="Game\Source\BabyDoll\StitchVisualComponent.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile>
+    <ClInclude Include="Game\Source\BabyDoll\StitchVisualComponent.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+    <ClInclude Include="Game\Source\BabyDoll\ChapterTests.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
   </ItemGroup>
 </Project>

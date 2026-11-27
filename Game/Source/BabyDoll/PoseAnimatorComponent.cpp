@@ -3,7 +3,9 @@
 #include "Animation/AnimationClip.h"
 #include "AssetManager.h"
 #include "Component/AnimationComponent.h"
+#include "Component/TransformComponent.h"
 #include "Core/Math/Quaternion.h"
+#include "GameObject.h"
 
 #include <algorithm>
 #include <cmath>
@@ -57,3 +59,23 @@ void PoseAnimatorComponent::Step(float deltaTime, float playbackRate)
 }
 
 std::string_view PoseAnimatorComponent::GetClipName() const { return clip ? clip->GetName() : std::string_view{}; }
+
+bool PoseAnimatorComponent::TryGetNodeWorldPosition(std::string_view name, Vector3& position) const
+{
+	if (!model || !GetGameObject()) { return false; }
+	for (std::size_t index = 0; index < pose.size(); ++index)
+	{
+		if (model->sceneNodes[index].name != name) { continue; }
+		Matrix4x4 matrix = pose[index].ToMatrix();
+		std::optional<std::size_t> parent = model->sceneNodes[index].parent;
+		while (parent)
+		{
+			matrix = matrix * pose[*parent].ToMatrix();
+			parent = model->sceneNodes[*parent].parent;
+		}
+		matrix = matrix * GetGameObject()->GetComponent<TransformComponent>()->GetWorldMatrix();
+		position = { matrix.m[3][0], matrix.m[3][1], matrix.m[3][2] };
+		return true;
+	}
+	return false;
+}

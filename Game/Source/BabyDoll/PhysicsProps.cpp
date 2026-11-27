@@ -1,4 +1,5 @@
 #include "PhysicsProps.h"
+#include "ObjectSoundComponent.h"
 
 #include "Component/BoxColliderComponent.h"
 #include "Component/RigidBodyComponent.h"
@@ -16,7 +17,7 @@ bool PhysicsProps::Initialize(World& world, std::shared_ptr<const Model> box, Ga
 	for (int index = 0; index < 3; ++index)
 	{
 		MaterialParameters parameters;
-		parameters.baseColor = index % 2 == 0 ? Vector3{ 0.48f, 0.23f, 0.12f } : Vector3{ 0.1f, 0.4f, 0.45f };
+		parameters.baseColor = index % 2 == 0 ? Vector3{0.38f,0.38f,0.38f} : Vector3{0.46f,0.46f,0.46f};
 		parameters.metallic = 0.0f;
 		parameters.roughness = 0.85f;
 		const std::shared_ptr<const Material> material = std::make_shared<const Material>("Jolt crate", std::string(), std::move(parameters));
@@ -49,6 +50,29 @@ void PhysicsProps::Reset(World& world)
 	}
 }
 
+std::vector<Transform> PhysicsProps::Capture(const World& world) const
+{
+	std::vector<Transform> result;
+	for (const auto& binding : bindings)
+	{
+		const GameObject* object = world.FindGameObject(binding.objectID);
+		result.push_back(object ? object->GetComponent<TransformComponent>()->GetTransform() : binding.spawn);
+	}
+	return result;
+}
+
+void PhysicsProps::Restore(World& world, const std::vector<Transform>& transforms)
+{
+	if (transforms.size() != bindings.size()) { Reset(world); return; }
+	for (std::size_t index=0; index<bindings.size(); ++index)
+	{
+		GameObject* object = world.FindGameObject(bindings[index].objectID);
+		if (!object) { continue; }
+		object->GetComponent<RigidBodyComponent>()->UnregisterDynamicBody();
+		object->GetComponent<TransformComponent>()->SetTransform(transforms[index]);
+	}
+}
+
 void PhysicsProps::SyncSpace(const World& world, GameplaySpace& space) const
 {
 	for (const PhysicsPropBinding& binding : bindings)
@@ -65,5 +89,22 @@ void PhysicsProps::SyncSpace(const World& world, GameplaySpace& space) const
 			50.0f * (std::abs(matrix.m[0][2]) + std::abs(matrix.m[1][2]) + std::abs(matrix.m[2][2]))
 		};
 		obstacle = { center - extent, center + extent, true };
+	}
+}
+
+void PhysicsProps::EmitPlayerBumps(const World& world, const Vector3& player, float attemptedSpeed, ObjectSoundComponent& sounds) const
+{
+	for (std::size_t index=0;index<bindings.size();++index)
+	{
+		const GameObject* object=world.FindGameObject(bindings[index].objectID);
+		if(!object) {continue;}
+		const Vector3 center=object->GetComponent<TransformComponent>()->GetPosition();
+		if(std::abs(center.y-player.y)>160.0f) {continue;}
+		// 게임 이동이 상자 AABB에 막혔을 때의 접촉 시도다. Jolt 접촉 콜백을 가장하지 않는다.
+		const Matrix4x4 matrix=object->GetComponent<TransformComponent>()->GetWorldMatrix();
+		const float xExtent=50.0f*(std::abs(matrix.m[0][0])+std::abs(matrix.m[1][0])+std::abs(matrix.m[2][0]));
+		const float zExtent=50.0f*(std::abs(matrix.m[0][2])+std::abs(matrix.m[1][2])+std::abs(matrix.m[2][2]));
+		const Vector3 nearest{std::clamp(player.x,center.x-xExtent,center.x+xExtent),player.y,std::clamp(player.z,center.z-zExtent,center.z+zExtent)};
+		if(PrototypeMath::Distance(nearest,player)<34.0f) {sounds.Trigger("crate"+std::to_string(index),"crate","Bump",center,attemptedSpeed);}
 	}
 }

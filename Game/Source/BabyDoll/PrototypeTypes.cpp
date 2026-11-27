@@ -25,6 +25,11 @@ bool LoadPrototypeConfig(PrototypeConfig& config)
 	struct ConfigField { const char* name; float* value; float minimum; float maximum; };
 	const ConfigField fields[]{
 		{ "maxSpeed", &candidate.maxSpeed, 1.0f, 2000.0f },
+		{ "minimumWalkSpeed", &candidate.minimumWalkSpeed, 1.0f, 2000.0f },
+		{ "dollStrideLength", &candidate.dollStrideLength, 60.0f, 300.0f },
+		{ "dollStepSwing", &candidate.dollStepSwing, 0.0f, 50.0f },
+		{ "dollBodyBob", &candidate.dollBodyBob, 0.0f, 6.0f },
+		{ "dollTurnLean", &candidate.dollTurnLean, 0.0f, 15.0f },
 		{ "accelerationTime", &candidate.accelerationTime, 0.1f, 20.0f },
 		{ "rhythmWindow", &candidate.rhythmWindow, 0.1f, 3.0f },
 		{ "fastInterval", &candidate.fastInterval, 0.05f, 1.0f },
@@ -32,6 +37,24 @@ bool LoadPrototypeConfig(PrototypeConfig& config)
 		{ "playerRadius", &candidate.playerRadius, 5.0f, 50.0f },
 		{ "playerHeight", &candidate.playerHeight, 60.0f, 150.0f },
 		{ "fallenTime", &candidate.fallenTime, 0.1f, 10.0f },
+		{ "heartRest", &candidate.heartRest, 1.0f, 300.0f },
+		{ "heartAudible", &candidate.heartAudible, 1.0f, 300.0f },
+		{ "heartRunPeak", &candidate.heartRunPeak, 1.0f, 300.0f },
+		{ "heartMaximum", &candidate.heartMaximum, 1.0f, 300.0f },
+		{ "heartFearRadius", &candidate.heartFearRadius, 1.0f, 10000.0f },
+		{ "heartFearRise", &candidate.heartFearRise, 0.0f, 100.0f },
+		{ "heartHideDrop", &candidate.heartHideDrop, 0.0f, 100.0f },
+		{ "heartIdleDrop", &candidate.heartIdleDrop, 0.0f, 100.0f },
+		{ "footRadiusMinimum", &candidate.footRadiusMinimum, 0.0f, 10000.0f },
+		{ "footRadiusMaximum", &candidate.footRadiusMaximum, 0.0f, 10000.0f },
+		{ "heartRadiusMinimum", &candidate.heartRadiusMinimum, 0.0f, 10000.0f },
+		{ "heartRadiusMaximum", &candidate.heartRadiusMaximum, 0.0f, 10000.0f },
+		{ "soundCurveExponent", &candidate.soundCurveExponent, 0.1f, 8.0f },
+		{ "ladderStep", &candidate.ladderStep, 1.0f, 100.0f },
+		{ "ladderSlip", &candidate.ladderSlip, 1.0f, 300.0f },
+		{ "ladderNoiseCount", &candidate.ladderNoiseCount, 1.0f, 100.0f },
+		{ "hangDuration", &candidate.hangDuration, 0.1f, 60.0f },
+		{ "crawlSpeed", &candidate.crawlSpeed, 1.0f, 300.0f },
 		{ "patrolSpeed", &candidate.patrolSpeed, 1.0f, 1000.0f },
 		{ "chaseSpeed", &candidate.chaseSpeed, 1.0f, 1500.0f },
 		{ "suspiciousSpeed", &candidate.suspiciousSpeed, 1.0f, 1500.0f },
@@ -64,6 +87,7 @@ bool LoadPrototypeConfig(PrototypeConfig& config)
 		{ "rearWidth", &candidate.rearWidth, 64.0f, 2048.0f },
 		{ "rearHeight", &candidate.rearHeight, 64.0f, 2048.0f },
 		{ "rearSaturation", &candidate.rearSaturation, 0.0f, 2.0f },
+		{ "rearGrain", &candidate.rearGrain, 0.0f, 1.0f },
 		{ "rearHold", &candidate.rearHold, 0.0f, 30.0f },
 		{ "rearFarDistance", &candidate.rearFarDistance, 100.0f, 5000.0f },
 		{ "rearNearDistance", &candidate.rearNearDistance, 50.0f, 3000.0f },
@@ -78,8 +102,22 @@ bool LoadPrototypeConfig(PrototypeConfig& config)
 		{ "lampDarkRadius", &candidate.lampDarkRadius, 50.0f, 5000.0f },
 		{ "lampFlickerTime", &candidate.lampFlickerTime, 0.05f, 5.0f },
 		{ "lampIntensity", &candidate.lampIntensity, 0.0f, 20.0f },
+		{ "ambientIntensity", &candidate.ambientIntensity, 0.0f, 2.0f },
+		{ "directionalIntensity", &candidate.directionalIntensity, 0.0f, 5.0f },
 		{ "lampRange", &candidate.lampRange, 100.0f, 4000.0f },
-		{ "propDropHeight", &candidate.propDropHeight, 150.0f, 500.0f }
+		{ "propDropHeight", &candidate.propDropHeight, 150.0f, 500.0f },
+		{ "caughtDuration", &candidate.caughtDuration, 1.0f, 2.0f },
+		{ "caughtFaceHeight", &candidate.caughtFaceHeight, 100.0f, 400.0f },
+		{ "caughtCameraDistance", &candidate.caughtCameraDistance, 60.0f, 250.0f },
+		{ "caughtFov", &candidate.caughtFov, 35.0f, 100.0f },
+		{ "caughtTentacleDistance", &candidate.caughtTentacleDistance, 300.0f, 1000.0f },
+		{ "caughtTentacleMinimumDistance", &candidate.caughtTentacleMinimumDistance, 300.0f, 1000.0f },
+		{ "caughtTentacleAimHeight", &candidate.caughtTentacleAimHeight, 100.0f, 300.0f },
+		{ "caughtTentacleFov", &candidate.caughtTentacleFov, 35.0f, 100.0f },
+		{ "caughtShakeStrength", &candidate.caughtShakeStrength, 0.0f, 16.0f },
+		{ "caughtShakeAngle", &candidate.caughtShakeAngle, 0.0f, 9.0f },
+		{ "caughtFadeStart", &candidate.caughtFadeStart, 0.1f, 1.8f },
+		{ "caughtFadeTime", &candidate.caughtFadeTime, 0.1f, 1.0f }
 	};
 	for (const ConfigField& field : fields)
 	{
@@ -90,9 +128,20 @@ bool LoadPrototypeConfig(PrototypeConfig& config)
 		if (!std::isfinite(number) || number < field.minimum || number > field.maximum) { return false; }
 		*field.value = number;
 	}
+	if (candidate.minimumWalkSpeed > candidate.maxSpeed) { return false; }
+	if (candidate.caughtTentacleMinimumDistance > candidate.caughtTentacleDistance) { return false; }
+	if(document.HasMember("linkCalmToHideSuspicion"))
+	{
+		if(!document["linkCalmToHideSuspicion"].IsBool()) {return false;}
+		candidate.linkCalmToHideSuspicion=document["linkCalmToHideSuspicion"].GetBool();
+	}
+	if(candidate.linkCalmToHideSuspicion) {candidate.calmTime=candidate.hideSuspicionTime;}
+	if(!(candidate.heartRest<candidate.heartAudible&&candidate.heartAudible<=candidate.heartRunPeak&&candidate.heartRunPeak<candidate.heartMaximum)
+		||candidate.footRadiusMinimum>candidate.footRadiusMaximum||candidate.heartRadiusMinimum>candidate.heartRadiusMaximum||std::floor(candidate.ladderNoiseCount)!=candidate.ladderNoiseCount) {return false;}
 	if (candidate.fastInterval >= candidate.rhythmWindow || candidate.playerHeight < candidate.playerRadius * 2.0f) { return false; }
 	if (candidate.rearNearDistance >= candidate.rearFarDistance || candidate.rearClosestDistance > candidate.rearCameraDistance) { return false; }
 	if (std::floor(candidate.rearWidth) != candidate.rearWidth || std::floor(candidate.rearHeight) != candidate.rearHeight) { return false; }
+	if (candidate.caughtFadeStart + candidate.caughtFadeTime + 0.1f > candidate.caughtDuration) { return false; }
 	config = candidate;
 	Log::Write(LogLevel::Info, "BabyDoll", "Loaded prototype tuning");
 	return true;

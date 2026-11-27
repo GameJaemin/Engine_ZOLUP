@@ -12,6 +12,48 @@ void OrbitCameraComponent::Reset(const Vector3& target, float initialYaw, const 
 	pivot = target;
 	armLength = config.cameraDistance;
 	fov = config.cameraFov;
+	runBlend = 0.0f;
+	fixedBlend = 0.0f;
+	fixedArmLength = 0.0f;
+}
+
+void OrbitCameraComponent::BlendFixed(CameraComponent& camera, const std::optional<Vector3>& requested, const Vector3& target, float deltaTime, float requestedFov, const GameplaySpace* space, float framingHeight)
+{
+	if (requested)
+	{
+		fixedPosition = *requested;
+		if (space)
+		{
+			const Vector3 offset=*requested-target;
+			const float length=PrototypeMath::Length(offset);
+			if (length>0.01f)
+			{
+				const Vector3 direction=offset/length;
+				const float available=space->CameraDistance(target,direction,length,18.0f);
+				// 바닥/벽 앞에서는 즉시 당기고, 시야가 다시 열리면 부드럽게 원래 거리로 돌아간다.
+				fixedArmLength=fixedBlend<=0.0f||available<fixedArmLength?available:
+					fixedArmLength+(available-fixedArmLength)*PrototypeMath::Response(5.0f,deltaTime);
+				fixedPosition=target+direction*fixedArmLength;
+			}
+		}
+		fixedFov=requestedFov;
+		if (framingHeight>0.0f)
+		{
+			// 사다리 개구부에서 카메라가 당겨져도 몸이 잘리지 않도록 화각을 확보한다.
+			const float fitted=2.0f*std::atan2(framingHeight*0.5f,(std::max)(1.0f,PrototypeMath::Length(target-fixedPosition)))*57.2957795f;
+			fixedFov=(std::max)(requestedFov,(std::min)(110.0f,fitted));
+		}
+		const Vector3 direction = target - fixedPosition;
+		fixedRotation = { std::atan2(-direction.y, (std::max)(1.0f, PrototypeMath::Distance(target, fixedPosition))) * 57.2957795f,
+			std::atan2(direction.x, direction.z) * 57.2957795f, 0.0f };
+	}
+	fixedBlend = std::clamp(fixedBlend + (requested ? 1.0f : -1.0f) * deltaTime / 0.5f, 0.0f, 1.0f);
+	const float blend = fixedBlend * fixedBlend * (3.0f - 2.0f * fixedBlend);
+	if (blend <= 0.0f) { return; }
+	TransformComponent* transform = camera.GetGameObject()->GetComponent<TransformComponent>();
+	transform->SetPosition(Vector3::Lerp(position, fixedPosition, blend));
+	transform->SetRotation({view.pitch+(fixedRotation.pitch-view.pitch)*blend,PrototypeMath::ApproachAngle(view.yaw,fixedRotation.yaw,blend),0.0f});
+	camera.SetVerticalFovDegrees(fov+(fixedFov-fov)*blend);
 }
 
 void OrbitCameraComponent::Look(float mouseX, float mouseY, float deltaTime, const PrototypeConfig& config)
@@ -32,9 +74,15 @@ void OrbitCameraComponent::Present(CameraComponent& camera, const Vector3& targe
 	const float yaw = view.yaw * 0.01745329252f;
 	const float pitch = view.pitch * 0.01745329252f;
 	const Vector3 backward{ -std::sin(yaw) * std::cos(pitch), std::sin(pitch), -std::cos(yaw) * std::cos(pitch) };
-	const Vector3 shoulder = inspect ? Vector3{} : PrototypeMath::Direction(view.yaw + 90.0f) * 35.0f;
+	// 기본 보행에서는 화각을 유지하고 달리기 구간에서만 구도를 넓힌다.
+	float runTarget = std::clamp((speedRatio * config.maxSpeed - 300.0f) / (std::max)(1.0f, config.maxSpeed - 300.0f), 0.0f, 1.0f);
+	runTarget = runTarget * runTarget * (3.0f - 2.0f * runTarget);
+	runBlend += (runTarget - runBlend) * PrototypeMath::Response(6.0f, deltaTime);
+	const Vector3 shoulderDirection = PrototypeMath::Direction(view.yaw + 90.0f);
+	const float shoulderLength = inspect ? 0.0f : space.CameraDistance(pivot, shoulderDirection, 35.0f, 18.0f);
+	const Vector3 shoulder = shoulderDirection * shoulderLength;
 	const Vector3 origin = pivot + shoulder;
-	const float desiredLength = inspect ? 780.0f : config.cameraDistance + (config.runningCameraDistance - config.cameraDistance) * speedRatio;
+	const float desiredLength = inspect ? 780.0f : config.cameraDistance + (config.runningCameraDistance - config.cameraDistance) * runBlend;
 	float available = space.CameraDistance(origin, backward, desiredLength, 18.0f);
 	// 바닥도 카메라 구체 반경만큼 여유를 둔다.
 	if (backward.y < -0.0001f) { available = (std::min)(available, (origin.y - 20.0f) / -backward.y); }
@@ -44,7 +92,7 @@ void OrbitCameraComponent::Present(CameraComponent& camera, const Vector3& targe
 	TransformComponent* transform = camera.GetGameObject()->GetComponent<TransformComponent>();
 	transform->SetPosition(position);
 	transform->SetRotation(view);
-	const float desiredFov = inspect ? 62.0f : config.cameraFov + (config.runningCameraFov - config.cameraFov) * speedRatio;
+	const float desiredFov = inspect ? 62.0f : config.cameraFov + (config.runningCameraFov - config.cameraFov) * runBlend;
 	fov += (desiredFov - fov) * PrototypeMath::Response(4.0f, deltaTime);
 	camera.SetVerticalFovDegrees(fov);
 }

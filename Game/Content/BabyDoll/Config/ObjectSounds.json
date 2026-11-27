@@ -1,0 +1,6 @@
+[
+  {"ObjectId":"door","SoundEvent":"Open","Radius":300,"MinImpactSpeed":0,"Duration":0,"Cooldown":0.5,"StitchReaction":"Suspicious","CrossFloor":false,"IgnoreRadius":false,"Priority":1,"SfxId":""},
+  {"ObjectId":"door","SoundEvent":"Close","Radius":300,"MinImpactSpeed":0,"Duration":0,"Cooldown":0.5,"StitchReaction":"Suspicious","CrossFloor":false,"IgnoreRadius":false,"Priority":1,"SfxId":""},
+  {"ObjectId":"table","SoundEvent":"Break","Radius":1200,"MinImpactSpeed":0,"Duration":0.3,"Cooldown":2,"StitchReaction":"Suspicious","CrossFloor":false,"IgnoreRadius":false,"Priority":2,"SfxId":""},
+  {"ObjectId":"crate","SoundEvent":"Bump","Radius":500,"MinImpactSpeed":180,"Duration":0,"Cooldown":1,"StitchReaction":"Suspicious","CrossFloor":false,"IgnoreRadius":false,"Priority":1,"SfxId":""}
+]

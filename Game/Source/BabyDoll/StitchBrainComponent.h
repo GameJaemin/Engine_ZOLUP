@@ -12,8 +12,22 @@ struct StitchObservation
 	Vector3 playerPosition;
 	bool hidden = false;
 	bool breakableTable = false;
+	bool inCrawl = false;
+	bool onLadder = false;
 	float heartBPM = 72.0f;
 	std::optional<SoundStimulus> sound;
+};
+
+struct StitchSnapshot
+{
+	AgentMovement movement;
+	Vector3 destination;
+	StitchState state = StitchState::Patrol;
+	StitchAction action = StitchAction::Moving;
+	int patrolIndex = 0;
+	float stateTime = 0.0f, actionTime = 0.0f, hiddenTime = 0.0f, unreachableTime = 0.0f;
+	bool resumeAfterRoar = false;
+	std::optional<SoundStimulus> deferredSound;
 };
 
 /** 판단과 이동 데이터만 소유한다. 모델/카메라/입력을 참조하지 않는다. */
@@ -22,9 +36,21 @@ class StitchBrainComponent final : public Component
 public:
 	// 잠긴 출구 구역 안에 순찰 목표를 두지 않는다. 창고와 전시홀은 북쪽 문으로 연결된다.
 	static constexpr std::array<Vector3, 4> PatrolRoute{{ {-1450.0f, 0.0f, 1000.0f}, {-1450.0f, 0.0f, -800.0f}, {0.0f, 0.0f, 1000.0f}, {300.0f, 0.0f, -1000.0f} }};
+	static constexpr std::array<Vector3, 4> UpperPatrolRoute{{ {1300.0f,640.0f,700.0f},{1850.0f,640.0f,700.0f},{1850.0f,640.0f,1450.0f},{1300.0f,640.0f,1450.0f} }};
 	void Reset(const Vector3& spawn);
+	/** 재시작은 저장 당시의 추격 기억 대신 안전한 위치에서 새 순찰을 시작한다. 적합한 바닥이 없으면 실패한다. */
+	bool RestartPatrol(const Vector3& savedPosition, const Vector3& playerPosition, const PrototypeConfig& config, const GameplaySpace& space);
 	void ChangeState(StitchState nextState);
 	void Step(const StitchObservation& observation, float deltaTime, const PrototypeConfig& config, const GameplaySpace& space);
+	void Hold(float deltaTime, const PrototypeConfig& config, const GameplaySpace& space) { movement.Stop(deltaTime, config, space); caught = brokeTable = false; }
+	StitchSnapshot Capture() const { return {movement,destination,state,action,patrolIndex,stateTime,actionTime,hiddenTime,unreachableTime,resumeAfterRoar,deferredSound}; }
+	void Restore(const StitchSnapshot& value)
+	{
+		movement=value.movement; destination=value.destination; state=value.state; action=value.action;
+		patrolIndex=value.patrolIndex; stateTime=value.stateTime; actionTime=value.actionTime;
+		hiddenTime=value.hiddenTime; unreachableTime=value.unreachableTime; resumeAfterRoar=value.resumeAfterRoar;
+		deferredSound=value.deferredSound; caught=brokeTable=false;
+	}
 	StitchState GetState() const { return state; }
 	StitchAction GetAction() const { return action; }
 	const Vector3& GetPosition() const { return movement.GetPosition(); }
