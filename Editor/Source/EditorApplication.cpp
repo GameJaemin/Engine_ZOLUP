@@ -9,6 +9,7 @@
 #include "Core/Math/Transform.h"
 #include "Core/Math/Vector3.h"
 #include "Engine.h"
+#include "Font.h"
 #include "GameObject.h"
 #include "Mesh/StaticMesh.h"
 #include "Paths.h"
@@ -23,8 +24,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <limits>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -37,6 +40,34 @@ namespace
 
 	// 기본 도킹 배치와 창 생성에서 같은 이름을 사용한다.
 	constexpr const char* PlayToolbarWindowName = "Play Toolbar";
+
+	void LoadEditorFont()
+	{
+		const std::shared_ptr<const Font> editorFont = AssetManager::Get().LoadFont("Editor/Content/Fonts/NotoSansCJKkr-Regular.otf");
+		if (editorFont == nullptr) { return; }
+
+		const std::span<const std::byte> bytes = editorFont->GetBytes();
+		if (bytes.size() > static_cast<std::size_t>((std::numeric_limits<int>::max)()))
+		{
+			Log::Write(LogLevel::Warning, "Editor", "Editor font exceeds the size supported by ImGui");
+			return;
+		}
+
+		ImGuiIO& io = ImGui::GetIO();
+		ImFontConfig config;
+		// AssetManager의 캐시가 ImGui Context가 파괴될 때까지 원본 바이트를 보관한다.
+		config.FontDataOwnedByAtlas = false;
+		config.Flags |= ImFontFlags_NoLoadError;
+
+		ImFont* font = io.Fonts->AddFontFromMemoryTTF(const_cast<std::byte*>(bytes.data()), static_cast<int>(bytes.size()), 0.0f, &config);
+		if (font == nullptr)
+		{
+			Log::Write(LogLevel::Warning, "Editor", "Failed to register the editor font");
+			return;
+		}
+
+		io.FontDefault = font;
+	}
 
 	// label 버튼을 color 계열로 그린다. 마우스를 올리면 밝게, 누르는 동안 어둡게 한다.
 	bool DrawColoredButton(const char* label, const ImVec4& color)
@@ -187,6 +218,7 @@ bool EditorApplication::OnInitialize(Engine& inEngine)
 	// Engine이 Run 초기화에서 ImGui Context를 만든 뒤 호출하므로 UI 호출이 아닌 설정 변경은 여기서 할 수 있다.
 	// 패널을 탭과 칸으로 붙일 수 있게 한다. 렌더러가 창 밖 출력을 지원하지 않아 멀티 뷰포트는 켜지 않는다.
 	ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+	LoadEditorFont();
 
 	// TODO: 맵 열기 기능이 생기면 기본 맵 대신 사용자가 고른 맵을 연다.
 	std::filesystem::path levelPath;
