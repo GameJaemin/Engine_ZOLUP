@@ -1,5 +1,6 @@
 #include "AssetManager.h"
 
+#include "Audio/AudioClipLoader.h"
 #include "Core/FileHelper.h"
 #include "Core/Log.h"
 #include "Font.h"
@@ -636,6 +637,27 @@ std::shared_ptr<const Font> AssetManager::LoadFont(std::string_view relativePath
 	const std::shared_ptr<const Font> font = std::make_shared<const Font>(name, path, std::move(bytes));
 	fonts.emplace(cacheKey, font);
 	return font;
+}
+
+std::shared_ptr<const AudioClip> AssetManager::LoadAudioClip(std::string_view relativePath)
+{
+	const std::optional<ResolvedAssetPath> resolved = ResolveAssetPath(relativePath);
+	if (!resolved)
+	{
+		Log::Write(LogLevel::Error, "AssetManager", std::format("Failed to resolve audio path: {}", relativePath));
+		return nullptr;
+	}
+
+	const auto cachedClip = audioClips.find(resolved->cacheKey);
+	if (cachedClip != audioClips.end()) { return cachedClip->second; }
+
+	const std::filesystem::path assetPath = std::filesystem::path(std::u8string(relativePath.begin(), relativePath.end())).lexically_normal();
+	const std::u8string pathUtf8 = assetPath.generic_u8string();
+	const std::shared_ptr<const AudioClip> clip = AudioClipLoader::LoadWavFile(resolved->absolutePath, std::string(pathUtf8.begin(), pathUtf8.end()));
+	if (!clip) { return nullptr; }
+
+	audioClips.emplace(resolved->cacheKey, clip);
+	return clip;
 }
 
 std::shared_ptr<const PrefabObjects> AssetManager::LoadPrefab(std::string_view relativePath)

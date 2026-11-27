@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+class AudioClip;
 class Font;
 class Material;
 struct PrefabObjects;
@@ -178,6 +179,14 @@ public:
 
 private:
 	std::unordered_map<std::string, std::shared_ptr<const Font>> fonts;
+
+	// 오디오 클립
+public:
+	/** 저장소 루트 기준 UTF-8 경로의 WAV를 디코딩하고 같은 경로 요청에 재사용한다. 경로 해석, 읽기 또는 디코딩에 실패하면 nullptr를 반환한다. */
+	[[nodiscard]] std::shared_ptr<const AudioClip> LoadAudioClip(std::string_view relativePath);
+
+private:
+	std::unordered_map<std::string, std::shared_ptr<const AudioClip>> audioClips;
 
 	// 프리팹
 public:

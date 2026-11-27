@@ -37,6 +37,8 @@
     <ClCompile Include="Engine\Source\Texture\ORMImageBuilder.cpp" />
     <ClCompile Include="Engine\Source\AssetManager.cpp" />
     <ClCompile Include="Engine\Source\Engine.cpp" />
+    <ClCompile Include="Engine\Source\Audio\AudioClip.cpp" />
+    <ClCompile Include="Engine\Source\Audio\AudioClipLoader.cpp" />
     <ClCompile Include="Engine\Source\Audio\AudioSystem.cpp" />
     <ClCompile Include="Engine\Source\Audio\MiniaudioImplementation.cpp" />
     <ClCompile Include="Engine\Source\Physics\JoltBroadPhaseLayers.cpp">
@@ -113,6 +115,8 @@
     <ClInclude Include="Engine\Source\Image\ImageLoader.h" />
     <ClInclude Include="Engine\Source\AssetManager.h" />
     <ClInclude Include="Engine\Source\Engine.h" />
+    <ClInclude Include="Engine\Source\Audio\AudioClip.h" />
+    <ClInclude Include="Engine\Source\Audio\AudioClipLoader.h" />
     <ClInclude Include="Engine\Source\Audio\AudioSystem.h" />
     <ClInclude Include="Engine\Source\Physics\JoltBroadPhaseLayers.h" />
     <ClInclude Include="Engine\Source\Physics\JoltObjectLayers.h" />

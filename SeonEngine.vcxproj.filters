@@ -148,6 +148,12 @@
     <ClCompile Include="Engine\Source\Engine.cpp">
       <Filter>Engine\Source</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Source\Audio\AudioClip.cpp">
+      <Filter>Engine\Source\Audio</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Source\Audio\AudioClipLoader.cpp">
+      <Filter>Engine\Source\Audio</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Source\Audio\AudioSystem.cpp">
       <Filter>Engine\Source\Audio</Filter>
     </ClCompile>
@@ -410,6 +416,12 @@
     </ClInclude>
     <ClInclude Include="Engine\Source\Engine.h">
       <Filter>Engine\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Audio\AudioClip.h">
+      <Filter>Engine\Source\Audio</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Audio\AudioClipLoader.h">
+      <Filter>Engine\Source\Audio</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Audio\AudioSystem.h">
       <Filter>Engine\Source\Audio</Filter>
