@@ -195,16 +195,9 @@ namespace
 				nodeTransforms.push_back(nodeObject != nullptr ? nodeObject->GetComponent<TransformComponent>() : nullptr);
 			}
 
-			std::vector<Transform> restPose;
-			restPose.reserve(model.sceneNodes.size());
-			for (const GLTFSceneNode& sceneNode : model.sceneNodes)
-			{
-				restPose.push_back(sceneNode.localTransform);
-			}
-
 			std::unique_ptr<AnimationComponent> animationComponent = std::make_unique<AnimationComponent>();
+			animationComponent->SetModel(prefab.model);
 			animationComponent->SetNodeTransforms(std::move(nodeTransforms));
-			animationComponent->SetRestPose(std::move(restPose));
 			animation = animationComponent.get();
 			root.AddComponent(std::move(animationComponent));
 		}

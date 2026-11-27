@@ -113,16 +113,13 @@ void AttachPrefabAnimation(GameObject& object, const PrefabAnimation& animation,
 		nodeTransforms[binding.sourceNode] = objectsByID.at(binding.targetID)->GetComponent<TransformComponent>();
 	}
 
-	// 원래 자세는 기존 형식과 같이 모델 배치표의 값이다.
-	std::vector<Transform> restPose;
-	restPose.reserve(model.sceneNodes.size());
-	for (const GLTFSceneNode& sceneNode : model.sceneNodes)
-	{
-		restPose.push_back(sceneNode.localTransform);
-	}
-
+	// 원래 자세는 SetModel이 모델 배치표에서 채운다. SetModel이 노드 연결을 비우므로 연결은 그 뒤에 넣는다.
 	std::unique_ptr<AnimationComponent> animationComponent = std::make_unique<AnimationComponent>();
-	animationComponent->SetNodeTransforms(std::move(nodeTransforms));
-	animationComponent->SetRestPose(std::move(restPose));
+	animationComponent->SetModel(animation.model);
+	// 목록을 모델 노드 수로 만들었으므로 성공해야 한다. 실패하면 연결 없이 붙여 원래 자세만 쓴다.
+	if (!animationComponent->SetNodeTransforms(std::move(nodeTransforms)))
+	{
+		Log::Write(LogLevel::Error, "Prefab", std::format("{}: animation node list does not match the model", object.GetName()));
+	}
 	object.AddComponent(std::move(animationComponent));
 }

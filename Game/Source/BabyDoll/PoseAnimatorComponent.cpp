@@ -3,7 +3,6 @@
 #include "Animation/AnimationClip.h"
 #include "AssetManager.h"
 #include "Component/AnimationComponent.h"
-#include "Component/TransformComponent.h"
 #include "Core/Math/Quaternion.h"
 
 #include <algorithm>
@@ -54,12 +53,7 @@ void PoseAnimatorComponent::Step(float deltaTime, float playbackRate)
 		pose[node].scale = Vector3::Lerp(transitionStart[node].scale, pose[node].scale, alpha);
 	}
 	// 원본 bind pose는 rest에 보존하고 최종 포즈 쓰기는 이 어댑터로 제한한다.
-	target->SetRestPose(pose);
-	const std::vector<TransformComponent*>& bindings = target->GetNodeTransforms();
-	for (std::size_t node = 0; node < pose.size() && node < bindings.size(); ++node)
-	{
-		if (bindings[node]) { bindings[node]->SetTransform(pose[node]); }
-	}
+	target->SetPose(pose);
 }
 
 std::string_view PoseAnimatorComponent::GetClipName() const { return clip ? clip->GetName() : std::string_view{}; }

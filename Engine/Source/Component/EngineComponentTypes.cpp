@@ -102,6 +102,7 @@ bool RegisterEngineComponentTypes(ComponentTypeRegistry& registry)
 	if (!registry.AddField<CameraComponent>("clipDistances", &CameraComponent::GetClipDistances, static_cast<bool (CameraComponent::*)(const Vector2&)>(&CameraComponent::SetClipDistances), { .visibility = ComponentFieldVisibility::Hidden })) { return false; }
 	if (!registry.AddField<CameraComponent>("nearClipDistance", &CameraComponent::GetNearClipDistance, &CameraComponent::SetNearClipDistance, { .displayName = "Near Clip (cm)", .dragSpeed = 0.1f, .minValue = 0.01f, .maxValue = FLT_MAX }, true)) { return false; }
 	if (!registry.AddField<CameraComponent>("farClipDistance", &CameraComponent::GetFarClipDistance, &CameraComponent::SetFarClipDistance, { .displayName = "Far Clip (cm)", .dragSpeed = 100.0f }, true)) { return false; }
+	// 파일에는 정수로 저장하므로 0 Perspective, 1 Orthographic 순서가 파일 약속이다. 순서를 바꾸면 저장된 파일의 뜻이 바뀐다.
 	if (!registry.AddField<CameraComponent>("projectionMode", &GetCameraProjectionMode, &SetCameraProjectionMode, { .enumNames = { "Perspective", "Orthographic" } })) { return false; }
 	if (!registry.AddField<CameraComponent>("saturation", &CameraComponent::GetSaturation, &CameraComponent::SetSaturation, { .displayName = "Saturation", .dragSpeed = 0.01f, .minValue = 0.0f, .maxValue = 2.0f })) { return false; }
 	if (!registry.AddField<CameraComponent>("postProcessShaderPath", &CameraComponent::GetPostProcessShaderPath, &CameraComponent::SetPostProcessShaderPath, { .displayName = "Post Process Shader" })) { return false; }
@@ -134,10 +135,10 @@ bool RegisterEngineComponentTypes(ComponentTypeRegistry& registry)
 	}
 
 	if (registry.Register<AnimationComponent, Component>("AnimationComponent") == nullptr) { return false; }
-	// 클립 노드 번호 순서의 노드 Transform 목록이다. 객체로 만들지 않은 뼈 노드는 가리키지 않는 원소다.
+	// 노드 배치표와 클립을 가진 모델이다. 원래 자세는 이 모델에서 계산하므로 따로 저장하지 않는다.
+	if (!registry.AddField<AnimationComponent>("model", &AnimationComponent::GetModel, &AnimationComponent::SetModel)) { return false; }
+	// 클립 노드 번호 순서의 노드 Transform 목록이다. 객체로 만들지 않은 뼈 노드는 가리키지 않는 원소다. 길이는 모델의 노드 수와 같다.
 	if (!registry.AddField<AnimationComponent>("nodeTransforms", &AnimationComponent::GetNodeTransforms, &AnimationComponent::SetNodeTransforms, { .displayName = "Nodes" })) { return false; }
-	// 노드 번호 순서의 원래 부모 기준 값이다. 노드 목록과 같은 순서와 길이다.
-	if (!registry.AddField<AnimationComponent>("restPose", &AnimationComponent::GetRestPose, &AnimationComponent::SetRestPose, { .displayName = "Rest Pose" })) { return false; }
 
 	if (registry.Register<AudioComponent, Component>("AudioComponent") == nullptr) { return false; }
 

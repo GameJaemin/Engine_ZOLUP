@@ -61,8 +61,8 @@ bool SkinComponent::CalculateBoneMatrices(std::vector<Matrix4x4>& outBoneMatrice
 	const std::optional<std::size_t>& skinIndex = model->sceneNodes[nodeIndex].skin;
 	if (!skinIndex.has_value()) { return false; }
 
-	// 포즈는 노드 번호 순서라 노드 수와 같아야 한다. 다르면 다른 모델의 재생 컴포넌트다.
-	if (animation != nullptr && animation->GetPose().size() != model->sceneNodes.size()) { return false; }
+	// 포즈는 재생 컴포넌트 모델의 노드 번호 순서라, 같은 모델이어야 이 스킨의 노드 번호와 맞는다.
+	if (animation != nullptr && animation->GetModel() != model) { return false; }
 
 	// 스킨 번호와 joints 번호의 범위는 로더가 확인했다.
 	const Skin& skin = *model->skins[*skinIndex];

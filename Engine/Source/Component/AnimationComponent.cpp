@@ -1,6 +1,7 @@
 #include "AnimationComponent.h"
 
 #include "Animation/AnimationClip.h"
+#include "AssetManager.h"
 #include "Component/TransformComponent.h"
 #include "GameObject.h"
 #include "World.h"
@@ -35,19 +36,59 @@ void AnimationComponent::OnRegister()
 	destroyingWorld = &world;
 }
 
-void AnimationComponent::SetNodeTransforms(std::vector<TransformComponent*> newNodeTransforms)
+void AnimationComponent::SetModel(std::shared_ptr<const Model> newModel)
 {
-	nodeTransforms = std::move(newNodeTransforms);
-}
+	if (newModel == model) { return; }
+	model = std::move(newModel);
 
-void AnimationComponent::SetRestPose(std::vector<Transform> newRestPose)
-{
-	restPose = std::move(newRestPose);
+	// 원래 자세는 모델 배치표의 부모 기준 값이다.
+	restPose.clear();
+	if (model != nullptr)
+	{
+		restPose.reserve(model->sceneNodes.size());
+		for (const GLTFSceneNode& sceneNode : model->sceneNodes) { restPose.push_back(sceneNode.localTransform); }
+	}
 	pose = restPose;
+
+	// 옛 모델의 노드 번호와 클립은 새 모델에서 뜻이 없으므로 비운다. 연결은 SetNodeTransforms로 다시 정한다.
+	nodeTransforms.assign(restPose.size(), nullptr);
+	clip = nullptr;
+	currentTime = 0.0f;
 }
 
-void AnimationComponent::Play(std::shared_ptr<const AnimationClip> newClip, bool newLooping)
+bool AnimationComponent::SetNodeTransforms(std::vector<TransformComponent*> newNodeTransforms)
 {
+	// 원래 자세가 모델의 노드 수만큼 있으므로 그 길이로 확인한다. 모델이 없으면 0이다.
+	if (newNodeTransforms.size() != restPose.size()) { return false; }
+	nodeTransforms = std::move(newNodeTransforms);
+	return true;
+}
+
+void AnimationComponent::SetPose(std::vector<Transform> newPose)
+{
+	pose = std::move(newPose);
+	ApplyPoseToNodes();
+}
+
+void AnimationComponent::ApplyPoseToNodes()
+{
+	// 객체로 만든 노드에만 쓴다. 두 목록 중 짧은 쪽까지만 쓰며, 뼈 노드(nullptr)는 포즈에만 남는다.
+	for (std::size_t node = 0; node < pose.size() && node < nodeTransforms.size(); ++node)
+	{
+		if (nodeTransforms[node] == nullptr) { continue; }
+		nodeTransforms[node]->SetTransform(pose[node]);
+	}
+}
+
+bool AnimationComponent::Play(std::shared_ptr<const AnimationClip> newClip, bool newLooping)
+{
+	// 트랙의 노드 번호는 그 클립을 가진 모델의 번호라, 같은 모델의 클립만 받는다.
+	if (newClip != nullptr)
+	{
+		const bool isModelClip = model != nullptr && std::ranges::find(model->animations, newClip) != model->animations.end();
+		if (!isModelClip) { return false; }
+	}
+
 	clip = std::move(newClip);
 	looping = newLooping;
 	currentTime = 0.0f;
@@ -55,14 +96,11 @@ void AnimationComponent::Play(std::shared_ptr<const AnimationClip> newClip, bool
 	// 새 클립은 원래 자세에서 시작한다. 멈춤(nullptr)은 지금 자세를 유지한다.
 	if (clip == nullptr)
 	{
-		return;
+		return true;
 	}
 	pose = restPose;
-	for (std::size_t node = 0; node < pose.size() && node < nodeTransforms.size(); ++node)
-	{
-		if (nodeTransforms[node] == nullptr) { continue; }
-		nodeTransforms[node]->SetTransform(pose[node]);
-	}
+	ApplyPoseToNodes();
+	return true;
 }
 
 void AnimationComponent::Tick(float deltaTime)
@@ -83,7 +121,7 @@ void AnimationComponent::Tick(float deltaTime)
 		currentTime = std::min(currentTime, clip->duration);
 	}
 
-	// 1) 클립 값을 포즈에 채운다. 원래 값을 받지 않았거나 다른 Model의 클립이면 포즈 밖이므로 그 트랙을 건너뛴다.
+	// 1) 클립 값을 포즈에 채운다. Play가 같은 모델의 클립만 받으므로 보통은 범위 안이며, 범위 밖 트랙은 방어로 건너뛴다.
 	for (const AnimationNodeTrack& track : clip->tracks)
 	{
 		if (track.node >= pose.size())

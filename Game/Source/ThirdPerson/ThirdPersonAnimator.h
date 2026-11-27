@@ -38,7 +38,7 @@ public:
 		return true;
 	}
 
-	/** Play를 호출하지 않고 현재 포즈도 갱신하는 기존 SetRestPose API로 전달한다. */
+	/** 섞은 포즈를 AnimationComponent::SetPose로 전달한다. 엔진의 클립 재생(Play)은 쓰지 않는다. */
 	void Update(AnimationComponent& target, float actualSpeed, float deltaTime)
 	{
 		const float elapsed = std::clamp(deltaTime, 0.0f, 0.1f);
@@ -58,16 +58,8 @@ public:
 			const Transform locomotion = Blend(walkPose[node], runPose[node], runWeight);
 			output[node] = Blend(idlePose[node], locomotion, movingWeight);
 		}
-		// 원래 기준 자세는 rest에 보관한다. 엔진에 SetPose가 생기면 이 연결만 바꾼다.
-		target.SetRestPose(output);
-		const std::vector<TransformComponent*>& bindings = target.GetNodeTransforms();
-		for (std::size_t node = 0; node < bindings.size() && node < output.size(); ++node)
-		{
-			if (bindings[node] != nullptr)
-			{
-				bindings[node]->SetTransform(output[node]);
-			}
-		}
+		// 원래 기준 자세는 rest에 보관하고, 현재 포즈와 노드 반영은 엔진이 맡는다.
+		target.SetPose(output);
 	}
 
 private:
