@@ -12,7 +12,7 @@
 #include "GameObject.h"
 #include "Mesh/StaticMesh.h"
 #include "Paths.h"
-#include "Prefab/Prefab.h"
+#include "Prefab/ModelPrefab.h"
 #include "World.h"
 
 #include <imgui.h>
@@ -277,24 +277,26 @@ void EditorApplication::OnGui()
 	}
 	else if (droppedPrefabPath.has_value())
 	{
-		const std::shared_ptr<const Prefab> prefab = AssetManager::Get().LoadPrefab(*droppedPrefabPath);
+		const std::shared_ptr<const PrefabObjects> prefab = AssetManager::Get().LoadPrefab(*droppedPrefabPath);
 		if (prefab == nullptr)
 		{
 			Log::Write(LogLevel::Warning, "Editor", "Failed to load the dropped prefab");
 		}
 		else
 		{
-			Transform transform = prefab->root.localTransform;
-			transform.position = Vector3{ 0.0f, 0.0f, 0.0f };
-			const PrefabPlacement placement{ .transform = transform };
-			GameObject* root = world->InstantiatePrefab(*prefab, placement);
+			GameObject* root = InstantiatePrefab(*world, *prefab, PrefabPlacement{});
 			if (root == nullptr)
 			{
 				Log::Write(LogLevel::Warning, "Editor", "Failed to instantiate the dropped prefab");
 			}
-			else if (!selection.Select(root))
+			else
 			{
-				Log::Write(LogLevel::Warning, "Editor", "Could not select the dropped prefab instance");
+				// 루트의 회전과 크기는 Prefab 값을 유지하고 위치만 원점에 둔다.
+				root->GetComponent<TransformComponent>()->SetPosition(Vector3{ 0.0f, 0.0f, 0.0f });
+				if (!selection.Select(root))
+				{
+					Log::Write(LogLevel::Warning, "Editor", "Could not select the dropped prefab instance");
+				}
 			}
 		}
 	}

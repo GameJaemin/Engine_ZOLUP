@@ -214,17 +214,25 @@ std::optional<std::vector<GameObject*>> LoadLevel(const std::filesystem::path& p
 	// ----------
 	// 참조된 프리팹과 맵 안 객체의 에셋 로드
 	// ----------
-	std::vector<std::shared_ptr<const Prefab>> prefabs(entries.Size());
+	std::vector<std::shared_ptr<const PrefabObjects>> prefabs(entries.Size());
 	for (rapidjson::SizeType i = 0; i < entries.Size(); ++i)
 	{
 		const rapidjson::Value& entry = entries[i];
 		const auto prefab = entry.FindMember("prefab");
 		if (prefab == entry.MemberEnd())
 		{
-			// 맵 안에 적힌 객체라 캐시하지 않는다. 붙인 컴포넌트가 에셋을 함께 소유하므로 LoadLevel이 끝나면 해제해도 된다.
-			std::shared_ptr<Prefab> inlinePrefab = std::make_shared<Prefab>();
-			if (!LoadPrefabObject(AssetManager::Get(), inlineDefinitions[i], std::format("{}: objects[{}]", pathText, i), inlinePrefab->root)) { return std::nullopt; }
-			prefabs[i] = std::move(inlinePrefab);
+			// 맵 안에 적힌 객체다. 옛 형식으로 읽은 뒤 완성된 객체 상태로 바꾸며 캐시하지 않는다.
+			// 붙인 컴포넌트가 에셋을 함께 소유하므로 LoadLevel이 끝나면 해제해도 된다.
+			const std::string context = std::format("{}: objects[{}]", pathText, i);
+			Prefab inlinePrefab;
+			if (!LoadPrefabObject(AssetManager::Get(), inlineDefinitions[i], context, inlinePrefab.root)) { return std::nullopt; }
+			std::optional<PrefabObjects> objects = ConvertLegacyPrefab(inlinePrefab);
+			if (!objects.has_value())
+			{
+				Log::Write(LogLevel::Error, "Level", std::format("{} could not be converted", context));
+				return std::nullopt;
+			}
+			prefabs[i] = std::make_shared<const PrefabObjects>(std::move(*objects));
 			continue;
 		}
 
@@ -245,7 +253,7 @@ std::optional<std::vector<GameObject*>> LoadLevel(const std::filesystem::path& p
 	for (rapidjson::SizeType i = 0; i < entries.Size(); ++i)
 	{
 		// 맵 안 객체는 ReadPlacement가 읽는 name과 transform이 루트 값과 같다.
-		GameObject* root = world.InstantiatePrefab(*prefabs[i], ReadPlacement(entries[i]));
+		GameObject* root = InstantiatePrefab(world, *prefabs[i], ReadPlacement(entries[i]));
 		if (root == nullptr)
 		{
 			Log::Write(LogLevel::Error, "Level", std::format("{}: objects[{}] could not be created", pathText, i));

@@ -1,18 +1,44 @@
 {
-	"components": [
-		{
-			"type": "skybox",
-			"properties": {
-				"enabled": true,
-				"faces": {
-					"positiveX": "Game/Content/Skyboxes/Day/px.png",
-					"negativeX": "Game/Content/Skyboxes/Day/nx.png",
-					"positiveY": "Game/Content/Skyboxes/Day/py.png",
-					"negativeY": "Game/Content/Skyboxes/Day/ny.png",
-					"positiveZ": "Game/Content/Skyboxes/Day/pz.png",
-					"negativeZ": "Game/Content/Skyboxes/Day/nz.png"
-				}
-			}
-		}
-	]
+	"rootObject": "5208749e-0512-4057-830c-52f97b8946c9",
+	"objects": [{
+			"id": "5208749e-0512-4057-830c-52f97b8946c9",
+			"name": "GameObject",
+			"components": [{
+					"type": "TransformComponent",
+					"fields": {
+						"position": [0.0, 0.0, 0.0],
+						"rotationQuaternion": [0.0, 0.0, 0.0, 1.0],
+						"scale": [1.0, 1.0, 1.0]
+					}
+				}, {
+					"type": "SkyboxComponent",
+					"fields": {
+						"enabled": true,
+						"facePositiveX": {
+							"path": "Game/Content/Skyboxes/Day/px.png",
+							"format": "RGBA8SRGB"
+						},
+						"faceNegativeX": {
+							"path": "Game/Content/Skyboxes/Day/nx.png",
+							"format": "RGBA8SRGB"
+						},
+						"facePositiveY": {
+							"path": "Game/Content/Skyboxes/Day/py.png",
+							"format": "RGBA8SRGB"
+						},
+						"faceNegativeY": {
+							"path": "Game/Content/Skyboxes/Day/ny.png",
+							"format": "RGBA8SRGB"
+						},
+						"facePositiveZ": {
+							"path": "Game/Content/Skyboxes/Day/pz.png",
+							"format": "RGBA8SRGB"
+						},
+						"faceNegativeZ": {
+							"path": "Game/Content/Skyboxes/Day/nz.png",
+							"format": "RGBA8SRGB"
+						}
+					}
+				}]
+		}]
 }

@@ -1,20 +1,26 @@
 {
-	"root": {
-		"name": "CheckerTeapot",
-		"transform": {
-			"position": [0.0, 0.0, 0.0],
-			"rotation": [0.0, -0.7071067, 0.0, 0.7071068],
-			"scale": [1.0, 1.0, 1.0]
-		},
-		"components": [
-			{
-				"type": "staticMesh",
-				"properties": {
-					"model": "Game/Content/Meshes/UtahTeapot/UtahTeapot.gltf",
-					"meshIndex": 0,
-					"material": "Game/Content/Materials/CheckerTeapot.material.json"
-				}
-			}
-		]
-	}
+	"rootObject": "ed84747a-8232-4754-9457-1bb334de4502",
+	"objects": [{
+			"id": "ed84747a-8232-4754-9457-1bb334de4502",
+			"name": "CheckerTeapot",
+			"components": [{
+					"type": "TransformComponent",
+					"fields": {
+						"position": [0.0, 0.0, 0.0],
+						"rotationQuaternion": [0.0, -0.7071067, 0.0, 0.7071068],
+						"scale": [1.0, 1.0, 1.0]
+					}
+				}, {
+					"type": "StaticMeshComponent",
+					"fields": {
+						"mesh": {
+							"path": "Game/Content/Meshes/UtahTeapot/UtahTeapot.gltf|0",
+							"name": "Utah Teapot.001"
+						},
+						"material": {
+							"path": "Game/Content/Materials/CheckerTeapot.material.json"
+						}
+					}
+				}]
+		}]
 }

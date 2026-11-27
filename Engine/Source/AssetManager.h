@@ -17,7 +17,7 @@
 
 class Font;
 class Material;
-struct Prefab;
+struct PrefabObjects;
 class StaticMesh;
 class Texture;
 enum class TextureFormat;
@@ -183,12 +183,12 @@ private:
 public:
 	/**
 	 * 저장소 루트 기준 UTF-8 상대 경로에서 프리팹을 불러오고 같은 경로 요청에 재사용한다.
-	 * materialOverrides에 적힌 메시는 그 재질 경로의 재질로 바꾼다.
-	 * 잘못된 설정이나 참조된 에셋의 로드 실패는 nullptr를 반환한다.
-	 * 재질 오버라이드가 없으면 모델을 생략할 수 있다.
+	 * .gltf 경로는 그 모델을 임시 World에 펼쳐 찍은 결과를, 그 밖의 경로는 Prefab 파일(LoadPrefabFile)을 읽은 결과를 돌려준다.
+	 * glTF는 임시 World를 쓰므로 JoltRuntime 초기화 뒤 메인 스레드에서 부른다. 읽기나 참조된 에셋 로드에 실패하면 nullptr를 반환한다.
 	 */
-	[[nodiscard]] std::shared_ptr<const Prefab> LoadPrefab(std::string_view relativePath);
+	[[nodiscard]] std::shared_ptr<const PrefabObjects> LoadPrefab(std::string_view relativePath);
 
 private:
-	std::unordered_map<std::string, std::shared_ptr<const Prefab>> prefabs;
+	// 파일 경로 키에서 그 파일을 완성된 객체 상태로 바꾼 결과로 가는 캐시다.
+	std::unordered_map<std::string, std::shared_ptr<const PrefabObjects>> prefabs;
 };

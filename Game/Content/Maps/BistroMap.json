@@ -20,7 +20,7 @@
         ]
       },
       "name": "BistroInterior",
-      "prefab": "Game/Content/Prefabs/BistroInterior.prefab.json"
+      "prefab": "Game/Content/Meshes/BistroInterior/BistroInterior.gltf"
     },
     {
       "name": "BistroDirectionalLight",

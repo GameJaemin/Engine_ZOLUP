@@ -82,6 +82,7 @@
     <ClCompile Include="Engine\Source\GLTF\GLTFLoader.cpp" />
     <ClCompile Include="Engine\Source\Scene\LevelLoader.cpp" />
     <ClCompile Include="Engine\Source\ObjectID.cpp" />
+    <ClCompile Include="Engine\Source\Prefab\ModelPrefab.cpp" />
     <ClCompile Include="Engine\Source\Prefab\Prefab.cpp" />
     <ClCompile Include="Engine\Source\Scene\SceneSnapshot.cpp" />
     <ClCompile Include="Engine\Source\Scene\SnapshotJson.cpp" />
@@ -178,6 +179,7 @@
     <ClInclude Include="Engine\Source\GLTF\GLTFLoader.h" />
     <ClInclude Include="Engine\Source\Scene\LevelLoader.h" />
     <ClInclude Include="Engine\Source\ObjectID.h" />
+    <ClInclude Include="Engine\Source\Prefab\ModelPrefab.h" />
     <ClInclude Include="Engine\Source\Prefab\Prefab.h" />
     <ClInclude Include="Engine\Source\Scene\SceneSnapshot.h" />
     <ClInclude Include="Engine\Source\Scene\SnapshotJson.h" />

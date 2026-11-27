@@ -713,7 +713,9 @@ std::error_code ContentBrowserPanel::DrawEntryTile(const ContentBrowserEntry& en
 		}
 	}
 
-	if (entry.type == ContentBrowserEntryType::Prefab && ImGui::BeginDragDropSource())
+	// glTF 모델도 LoadPrefab이 그대로 Prefab으로 만들므로 Prefab 파일처럼 뷰포트에 놓을 수 있다.
+	const bool canPlace = entry.type == ContentBrowserEntryType::Prefab || entry.type == ContentBrowserEntryType::Model;
+	if (canPlace && ImGui::BeginDragDropSource())
 	{
 		ImGui::SetDragDropPayload(PrefabDragPayloadType, entry.relativePath.data(), entry.relativePath.size(), ImGuiCond_Once);
 		ImGui::TextUnformatted(entry.name.c_str());

@@ -638,7 +638,7 @@ std::shared_ptr<const Font> AssetManager::LoadFont(std::string_view relativePath
 	return font;
 }
 
-std::shared_ptr<const Prefab> AssetManager::LoadPrefab(std::string_view relativePath)
+std::shared_ptr<const PrefabObjects> AssetManager::LoadPrefab(std::string_view relativePath)
 {
 	std::filesystem::path absolutePath;
 	if (!Paths::GetAbsolutePath(relativePath, absolutePath))
@@ -654,50 +654,27 @@ std::shared_ptr<const Prefab> AssetManager::LoadPrefab(std::string_view relative
 	const auto cachedPrefab = prefabs.find(cacheKey);
 	if (cachedPrefab != prefabs.end()) { return cachedPrefab->second; }
 
-	PrefabDefinition definition;
-	if (!ReadPrefabDefinition(absolutePath, definition)) { return nullptr; }
-
-	Prefab prefab{};
-	if (definition.modelPath.has_value())
+	// glTF는 그 모델을 그대로 Prefab으로 만들고, 그 밖의 파일은 Prefab 파일로 읽는다.
+	// 캐시 키는 소문자로 바뀐 경로라 확장자 대소문자와 상관없이 비교된다.
+	std::optional<PrefabObjects> objects;
+	if (cacheKey.ends_with(".gltf"))
 	{
-		prefab.model = LoadModel(*definition.modelPath);
-		if (prefab.model == nullptr)
+		const std::shared_ptr<const Model> model = LoadModel(relativePath);
+		if (model == nullptr)
 		{
-			Log::Write(LogLevel::Error, "AssetManager", std::format("{}: could not load model {}", relativePath, *definition.modelPath));
-
+			Log::Write(LogLevel::Error, "AssetManager", std::format("{}: could not load the model", relativePath));
 			return nullptr;
 		}
+		objects = CreateModelPrefab(model, {});
 	}
-
-	// 파서는 재질 오버라이드가 있을 때 모델 경로가 있는지 확인한다.
-	if (!definition.materialOverrides.empty())
+	else
 	{
-		const auto& defaultMaterials = prefab.model->meshMaterials;
-		prefab.meshMaterialOverrides.resize(defaultMaterials.size());
-
-		for (const PrefabMaterialOverride& entry : definition.materialOverrides)
-		{
-			const std::size_t meshIndex = entry.meshIndex;
-			if (meshIndex >= defaultMaterials.size() || prefab.meshMaterialOverrides[meshIndex] != nullptr)
-			{
-				Log::Write(LogLevel::Error, "AssetManager", std::format("{}: invalid or duplicate material override for mesh {}", relativePath, meshIndex));
-				return nullptr;
-			}
-
-			std::shared_ptr<const Material> material = LoadMaterial(entry.materialPath);
-			if (material == nullptr)
-			{
-				Log::Write(LogLevel::Error, "AssetManager", std::format("{}: mesh {} could not load material {}", relativePath, meshIndex, entry.materialPath));
-				return nullptr;
-			}
-
-			prefab.meshMaterialOverrides[meshIndex] = std::move(material);
-		}
+		objects = LoadPrefabFile(absolutePath, *this);
 	}
+	// 실패 이유는 CreateModelPrefab이나 LoadPrefabFile이 로그로 남긴다.
+	if (!objects.has_value()) { return nullptr; }
 
-	if (!LoadPrefabObject(*this, definition.root, std::format("{}: root", relativePath), prefab.root)) { return nullptr; }
-
-	std::shared_ptr<const Prefab> result = std::make_shared<const Prefab>(std::move(prefab));
+	std::shared_ptr<const PrefabObjects> result = std::make_shared<const PrefabObjects>(std::move(*objects));
 	prefabs.emplace(cacheKey, result);
 
 	return result;

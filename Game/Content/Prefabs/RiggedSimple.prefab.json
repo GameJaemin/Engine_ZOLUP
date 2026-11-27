@@ -1,71 +1,80 @@
 {
-	"root": {
-		"name": "RiggedSimple",
-		"components": [
-			{
-				"type": "animation",
-				"properties": {
-					"model": "Game/Content/Meshes/RiggedSimple/RiggedSimple.gltf",
-					"nodeBindings": [
-						{
-							"sourceNode": 0,
-							"target": "zUp"
-						},
-						{
-							"sourceNode": 1,
-							"target": "armature"
-						},
-						{
-							"sourceNode": 2,
-							"target": "cylinder"
-						}
-					]
-				}
-			}
-		],
-		"children": [
-			{
-				"id": "zUp",
-				"name": "Z_UP",
-				"transform": {
-					"position": [0.0, 0.0, 0.0],
-					"rotation": [-0.7071068, 0.0, 0.0, 0.7071068],
-					"scale": [1.0, 1.0, 1.0]
-				},
-				"children": [
-					{
-						"id": "armature",
-						"name": "Armature",
-						"transform": {
-							"position": [0.0, 0.0, 0.0],
-							"rotation": [0.0, 0.0, 0.7071068, 0.7071068],
-							"scale": [1.0, 1.0, 1.0]
-						},
-						"children": [
-							{
-								"id": "cylinder",
-								"name": "Cylinder",
-								"components": [
-									{
-										"type": "staticMesh",
-										"properties": {
-											"model": "Game/Content/Meshes/RiggedSimple/RiggedSimple.gltf",
-											"meshIndex": 0
-										}
-									},
-									{
-										"type": "skin",
-										"properties": {
-											"model": "Game/Content/Meshes/RiggedSimple/RiggedSimple.gltf",
-											"sourceNode": 2
-										}
-									}
-								]
-							}
-						]
+	"rootObject": "b904c949-b6da-4015-ae19-7177ed2f902e",
+	"objects": [{
+			"id": "b904c949-b6da-4015-ae19-7177ed2f902e",
+			"name": "RiggedSimple",
+			"children": ["62b78afc-c1ff-4334-b630-ae6e8715eae5"],
+			"components": [{
+					"type": "TransformComponent",
+					"fields": {
+						"position": [0.0, 0.0, 0.0],
+						"rotationQuaternion": [0.0, 0.0, 0.0, 1.0],
+						"scale": [1.0, 1.0, 1.0]
 					}
-				]
-			}
-		]
-	}
+				}, {
+					"type": "AnimationComponent",
+					"fields": {
+						"model": {
+							"path": "Game/Content/Meshes/RiggedSimple/RiggedSimple.gltf"
+						},
+						"nodeTransforms": ["62b78afc-c1ff-4334-b630-ae6e8715eae5", "66ac8878-5b6f-4989-a813-e8df00f01f15", "2fc3f0cf-407e-492b-be88-5d18ef6bcee7", null, null]
+					}
+				}]
+		}, {
+			"id": "62b78afc-c1ff-4334-b630-ae6e8715eae5",
+			"name": "Z_UP",
+			"children": ["66ac8878-5b6f-4989-a813-e8df00f01f15"],
+			"components": [{
+					"type": "TransformComponent",
+					"fields": {
+						"position": [0.0, 0.0, 0.0],
+						"rotationQuaternion": [-0.7071068, 0.0, 0.0, 0.7071068],
+						"scale": [1.0, 1.0, 1.0]
+					}
+				}]
+		}, {
+			"id": "66ac8878-5b6f-4989-a813-e8df00f01f15",
+			"name": "Armature",
+			"children": ["2fc3f0cf-407e-492b-be88-5d18ef6bcee7"],
+			"components": [{
+					"type": "TransformComponent",
+					"fields": {
+						"position": [0.0, 0.0, 0.0],
+						"rotationQuaternion": [0.0, 0.0, 0.7071068, 0.7071068],
+						"scale": [1.0, 1.0, 1.0]
+					}
+				}]
+		}, {
+			"id": "2fc3f0cf-407e-492b-be88-5d18ef6bcee7",
+			"name": "Cylinder",
+			"components": [{
+					"type": "TransformComponent",
+					"fields": {
+						"position": [0.0, 0.0, 0.0],
+						"rotationQuaternion": [0.0, 0.0, 0.0, 1.0],
+						"scale": [1.0, 1.0, 1.0]
+					}
+				}, {
+					"type": "StaticMeshComponent",
+					"fields": {
+						"mesh": {
+							"path": "Game/Content/Meshes/RiggedSimple/RiggedSimple.gltf|0",
+							"name": "Cylinder"
+						},
+						"material": {
+							"path": "Game/Content/Meshes/RiggedSimple/RiggedSimple.gltf|0",
+							"name": "Material_001-effect"
+						}
+					}
+				}, {
+					"type": "SkinComponent",
+					"fields": {
+						"model": {
+							"path": "Game/Content/Meshes/RiggedSimple/RiggedSimple.gltf"
+						},
+						"nodeIndex": 2,
+						"animation": "b904c949-b6da-4015-ae19-7177ed2f902e"
+					}
+				}]
+		}]
 }

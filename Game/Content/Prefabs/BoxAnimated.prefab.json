@@ -1,71 +1,94 @@
 {
-	"root": {
-		"name": "BoxAnimated",
-		"components": [
-			{
-				"type": "animation",
-				"properties": {
-					"model": "Game/Content/Meshes/BoxAnimated/BoxAnimated.gltf",
-					"nodeBindings": [
-						{
-							"sourceNode": 0,
-							"target": "pivot"
+	"rootObject": "8e415da9-787c-4d08-91f5-88579a1be83f",
+	"objects": [{
+			"id": "8e415da9-787c-4d08-91f5-88579a1be83f",
+			"name": "BoxAnimated",
+			"children": ["46db667f-f131-465d-ba96-a6b3eaafb65a", "069be9f2-7271-4a96-917f-7424aaf16be7"],
+			"components": [{
+					"type": "TransformComponent",
+					"fields": {
+						"position": [0.0, 0.0, 0.0],
+						"rotationQuaternion": [0.0, 0.0, 0.0, 1.0],
+						"scale": [1.0, 1.0, 1.0]
+					}
+				}, {
+					"type": "AnimationComponent",
+					"fields": {
+						"model": {
+							"path": "Game/Content/Meshes/BoxAnimated/BoxAnimated.gltf"
 						},
-						{
-							"sourceNode": 1,
-							"target": "boxParent"
+						"nodeTransforms": ["069be9f2-7271-4a96-917f-7424aaf16be7", "0b3ac9e2-900b-44b0-b9d8-d7d36faf1b35", "7511b165-91fc-49d4-ba32-64986e94a721", "46db667f-f131-465d-ba96-a6b3eaafb65a"]
+					}
+				}]
+		}, {
+			"id": "46db667f-f131-465d-ba96-a6b3eaafb65a",
+			"name": "OuterBox",
+			"components": [{
+					"type": "TransformComponent",
+					"fields": {
+						"position": [0.0, 0.0, 0.0],
+						"rotationQuaternion": [0.0, 0.0, 0.0, 1.0],
+						"scale": [1.0, 1.0, 1.0]
+					}
+				}, {
+					"type": "StaticMeshComponent",
+					"fields": {
+						"mesh": {
+							"path": "Game/Content/Meshes/BoxAnimated/BoxAnimated.gltf|1",
+							"name": "outer_box"
 						},
-						{
-							"sourceNode": 2,
-							"target": "innerBox"
-						},
-						{
-							"sourceNode": 3,
-							"target": "outerBox"
-						}
-					]
-				}
-			}
-		],
-		"children": [
-			{
-				"id": "outerBox",
-				"name": "OuterBox",
-				"components": [
-					{
-						"type": "staticMesh",
-						"properties": {
-							"model": "Game/Content/Meshes/BoxAnimated/BoxAnimated.gltf",
-							"meshIndex": 1
+						"material": {
+							"path": "Game/Content/Meshes/BoxAnimated/BoxAnimated.gltf|1",
+							"name": "outer"
 						}
 					}
-				]
-			},
-			{
-				"id": "pivot",
-				"name": "Pivot",
-				"children": [
-					{
-						"id": "boxParent",
-						"name": "BoxParent",
-						"children": [
-							{
-								"id": "innerBox",
-								"name": "InnerBox",
-								"components": [
-									{
-										"type": "staticMesh",
-										"properties": {
-											"model": "Game/Content/Meshes/BoxAnimated/BoxAnimated.gltf",
-											"meshIndex": 0
-										}
-									}
-								]
-							}
-						]
+				}]
+		}, {
+			"id": "069be9f2-7271-4a96-917f-7424aaf16be7",
+			"name": "Pivot",
+			"children": ["0b3ac9e2-900b-44b0-b9d8-d7d36faf1b35"],
+			"components": [{
+					"type": "TransformComponent",
+					"fields": {
+						"position": [0.0, 0.0, 0.0],
+						"rotationQuaternion": [0.0, 0.0, 0.0, 1.0],
+						"scale": [1.0, 1.0, 1.0]
 					}
-				]
-			}
-		]
-	}
+				}]
+		}, {
+			"id": "0b3ac9e2-900b-44b0-b9d8-d7d36faf1b35",
+			"name": "BoxParent",
+			"children": ["7511b165-91fc-49d4-ba32-64986e94a721"],
+			"components": [{
+					"type": "TransformComponent",
+					"fields": {
+						"position": [0.0, 0.0, 0.0],
+						"rotationQuaternion": [0.0, 0.0, 0.0, 1.0],
+						"scale": [1.0, 1.0, 1.0]
+					}
+				}]
+		}, {
+			"id": "7511b165-91fc-49d4-ba32-64986e94a721",
+			"name": "InnerBox",
+			"components": [{
+					"type": "TransformComponent",
+					"fields": {
+						"position": [0.0, 0.0, 0.0],
+						"rotationQuaternion": [0.0, 0.0, 0.0, 1.0],
+						"scale": [1.0, 1.0, 1.0]
+					}
+				}, {
+					"type": "StaticMeshComponent",
+					"fields": {
+						"mesh": {
+							"path": "Game/Content/Meshes/BoxAnimated/BoxAnimated.gltf|0",
+							"name": "inner_box"
+						},
+						"material": {
+							"path": "Game/Content/Meshes/BoxAnimated/BoxAnimated.gltf|0",
+							"name": "inner"
+						}
+					}
+				}]
+		}]
 }

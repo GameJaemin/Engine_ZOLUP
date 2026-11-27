@@ -2,10 +2,10 @@
 
 #include "Core/Math/Transform.h"
 #include "Core/Math/Vector3.h"
+#include "ModelPrefab.h"
 
 #include <array>
 #include <cstddef>
-#include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
@@ -122,22 +122,6 @@ struct Prefab
 	std::vector<std::shared_ptr<const Material>> meshMaterialOverrides;
 };
 
-/** 프리팹 루트의 배치 값이다. 비어 있는 항목은 프리팹 기본값을 쓴다. */
-struct PrefabPlacement
-{
-	std::optional<std::string> name;
-	// 루트의 월드 Transform이다. 위치 단위는 cm다.
-	std::optional<Transform> transform;
-};
-
-struct PrefabMaterialOverride
-{
-	// 0부터 시작하는 모델 메시 번호다. 실제 메시 범위는 모델을 읽은 뒤 확인한다.
-	std::size_t meshIndex;
-	// 이 메시에 쓸 재질의 경로다.
-	std::string materialPath;
-};
-
 struct PrefabSkyboxDefinition
 {
 	// +X, -X, +Y, -Y, +Z, -Z 순서다.
@@ -184,16 +168,8 @@ struct PrefabObjectDefinition
 	std::vector<PrefabObjectDefinition> children;
 };
 
-struct PrefabDefinition
-{
-	PrefabObjectDefinition root;
-	std::optional<std::string> modelPath;
-	std::vector<PrefabMaterialOverride> materialOverrides;
-};
-
 /**
- * 절대 경로에서 프리팹 JSON을 읽고 루트 객체와 자식 계층 또는 기존 모델 설정을 검증한다.
- * 모델과 텍스처 경로는 저장소 루트 기준 UTF-8 상대 경로다.
- * 읽기 또는 검증에 실패하면 outDefinition을 유지하고 false를 반환한다.
+ * 옛 형식으로 읽은 prefab을 Prefab 객체 상태로 바꾼다. 임시 World에 옛 방식으로 놓은 뒤 찍는다.
+ * 루트 이름과 Transform은 prefab.root의 값이다. JoltRuntime 초기화 뒤 메인 스레드에서 부른다. 실패하면 로그를 남기고 nullopt를 반환한다.
  */
-[[nodiscard]] bool ReadPrefabDefinition(const std::filesystem::path& absolutePath, PrefabDefinition& outDefinition);
+std::optional<PrefabObjects> ConvertLegacyPrefab(const Prefab& prefab);

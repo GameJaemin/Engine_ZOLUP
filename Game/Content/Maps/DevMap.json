@@ -29,7 +29,7 @@
 		},
 		{
 			"name": "AlfaRomeo",
-			"prefab": "Game/Content/Prefabs/AlfaRomeo.prefab.json",
+			"prefab": "Game/Content/Meshes/alfa_romeo_8c_corto_touring_spider_1933/scene.gltf",
 			"transform": {
 				"position": [0.0, 0.0, 0.0],
 				"rotation": [0.0, 0.0, 0.0, 1.0],

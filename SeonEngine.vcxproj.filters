@@ -271,6 +271,9 @@
     <ClCompile Include="Engine\Source\ObjectID.cpp">
       <Filter>Engine\Source</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Source\Prefab\ModelPrefab.cpp">
+      <Filter>Engine\Source\Prefab</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Source\Prefab\Prefab.cpp">
       <Filter>Engine\Source\Prefab</Filter>
     </ClCompile>
@@ -575,6 +578,9 @@
     </ClInclude>
     <ClInclude Include="Engine\Source\ObjectID.h">
       <Filter>Engine\Source</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Prefab\ModelPrefab.h">
+      <Filter>Engine\Source\Prefab</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Prefab\Prefab.h">
       <Filter>Engine\Source\Prefab</Filter>
