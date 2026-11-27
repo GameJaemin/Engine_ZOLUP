@@ -196,3 +196,26 @@ SCISSORMAN: Goth Scarecrow, [배포 페이지](https://goth-scarecrow.itch.io/sc
 2026-11-26 Debug 빌드 및 --babydoll-test 45개 검사 통과. 입력/키 반복/솔로 매핑, 박자/실수, 청각/심박/숨기, AI 상태, 경로/회전/가감속, 30/120Hz 이동·마우스 일관성, CCTV 수명/거리 계수, Jolt 낙하/정착, 조명 깜빡임/소등/복구와 스냅샷 필드 복원을 검사했다.
 
 실행 창에서 모델 미리보기→플레이, 메인/CCTV 동시 출력과 저채도/스캔라인, 이동하는 몬스터, 전등 4/9 소등, 상자 3개/Jolt ready, Esc 일시정지를 확인했다. 벽 근접 CCTV 구도도 이후 보완했다. GPU 영상의 모든 위치 조합, 테이블 접근/강제 파괴 전체 동선과 장시간 플레이 감각은 추가 플레이 검증 대상이다.
+
+## 잡힘 점프스케어 (2026-11-27)
+
+잡힘의 시작은 BabyDollApplication::BeginCaught()에서 한 번 처리한다. 플레이어 이동을 막고 CCTV를 닫은 뒤 CaughtCameraComponent에 몬스터와 플레이어 위치를 전달한다. 몬스터는 플레이어 쪽을 향하고 기존 Scissorman_SimplesAttack 클립을 한 번 재생한다. 메인 카메라는 일반 OrbitCamera 대신 얼굴 앞 고정 구도에서 빠르게 다가가며 위치/롤 흔들림을 적용한다. 잡힘 전용 약한 조명이 얼굴을 비추며, 일반 HUD와 CAUGHT 문구는 숨긴다.
+
+기본 연출은 1.8초다. 1.15초까지 얼굴 연출을 보여주고 0.35초 동안 암전한 뒤 검은 화면을 유지하다 기존 체크포인트로 복귀한다. 흔들림은 잡힘 경과 시간으로 계산하므로 프레임률에 따라 누적되거나 일시정지 중 진행하지 않는다. Esc 일시정지는 유지하며 잡힘 중 마우스로 카메라 방향을 바꿀 수 없다. 개발 메뉴의 Preview jumpscare로 같은 경로를 즉시 실행할 수 있다. 이 버튼도 사망 횟수를 늘리고 체크포인트로 복귀한다.
+
+| Prototype.json 키 | 기본값 | 의미 |
+| --- | --- | --- |
+| caughtDuration | 1.8 | 잡힘부터 복귀까지 총 시간(1~2초) |
+| caughtFaceHeight | 250 | Head 노드가 없는 모델의 대체 조준 높이(cm) |
+| caughtCameraDistance | 70 | 얼굴 앞 초기 카메라 거리(cm), 이후 72%까지 접근 |
+| caughtFov | 48 | 초기 수직 화각(도), 이후 8도 좁아짐 |
+| caughtShakeStrength | 2.2 | 위치 흔들림 크기(cm), 0으로 끄기 |
+| caughtShakeAngle | 2 | 롤 흔들림 크기(도), 0으로 끄기 |
+| caughtFadeStart | 1.15 | 암전 시작 시간(초) |
+| caughtFadeTime | 0.35 | 암전 소요 시간(초) |
+
+caughtFadeStart + caughtFadeTime + 0.1 <= caughtDuration 조건으로 완전 암전 구간을 확보한다. 설정은 재실행 시 적용한다. 전용 잡기 클립이 없어 기존 공격 클립을 임시 사용한다. 현재 AudioSystem/AudioComponent는 재생 API가 없는 뼈대여서 점프스케어 효과음은 연결하지 못했다. 엔진/렌더러 변경은 없다. 제거하려면 CaughtCameraComponent 부착과 BeginCaught/Present 연결, HUD 암전 출력을 빼고 기존 Orbit 카메라/복귀 처리만 유지하면 된다.
+
+공격 포즈에서 머리가 움직여 가슴이 화면을 가리지 않도록 PoseAnimatorComponent::TryGetNodeWorldPosition으로 SCISSORMAN의 Head2 뼈(없으면 Head)의 월드 위치를 읽고 그 위 12cm를 조준한다. 이 위치는 CaughtCameraComponent에 값으로 전달한다. 머리 노드가 없으면 caughtFaceHeight를 사용한다. Debug 빌드와 자동 검사 82개를 통과했으며, 머리 계층/월드 변환과 포즈 추적도 검사했다.
+
+최종 실행 검증에서 Head2 얼굴 클로즈업, HUD/CCTV 숨김, 암전, 입구 체크포인트 복귀를 확인했다. 연출 중 일시정지되면 검은 화면에서도 Esc 재개 안내를 표시한다. 메뉴의 Developer tools > Preview jumpscare로 재확인할 수 있다.

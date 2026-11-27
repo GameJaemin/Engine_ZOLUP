@@ -70,6 +70,14 @@ struct PrototypeConfig
 	float lampIntensity = 2.8f;
 	float lampRange = 1250.0f;
 	float propDropHeight = 380.0f;
+	float caughtDuration = 1.8f;
+	float caughtFaceHeight = 250.0f;
+	float caughtCameraDistance = 70.0f;
+	float caughtFov = 48.0f;
+	float caughtShakeStrength = 2.2f;
+	float caughtShakeAngle = 2.0f;
+	float caughtFadeStart = 1.15f;
+	float caughtFadeTime = 0.35f;
 };
 
 struct PrototypeCommand

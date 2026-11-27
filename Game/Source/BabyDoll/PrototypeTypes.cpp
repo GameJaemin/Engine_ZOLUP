@@ -79,7 +79,15 @@ bool LoadPrototypeConfig(PrototypeConfig& config)
 		{ "lampFlickerTime", &candidate.lampFlickerTime, 0.05f, 5.0f },
 		{ "lampIntensity", &candidate.lampIntensity, 0.0f, 20.0f },
 		{ "lampRange", &candidate.lampRange, 100.0f, 4000.0f },
-		{ "propDropHeight", &candidate.propDropHeight, 150.0f, 500.0f }
+		{ "propDropHeight", &candidate.propDropHeight, 150.0f, 500.0f },
+		{ "caughtDuration", &candidate.caughtDuration, 1.0f, 2.0f },
+		{ "caughtFaceHeight", &candidate.caughtFaceHeight, 100.0f, 400.0f },
+		{ "caughtCameraDistance", &candidate.caughtCameraDistance, 60.0f, 250.0f },
+		{ "caughtFov", &candidate.caughtFov, 35.0f, 100.0f },
+		{ "caughtShakeStrength", &candidate.caughtShakeStrength, 0.0f, 8.0f },
+		{ "caughtShakeAngle", &candidate.caughtShakeAngle, 0.0f, 6.0f },
+		{ "caughtFadeStart", &candidate.caughtFadeStart, 0.1f, 1.8f },
+		{ "caughtFadeTime", &candidate.caughtFadeTime, 0.1f, 1.0f }
 	};
 	for (const ConfigField& field : fields)
 	{
@@ -93,6 +101,7 @@ bool LoadPrototypeConfig(PrototypeConfig& config)
 	if (candidate.fastInterval >= candidate.rhythmWindow || candidate.playerHeight < candidate.playerRadius * 2.0f) { return false; }
 	if (candidate.rearNearDistance >= candidate.rearFarDistance || candidate.rearClosestDistance > candidate.rearCameraDistance) { return false; }
 	if (std::floor(candidate.rearWidth) != candidate.rearWidth || std::floor(candidate.rearHeight) != candidate.rearHeight) { return false; }
+	if (candidate.caughtFadeStart + candidate.caughtFadeTime + 0.1f > candidate.caughtDuration) { return false; }
 	config = candidate;
 	Log::Write(LogLevel::Info, "BabyDoll", "Loaded prototype tuning");
 	return true;

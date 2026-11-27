@@ -8,6 +8,11 @@
 #include "StitchBrainComponent.h"
 #include "ProximityLightComponent.h"
 #include "EscapeScenarioTests.h"
+#include "CaughtCameraComponent.h"
+#include "PoseAnimatorComponent.h"
+#include "AssetManager.h"
+#include "Component/AnimationComponent.h"
+#include "Component/CameraComponent.h"
 
 #include "Component/BoxColliderComponent.h"
 #include "Component/ComponentTypeRegistry.h"
@@ -222,6 +227,51 @@ namespace PrototypeTests
 		const bool registered = RegisterEngineComponentTypes(registry) && RegisterPrototypeLightType();
 		check(registered, "game lamp type registers beside engine component types");
 		if (!registered) { return 1; }
+		{
+			World cameraWorld;
+			GameObject* object = cameraWorld.CreateGameObject("Capture camera test", {});
+			std::unique_ptr<CameraComponent> cameraOwner = std::make_unique<CameraComponent>();
+			CameraComponent* output = cameraOwner.get();
+			object->AddComponent(std::move(cameraOwner));
+			CaughtCameraComponent shot;
+			shot.Begin({}, { 0.0f, 0.0f, 100.0f }, 180.0f);
+			shot.Present(*output, 0.0f, config);
+			const Vector3 start = object->GetComponent<TransformComponent>()->GetPosition();
+			check(start.z > 0.0f && std::abs(start.y - config.caughtFaceHeight) < 0.01f && std::abs(shot.GetFacingYaw()) < 0.01f,
+				"capture camera faces the monster from the victim side at face height");
+			shot.Present(*output, 0.3f, config);
+			const Vector3 pushed = object->GetComponent<TransformComponent>()->GetPosition();
+			check(pushed.z < start.z && output->GetVerticalFovDegrees() < config.caughtFov,
+				"capture shot pushes toward the face and tightens its field of view");
+			shot.Present(*output, 0.3f, config);
+			check(PrototypeMath::Length(pushed - object->GetComponent<TransformComponent>()->GetPosition()) < 0.0001f,
+				"capture shake does not drift when time is paused");
+			check(CaughtCameraComponent::GetFade(0.8f, config) == 0.0f
+				&& CaughtCameraComponent::GetFade(config.caughtDuration - 0.05f, config) == 1.0f,
+				"capture keeps the scare visible then holds full black before restoring");
+			shot.Begin({}, {}, 90.0f);
+			check(std::abs(shot.GetFacingYaw() - 90.0f) < 0.01f, "overlapping capture positions use a finite fallback direction");
+			shot.Begin({}, { 0.0f, 0.0f, 100.0f }, 0.0f);
+			shot.Present(*output, 0.0f, config, Vector3{ 20.0f, 300.0f, 5.0f });
+			check(std::abs(object->GetComponent<TransformComponent>()->GetPosition().y - 300.0f) < 0.01f,
+				"capture framing follows the animated head instead of a fixed chest height");
+			GameObject* rig = cameraWorld.CreateGameObject("Head pose test", {});
+			rig->GetComponent<TransformComponent>()->SetPosition({ 10.0f, 20.0f, 30.0f });
+			std::shared_ptr<Model> rigModel = std::make_shared<Model>();
+			rigModel->sceneNodes.resize(2);
+			rigModel->sceneNodes[0].localTransform.position = { 0.0f, 100.0f, 0.0f };
+			rigModel->sceneNodes[1].name = "Head";
+			rigModel->sceneNodes[1].parent = 0;
+			rigModel->sceneNodes[1].localTransform.position = { 0.0f, 50.0f, 0.0f };
+			rigModel->animations.push_back(std::make_shared<AnimationClip>("Test", ""));
+			AnimationComponent* rigAnimation = static_cast<AnimationComponent*>(rig->AddComponent(std::make_unique<AnimationComponent>()));
+			PoseAnimatorComponent* rigAnimator = static_cast<PoseAnimatorComponent*>(rig->AddComponent(std::make_unique<PoseAnimatorComponent>()));
+			Vector3 head;
+			check(rigAnimator->Initialize(rigModel, *rigAnimation) && rigAnimator->TryGetNodeWorldPosition("Head", head)
+				&& PrototypeMath::Length(head - Vector3{ 10.0f, 170.0f, 30.0f }) < 0.01f,
+				"head targeting composes bone parents and the visual world transform");
+			check(!rigAnimator->TryGetNodeWorldPosition("Missing", head), "models without a head node use the capture height fallback");
+		}
 		{
 			World original;
 			World restored;

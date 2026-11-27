@@ -19,6 +19,7 @@ public:
 	bool Play(std::string_view name, float blendSeconds = 0.18f, bool loop = true, bool synchronizePhase = false);
 	void Step(float deltaTime, float playbackRate = 1.0f);
 	std::string_view GetClipName() const;
+	bool TryGetNodeWorldPosition(std::string_view name, Vector3& position) const;
 	void SetPlaying(bool newPlaying) { playing = newPlaying; }
 
 private:

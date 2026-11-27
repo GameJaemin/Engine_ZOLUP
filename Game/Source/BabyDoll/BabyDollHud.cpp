@@ -11,6 +11,7 @@
 #include "StitchBrainComponent.h"
 #include "RearCameraComponent.h"
 #include "ProximityLightComponent.h"
+#include "CaughtCameraComponent.h"
 
 #include "AssetManager.h"
 #include "Component/SceneCapture2DComponent.h"
@@ -35,6 +36,20 @@ void BabyDollApplication::DrawHud()
 	const ImVec2 origin = viewport->WorkPos;
 	const ImVec2 size = viewport->WorkSize;
 	ImDrawList* draw = ImGui::GetForegroundDrawList();
+	if (player->GetMode() == PlayerMode::Caught && !inspect)
+	{
+		const ImVec2 end(origin.x + size.x, origin.y + size.y);
+		const int edgeAlpha = static_cast<int>(95.0f * (1.0f - CaughtCameraComponent::GetFade(caughtTime, config)));
+		draw->AddRect(origin, end, IM_COL32(70, 0, 4, edgeAlpha), 0.0f, 0, 30.0f);
+		draw->AddRectFilled(origin, end, IM_COL32(0, 0, 0, static_cast<int>(255.0f * CaughtCameraComponent::GetFade(caughtTime, config))));
+		if (paused)
+		{
+			const char* message = "PAUSED - Esc to resume";
+			const ImVec2 textSize = ImGui::CalcTextSize(message);
+			draw->AddText(ImVec2(origin.x + (size.x - textSize.x) * 0.5f, origin.y + size.y - 50.0f), IM_COL32(235, 235, 235, 255), message);
+		}
+		return;
+	}
 	draw->AddText(ImVec2(origin.x + 28.0f, origin.y + 22.0f), Pink, "B A B Y D O L L");
 	draw->AddText(ImVec2(origin.x + 28.0f, origin.y + 43.0f), Muted, "THE EXHIBITION  /  ESCAPE PROTOTYPE");
 	if (!inspect)
@@ -107,12 +122,6 @@ void BabyDollApplication::DrawHud()
 		const ImVec2 textSize = ImGui::CalcTextSize(toast.c_str());
 		draw->AddText(ImVec2(origin.x + (size.x - textSize.x) * 0.5f, origin.y + 145.0f), Cyan, toast.c_str());
 	}
-	if (player->GetMode() == PlayerMode::Caught)
-	{
-		const int alpha = static_cast<int>(std::clamp(caughtTime / 1.2f, 0.0f, 1.0f) * 240.0f);
-		draw->AddRectFilled(origin, ImVec2(origin.x + size.x, origin.y + size.y), IM_COL32(12, 5, 12, alpha));
-		draw->AddText(ImVec2(origin.x + size.x * 0.5f - 30.0f, origin.y + size.y * 0.5f), Pink, "CAUGHT");
-	}
 }
 
 void BabyDollApplication::DrawPanel()
@@ -170,6 +179,7 @@ void BabyDollApplication::DrawPanel()
 	}
 	if (gameTime > 0.0f && ImGui::Button("Restart from entrance", ImVec2(-1.0f, 28.0f))) { ResetRun(); inspect = paused = false; SetCaptured(true); }
 	if (!ImGui::CollapsingHeader("Developer tools")) { ImGui::End(); return; }
+	if (progress.stage != EscapeStage::Cleared && ImGui::Button("Preview jumpscare", ImVec2(-1.0f, 28.0f))) { previewCaughtRequested = true; }
 	if (!inspect && ImGui::Button("Model preview", ImVec2(-1.0f, 28.0f)))
 	{
 		inspect = paused = true;
@@ -209,6 +219,7 @@ void BabyDollApplication::OnGui()
 	style.Colors[ImGuiCol_Button] = ImVec4(0.18f, 0.34f, 0.38f, 1.0f);
 	style.Colors[ImGuiCol_ButtonHovered] = ImVec4(0.25f, 0.47f, 0.49f, 1.0f);
 	DrawHud();
+	if (player->GetMode() == PlayerMode::Caught && !inspect) { return; }
 	DrawRearView();
 	if (!captured) { DrawPanel(); }
 	if (showDebug)

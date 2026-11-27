@@ -392,5 +392,7 @@
     <ClInclude Include="Game\Source\BabyDoll\ProximityLightComponent.h" />
     <ClCompile Include="Game\Source\BabyDoll\RearCameraComponent.cpp" />
     <ClInclude Include="Game\Source\BabyDoll\RearCameraComponent.h" />
+    <ClCompile Include="Game\Source\BabyDoll\CaughtCameraComponent.cpp" />
+    <ClInclude Include="Game\Source\BabyDoll\CaughtCameraComponent.h" />
   </ItemGroup>
 </Project>

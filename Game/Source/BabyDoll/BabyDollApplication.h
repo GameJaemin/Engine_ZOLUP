@@ -25,6 +25,8 @@ class OrbitCameraComponent;
 class PoseAnimatorComponent;
 class RearCameraComponent;
 class ProximityLightComponent;
+class CaughtCameraComponent;
+class PointLightComponent;
 struct Model;
 
 struct PrototypeCheckpoint
@@ -56,6 +58,7 @@ private:
 	void SetCaptured(bool captured);
 	void ResetRun();
 	void RestoreCheckpoint();
+	void BeginCaught();
 	void ApplyProgressVisuals();
 	int FindObjectiveInteraction() const;
 	void Simulate(const PrototypeCommand& command, float deltaTime);
@@ -91,6 +94,8 @@ private:
 	OrbitCameraComponent* orbit = nullptr;
 	PoseAnimatorComponent* animator = nullptr;
 	RearCameraComponent* rearView = nullptr;
+	CaughtCameraComponent* caughtCamera = nullptr;
+	PointLightComponent* caughtLight = nullptr;
 	std::vector<ProximityLightComponent*> lamps;
 	std::array<HideTableComponent*, 2> tables{};
 	std::array<GameObject*, 2> tableVisuals{};
@@ -142,4 +147,5 @@ private:
 	bool aiEnabled = true;
 	bool godMode = false;
 	bool resetRequested = false;
+	bool previewCaughtRequested = false;
 };

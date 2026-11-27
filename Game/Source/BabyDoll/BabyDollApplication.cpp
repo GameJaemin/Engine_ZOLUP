@@ -11,6 +11,7 @@
 #include "StitchBrainComponent.h"
 #include "RearCameraComponent.h"
 #include "ProximityLightComponent.h"
+#include "CaughtCameraComponent.h"
 
 #include "AssetManager.h"
 #include "Component/AmbientLightComponent.h"
@@ -278,6 +279,11 @@ bool BabyDollApplication::OnInitialize(Engine& inEngine)
 	hearing = Attach<HearingComponent>(*soundObject);
 	camera = Attach<CameraComponent>(*cameraObject);
 	orbit = Attach<OrbitCameraComponent>(*cameraObject);
+	caughtCamera = Attach<CaughtCameraComponent>(*cameraObject);
+	caughtLight = Attach<PointLightComponent>(*cameraObject);
+	caughtLight->SetRange(400.0f);
+	caughtLight->SetColor({ 1.0f, 0.65f, 0.52f });
+	caughtLight->SetIntensity(0.0f);
 	camera->SetClipDistances(5.0f, 10000.0f);
 	if (!world->SetActiveCamera(camera)) { Log::Write(LogLevel::Error, "BabyDoll", "Active camera registration failed"); return false; }
 	playerVisual = world->CreateGameObject("Placeholder doll", {});
@@ -412,6 +418,19 @@ int BabyDollApplication::FindInteraction() const
 	return selected;
 }
 
+void BabyDollApplication::BeginCaught()
+{
+	if (player->GetMode() == PlayerMode::Caught) { return; }
+	caughtCamera->Begin(brain->GetPosition(), player->GetPosition(), brain->GetYaw());
+	player->SetMode(PlayerMode::Caught);
+	caughtTime = 0.0f;
+	++deaths;
+	pending = {};
+	rearView->Clear();
+	toastTime = 0.0f;
+	animator->Play("Scissorman_SimplesAttack", 0.06f, false);
+}
+
 void BabyDollApplication::Interact()
 {
 	if (player->GetMode() == PlayerMode::Hidden)
@@ -455,9 +474,7 @@ void BabyDollApplication::LeaveTable(bool forced)
 			// 모든 출구가 막혀도 부서진 테이블의 숨기 보호가 남지 않게 한다.
 			tables[occupiedTable]->Leave();
 			occupiedTable = -1;
-			player->SetMode(PlayerMode::Caught);
-			caughtTime = 0.0f;
-			++deaths;
+			BeginCaught();
 			return;
 		}
 		else
@@ -516,7 +533,7 @@ void BabyDollApplication::Simulate(const PrototypeCommand& command, float deltaT
 	if (player->GetMode() == PlayerMode::Caught)
 	{
 		caughtTime += deltaTime;
-		if (caughtTime >= 1.6f)
+		if (caughtTime >= config.caughtDuration)
 		{
 			RestoreCheckpoint();
 		}
@@ -556,9 +573,7 @@ void BabyDollApplication::Simulate(const PrototypeCommand& command, float deltaT
 		}
 		if (brain->HasCaughtPlayer() && !godMode)
 		{
-			player->SetMode(PlayerMode::Caught);
-			caughtTime = 0.0f;
-			++deaths;
+			BeginCaught();
 		}
 	}
 	if (progress.TryEscape(player->GetPosition(), player->GetMode(), layout))
@@ -578,7 +593,7 @@ void BabyDollApplication::Present(float deltaTime)
 	const float interpolation = paused || inspect ? 1.0f : std::clamp(accumulator / FixedStep, 0.0f, 1.0f);
 	const Vector3 playerPosition = Vector3::Lerp(previousPlayerPosition, player->GetPosition(), interpolation);
 	const Vector3 monsterPosition = Vector3::Lerp(previousMonsterPosition, brain->GetPosition(), interpolation);
-	if (inspect) { rearView->Clear(); }
+	if (inspect || player->GetMode() == PlayerMode::Caught) { rearView->Clear(); }
 	else if (progress.stage != EscapeStage::Cleared && !rearView->Step(brain->GetState() == StitchState::Chase, previewRear, playerPosition, monsterPosition, brain->GetYaw(), paused ? 0.0f : deltaTime, config, space))
 	{
 		toast = "Rear camera setup failed"; toastTime = 3.0f;
@@ -593,9 +608,9 @@ void BabyDollApplication::Present(float deltaTime)
 	playerVisual->GetComponent<TransformComponent>()->SetPosition({ 0.0f, bob, 0.0f });
 	monsterObject->GetComponent<TransformComponent>()->SetPosition(monsterPosition);
 	const float monsterYaw = PrototypeMath::ApproachAngle(previousMonsterYaw, brain->GetYaw(), interpolation);
-	monsterObject->GetComponent<TransformComponent>()->SetRotation({ 0.0f, monsterYaw + visualYawOffset, 0.0f });
+	monsterObject->GetComponent<TransformComponent>()->SetRotation({ 0.0f, (mode == PlayerMode::Caught ? caughtCamera->GetFacingYaw() : monsterYaw) + visualYawOffset, 0.0f });
 	float playbackRate = 1.0f;
-	if (!inspect)
+	if (!inspect && mode != PlayerMode::Caught)
 	{
 		monsterAnimationSpeed += (brain->GetSpeed() - monsterAnimationSpeed) * PrototypeMath::Response(10.0f, paused ? 0.0f : deltaTime);
 		if (monsterAnimationSpeed > 35.0f) { monsterLocomoting = true; }
@@ -625,7 +640,16 @@ void BabyDollApplication::Present(float deltaTime)
 		soundRing->GetComponent<TransformComponent>()->SetScale({ radius, 1.0f, radius });
 	}
 	const Vector3 target = inspect ? monsterPosition + Vector3{ 0.0f, 155.0f, 0.0f } : playerPosition + Vector3{ 0.0f, 160.0f, 0.0f };
-	orbit->Present(*camera, target, std::clamp(player->GetSpeed() / config.maxSpeed, 0.0f, 1.0f), deltaTime, config, space, inspect);
+	if (mode == PlayerMode::Caught && !inspect)
+	{
+		Vector3 head;
+		// 공격 중 머리 높이가 달라져도 가슴 대신 얼굴을 계속 담는다.
+		const std::optional<Vector3> face = (animator->TryGetNodeWorldPosition("Head2", head) || animator->TryGetNodeWorldPosition("Head", head))
+			? std::optional<Vector3>{ head + Vector3{ 0.0f, 12.0f, 0.0f } } : std::nullopt;
+		caughtCamera->Present(*camera, caughtTime, config, face);
+	}
+	else { orbit->Present(*camera, target, std::clamp(player->GetSpeed() / config.maxSpeed, 0.0f, 1.0f), deltaTime, config, space, inspect); }
+	caughtLight->SetIntensity(mode == PlayerMode::Caught && !inspect ? 1.5f : 0.0f);
 }
 
 void BabyDollApplication::OnUpdate(const InputState& input, float deltaTime)
@@ -636,6 +660,13 @@ void BabyDollApplication::OnUpdate(const InputState& input, float deltaTime)
 	GetWindowThreadProcessId(GetForegroundWindow(), &process);
 	if (captured && process != GetCurrentProcessId()) { paused = true; SetCaptured(false); }
 	if (resetRequested) { ResetRun(); }
+	if (previewCaughtRequested)
+	{
+		previewCaughtRequested = false;
+		inspect = paused = false;
+		BeginCaught();
+		SetCaptured(true);
+	}
 	if (dropPropsRequested) { physicsProps.Reset(*world); physicsProps.SyncSpace(*world, space); dropPropsRequested = false; }
 	const PrototypeInputFrame frame = inputAdapter.Read(input, soloControls);
 	leftFootDown = frame.leftDown;
@@ -647,7 +678,7 @@ void BabyDollApplication::OnUpdate(const InputState& input, float deltaTime)
 	}
 	if (frame.toggleDiagnostics) { showDebug = !showDebug; }
 	const bool orbitInput = captured && !justCaptured;
-	orbit->Look(orbitInput ? frame.command.mouseX : 0.0f, orbitInput ? frame.command.mouseY : 0.0f, elapsed, config);
+	if (player->GetMode() != PlayerMode::Caught) { orbit->Look(orbitInput ? frame.command.mouseX : 0.0f, orbitInput ? frame.command.mouseY : 0.0f, elapsed, config); }
 	if (!paused && !inspect && captured && !justCaptured)
 	{
 		pending.feet.insert(pending.feet.end(), frame.command.feet.begin(), frame.command.feet.end());
@@ -690,6 +721,8 @@ void BabyDollApplication::OnShutdown() noexcept
 	if (rearView) { rearView->Clear(); }
 	if (world) { world->DestroyPendingGameObjects(); }
 	rearView = nullptr;
+	caughtCamera = nullptr;
+	caughtLight = nullptr;
 	lamps.clear();
 	player = nullptr;
 	heart = nullptr;

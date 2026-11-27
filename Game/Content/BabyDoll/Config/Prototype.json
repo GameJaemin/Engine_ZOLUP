@@ -54,5 +54,13 @@
   "lampFlickerTime": 0.6,
   "lampIntensity": 2.8,
   "lampRange": 1250,
-  "propDropHeight": 380
+  "propDropHeight": 380,
+  "caughtDuration": 1.8,
+  "caughtFaceHeight": 250,
+  "caughtCameraDistance": 70,
+  "caughtFov": 48,
+  "caughtShakeStrength": 2.2,
+  "caughtShakeAngle": 2,
+  "caughtFadeStart": 1.15,
+  "caughtFadeTime": 0.35
 }

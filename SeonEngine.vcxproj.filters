@@ -812,5 +812,7 @@
     <ClInclude Include="Game\Source\BabyDoll\ProximityLightComponent.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
     <ClCompile Include="Game\Source\BabyDoll\RearCameraComponent.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile>
     <ClInclude Include="Game\Source\BabyDoll\RearCameraComponent.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
+    <ClCompile Include="Game\Source\BabyDoll\CaughtCameraComponent.cpp"><Filter>Game\Source\BabyDoll</Filter></ClCompile>
+    <ClInclude Include="Game\Source\BabyDoll\CaughtCameraComponent.h"><Filter>Game\Source\BabyDoll</Filter></ClInclude>
   </ItemGroup>
 </Project>
