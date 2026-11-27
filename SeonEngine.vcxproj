@@ -84,6 +84,7 @@
     <ClCompile Include="Engine\Source\ObjectID.cpp" />
     <ClCompile Include="Engine\Source\Prefab\Prefab.cpp" />
     <ClCompile Include="Engine\Source\Scene\SceneSnapshot.cpp" />
+    <ClCompile Include="Engine\Source\Scene\SnapshotJson.cpp" />
     <ClCompile Include="Engine\Source\Prefab\PrefabAnimation.cpp" />
     <ClCompile Include="Engine\Source\Prefab\PrefabCamera.cpp" />
     <ClCompile Include="Engine\Source\Prefab\PrefabInstantiation.cpp" />
@@ -179,6 +180,7 @@
     <ClInclude Include="Engine\Source\ObjectID.h" />
     <ClInclude Include="Engine\Source\Prefab\Prefab.h" />
     <ClInclude Include="Engine\Source\Scene\SceneSnapshot.h" />
+    <ClInclude Include="Engine\Source\Scene\SnapshotJson.h" />
     <ClInclude Include="Engine\Source\Prefab\PrefabComponents.h" />
     <ClInclude Include="Engine\Source\WindowsApplication.h" />
     <ClInclude Include="Engine\Source\World.h" />

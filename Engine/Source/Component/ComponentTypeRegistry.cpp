@@ -222,3 +222,17 @@ void ComponentTypeRegistry::ForEachField(const ComponentTypeInfo& type, const st
 
 	for (const ComponentFieldInfo& field : type.fields) { visit(field); }
 }
+
+const ComponentFieldInfo* ComponentTypeRegistry::FindField(const ComponentTypeInfo& type, std::string_view fieldName)
+{
+	const ComponentTypeInfo* current = &type;
+	while (current != nullptr)
+	{
+		for (const ComponentFieldInfo& field : current->fields)
+		{
+			if (field.name == fieldName) { return &field; }
+		}
+		current = current->parent;
+	}
+	return nullptr;
+}

@@ -74,6 +74,12 @@ namespace
 	}
 }
 
+std::string_view GetSavedAssetTypeName(std::type_index type)
+{
+	const SavedAssetType* found = FindSavedAssetType(type);
+	return found != nullptr ? found->name : std::string_view();
+}
+
 std::optional<SavedAssetReference> SaveAssetReference(const AssetReference& reference, AssetManager& assets, std::string_view context)
 {
 	const SavedAssetType* assetType = FindSavedAssetType(reference.GetType());

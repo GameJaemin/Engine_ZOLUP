@@ -274,6 +274,9 @@
     <ClCompile Include="Engine\Source\Prefab\Prefab.cpp">
       <Filter>Engine\Source\Prefab</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Source\Scene\SnapshotJson.cpp">
+      <Filter>Engine\Source\Scene</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Source\Scene\SceneSnapshot.cpp">
       <Filter>Engine\Source\Scene</Filter>
     </ClCompile>
@@ -575,6 +578,9 @@
     </ClInclude>
     <ClInclude Include="Engine\Source\Prefab\Prefab.h">
       <Filter>Engine\Source\Prefab</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Scene\SnapshotJson.h">
+      <Filter>Engine\Source\Scene</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Scene\SceneSnapshot.h">
       <Filter>Engine\Source\Scene</Filter>

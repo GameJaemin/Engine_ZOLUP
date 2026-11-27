@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <typeindex>
 
 class AssetManager;
 
@@ -22,6 +23,9 @@ struct SavedAssetReference
 	// Texture만 쓴다. 같은 파일도 형식이 다르면 다른 Texture라서 경로와 함께 정체성이 된다. 다른 타입은 Unknown이다.
 	TextureFormat textureFormat = TextureFormat::Unknown;
 };
+
+/** 에셋 타입의 저장 이름(SavedAssetReference::type에 쓰는 값)을 반환한다. 저장할 수 없는 타입이면 빈 문자열이다. */
+std::string_view GetSavedAssetTypeName(std::type_index type);
 
 /**
  * 저장할 수 있는 참조로 바꾼다. 가리키지 않는 참조는 빈 경로로 성공한다.

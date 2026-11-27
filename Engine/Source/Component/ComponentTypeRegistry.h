@@ -276,6 +276,9 @@ public:
 	/** type의 가장 위 부모 속성부터 type 자신의 속성까지 순서대로 visit을 호출한다. */
 	static void ForEachField(const ComponentTypeInfo& type, const std::function<void(const ComponentFieldInfo&)>& visit);
 
+	/** type과 그 부모 타입에서 이름이 fieldName인 속성을 찾는다. 이름은 조상과 자손 사이에서 유일하므로 결과는 하나다. 없으면 nullptr를 반환한다. */
+	static const ComponentFieldInfo* FindField(const ComponentTypeInfo& type, std::string_view fieldName);
+
 	/**
 	 * source의 컴포넌트 참조로 referenced를 담을 수 있으면 true를 반환한다.
 	 * referenced가 source와 같은 World에 등록되어 있고 삭제 예정이 아닌 객체에 붙어 있어야 한다. 둘 중 하나라도 객체에 붙어 있지 않으면 false다.

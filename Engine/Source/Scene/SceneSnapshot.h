@@ -5,9 +5,11 @@
 
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
+class GameObject;
 class World;
 
 /**
@@ -46,6 +48,20 @@ struct SceneSnapshot
  * 다른 World나 등록되지 않은 객체 또는 스냅샷 밖을 가리키는 컴포넌트 참조가 있으면 로그를 남기고 nullopt를 반환한다.
  */
 [[nodiscard]] std::optional<SceneSnapshot> CaptureWorld(const World& world);
+
+/**
+ * objects를 world에 만든다. 객체마다 담긴 ObjectID로 등록하므로 world에 같은 ID가 없어야 하며, world가 비어 있지 않아도 된다.
+ * 계층, 컴포넌트, 컴포넌트 참조 순서로 복원하고, 참조는 objects 안의 객체를 가리켜야 한다.
+ * 성공하면 만든 객체를 objects 순서대로 outCreatedObjects에 담는다.
+ * 실패하면 로그를 남기고 이번에 만든 객체만 삭제 예정으로 표시한 뒤 false를 반환한다. 실제 삭제는 World의 삭제 처리 때 일어난다.
+ */
+bool RestoreGameObjects(const std::vector<GameObjectSnapshot>& objects, World& world, std::vector<GameObject*>& outCreatedObjects);
+
+/**
+ * objects의 ObjectID를 모두 새로 만든 ID로 바꾼다. 자식 목록과 컴포넌트 참조 안의 ID도 같은 짝으로 바꾼다.
+ * 무효 ID와 objects 밖을 가리키는 ID는 그대로 둔다. 원본 ID에서 새 ID로 가는 짝 표를 반환한다.
+ */
+std::unordered_map<ObjectID, ObjectID> RegenerateObjectIDs(std::vector<GameObjectSnapshot>& objects);
 
 /**
  * 객체가 없는 World에 ObjectID를 유지해 복원한다. 컴포넌트 참조 속성은 모든 컴포넌트를 붙인 뒤 연결한다.

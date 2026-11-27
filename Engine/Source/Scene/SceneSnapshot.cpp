@@ -187,21 +187,6 @@ namespace
 		return true;
 	}
 
-	/** typeInfo와 그 부모에서 fieldName 속성을 찾는다. 등록부가 타입과 조상, 자손 사이의 이름 중복을 막으므로 결과는 하나다. 없으면 nullptr을 반환한다. */
-	const ComponentFieldInfo* FindField(const ComponentTypeInfo& typeInfo, const std::string& fieldName)
-	{
-		const ComponentTypeInfo* current = &typeInfo;
-		while (current != nullptr)
-		{
-			for (const ComponentFieldInfo& field : current->fields)
-			{
-				if (field.name == fieldName) { return &field; }
-			}
-			current = current->parent;
-		}
-		return nullptr;
-	}
-
 	/** 컴포넌트 참조이거나 컴포넌트 참조의 목록이면 true다. 이런 속성은 모든 컴포넌트를 붙인 뒤에 쓴다. */
 	bool IsDeferredField(const ComponentFieldInfo& field, const ComponentFieldValue& value)
 	{
@@ -245,7 +230,7 @@ namespace
 
 		for (const std::pair<std::string, ComponentFieldValue>& field : data.fields)
 		{
-			const ComponentFieldInfo* fieldInfo = FindField(*typeInfo, field.first);
+			const ComponentFieldInfo* fieldInfo = ComponentTypeRegistry::FindField(*typeInfo, field.first);
 			if (fieldInfo == nullptr)
 			{
 				Log::Write(LogLevel::Error, "Snapshot", std::format("{}: {} has no field {}", object.GetName(), data.typeName, field.first));
@@ -264,8 +249,32 @@ namespace
 		return true;
 	}
 
-	/** object에 이미 붙은 컴포넌트에 컴포넌트 참조 속성만 쓴다. 모든 컴포넌트를 붙인 뒤 부른다. 실패하면 로그를 남기고 false를 반환한다. */
-	bool RestoreDeferredFields(GameObject& object, const ComponentSnapshot& data)
+	/** value 안의 컴포넌트 참조마다 visit을 부른다. 목록이면 참조인 원소마다 부른다. Value는 ComponentFieldValue이며 const일 수 있다. */
+	template <typename Value, typename Visit>
+	void ForEachComponentReference(Value& value, Visit&& visit)
+	{
+		if (auto* reference = std::get_if<ComponentReference>(&value))
+		{
+			visit(*reference);
+			return;
+		}
+		if (auto* list = std::get_if<ComponentFieldList>(&value))
+		{
+			for (auto& element : list->elements)
+			{
+				if (auto* reference = std::get_if<ComponentReference>(&element))
+				{
+					visit(*reference);
+				}
+			}
+		}
+	}
+
+	/**
+	 * object에 이미 붙은 컴포넌트에 컴포넌트 참조 속성만 쓴다. 모든 컴포넌트를 붙인 뒤 부른다.
+	 * 참조는 createdByID에 있는 객체(이번에 만든 객체)만 가리켜야 한다. 실패하면 로그를 남기고 false를 반환한다.
+	 */
+	bool RestoreDeferredFields(GameObject& object, const ComponentSnapshot& data, const std::unordered_map<ObjectID, GameObject*>& createdByID)
 	{
 		// RestoreComponent가 같은 이름으로 타입과 속성을 찾고 컴포넌트를 붙인 뒤에만 부르므로 셋 다 있다.
 		const ComponentTypeInfo& typeInfo = *ComponentTypeRegistry::Get().FindByName(data.typeName);
@@ -273,8 +282,24 @@ namespace
 
 		for (const std::pair<std::string, ComponentFieldValue>& field : data.fields)
 		{
-			const ComponentFieldInfo& fieldInfo = *FindField(typeInfo, field.first);
+			const ComponentFieldInfo& fieldInfo = *ComponentTypeRegistry::FindField(typeInfo, field.first);
 			if (!IsDeferredField(fieldInfo, field.second)) { continue; }
+
+			// set은 World 전체에서 ID를 찾아 연결하므로, 쓰기 전에 이번에 만든 객체만 가리키는지 확인한다. 무효 ID는 가리키지 않는 상태라 통과한다.
+			bool insideObjects = true;
+			ForEachComponentReference(field.second, [&](const ComponentReference& reference)
+			{
+				if (reference.objectID.IsValid() && !createdByID.contains(reference.objectID))
+				{
+					insideObjects = false;
+				}
+			});
+			if (!insideObjects)
+			{
+				Log::Write(LogLevel::Error, "Snapshot", std::format("{}: {}.{} refers to an object outside the restored objects", object.GetName(), data.typeName, field.first));
+				return false;
+			}
+
 			if (!fieldInfo.set(target, field.second))
 			{
 				Log::Write(LogLevel::Error, "Snapshot", std::format("{}: {}.{} could not connect the reference", object.GetName(), data.typeName, field.first));
@@ -284,30 +309,37 @@ namespace
 		return true;
 	}
 
-	/** 빈 World에 객체와 컴포넌트를 만든다. 실패하면 이미 만든 객체를 남긴 채 false를 반환하며 정리는 호출자가 한다. */
-	bool RestoreObjects(const SceneSnapshot& snapshot, World& world)
+	/** objects를 world에 만든다. 실패하면 이미 만든 객체를 created에 남긴 채 false를 반환하며 정리는 호출자가 한다. */
+	bool RestoreObjects(const std::vector<GameObjectSnapshot>& objects, World& world, std::vector<GameObject*>& created)
 	{
+		// 이번에 만든 객체만 찾는 표다. world에 원래 있던 객체를 자식으로 붙이거나 컴포넌트를 쓰지 않게 한다.
+		std::unordered_map<ObjectID, GameObject*> createdByID;
+
 		// 1) 모든 객체를 배열 순서대로 만들고 저장된 ID로 등록한다. 등록 순서가 원본과 같아진다.
 		//    계층 연결은 등록된 객체끼리만 가능하므로 모두 등록한 뒤에 한다.
-		for (const GameObjectSnapshot& data : snapshot.objects)
+		for (const GameObjectSnapshot& data : objects)
 		{
 			std::unique_ptr<GameObject> object = std::make_unique<GameObject>(world);
 			object->SetName(data.name);
-			if (world.AddGameObject(std::move(object), data.objectID) == nullptr)
+			GameObject* added = world.AddGameObject(std::move(object), data.objectID);
+			if (added == nullptr)
 			{
 				Log::Write(LogLevel::Error, "Snapshot", std::format("{}: could not register ObjectID {}", data.name, data.objectID.ToString()));
 				return false;
 			}
+			created.push_back(added);
+			createdByID.emplace(data.objectID, added);
 		}
 
 		// 2) SetParent는 자식을 부모 목록 끝에 붙이므로 각 부모의 자식 목록 순서대로 붙이면 자식 순서가 원본과 같아진다.
-		for (const GameObjectSnapshot& data : snapshot.objects)
+		for (const GameObjectSnapshot& data : objects)
 		{
-			GameObject* parent = world.FindGameObject(data.objectID);
+			GameObject* parent = createdByID.at(data.objectID);
 			for (const ObjectID& childObjectID : data.childObjectIDs)
 			{
-				GameObject* child = world.FindGameObject(childObjectID);
-				// 이미 부모가 있으면 두 부모의 자식 목록에 있는 손상된 데이터다. 순환은 SetParent가 거절한다.
+				const auto foundChild = createdByID.find(childObjectID);
+				GameObject* child = foundChild != createdByID.end() ? foundChild->second : nullptr;
+				// 목록 밖의 객체이거나, 이미 부모가 있으면(두 부모의 자식 목록에 있는 손상된 데이터) 실패한다. 순환은 SetParent가 거절한다.
 				if (child == nullptr || child->GetParent() != nullptr || !child->SetParent(parent))
 				{
 					Log::Write(LogLevel::Error, "Snapshot", std::format("{}: could not attach child {}", data.name, childObjectID.ToString()));
@@ -317,9 +349,9 @@ namespace
 		}
 
 		// 3) 컴포넌트를 담긴 순서(원본 객체의 컴포넌트 순서)대로 복원한다. 컴포넌트 참조 속성은 아직 쓰지 않는다.
-		for (const GameObjectSnapshot& data : snapshot.objects)
+		for (const GameObjectSnapshot& data : objects)
 		{
-			GameObject& object = *world.FindGameObject(data.objectID);
+			GameObject& object = *createdByID.at(data.objectID);
 			for (const ComponentSnapshot& component : data.components)
 			{
 				if (!RestoreComponent(object, component)) { return false; }
@@ -327,25 +359,28 @@ namespace
 		}
 
 		// 4) 모든 컴포넌트를 붙인 뒤 컴포넌트 참조 속성을 쓴다. 가리킬 컴포넌트가 이제 모두 있다.
-		for (const GameObjectSnapshot& data : snapshot.objects)
+		for (const GameObjectSnapshot& data : objects)
 		{
-			GameObject& object = *world.FindGameObject(data.objectID);
+			GameObject& object = *createdByID.at(data.objectID);
 			for (const ComponentSnapshot& component : data.components)
 			{
-				if (!RestoreDeferredFields(object, component)) { return false; }
+				if (!RestoreDeferredFields(object, component, createdByID)) { return false; }
 			}
 		}
+		return true;
+	}
 
-		// 5) World 상태
-		if (snapshot.activeCameraObjectID.IsValid())
+	/** cameraObjectID 객체의 카메라를 활성 카메라로 정한다. 무효 ID면 정하지 않고 true다. 객체나 카메라가 없으면 로그를 남기고 false를 반환한다. */
+	bool RestoreActiveCamera(const ObjectID& cameraObjectID, World& world)
+	{
+		if (!cameraObjectID.IsValid()) { return true; }
+
+		GameObject* owner = world.FindGameObject(cameraObjectID);
+		CameraComponent* camera = owner != nullptr ? owner->GetComponent<CameraComponent>() : nullptr;
+		if (camera == nullptr || !world.SetActiveCamera(camera))
 		{
-			GameObject* owner = world.FindGameObject(snapshot.activeCameraObjectID);
-			CameraComponent* camera = owner != nullptr ? owner->GetComponent<CameraComponent>() : nullptr;
-			if (camera == nullptr || !world.SetActiveCamera(camera))
-			{
-				Log::Write(LogLevel::Error, "Snapshot", std::format("could not activate camera of {}", snapshot.activeCameraObjectID.ToString()));
-				return false;
-			}
+			Log::Write(LogLevel::Error, "Snapshot", std::format("could not activate camera of {}", cameraObjectID.ToString()));
+			return false;
 		}
 		return true;
 	}
@@ -371,6 +406,65 @@ std::optional<SceneSnapshot> CaptureWorld(const World& world)
 	return snapshot;
 }
 
+bool RestoreGameObjects(const std::vector<GameObjectSnapshot>& objects, World& world, std::vector<GameObject*>& outCreatedObjects)
+{
+	std::vector<GameObject*> created;
+	created.reserve(objects.size());
+	if (!RestoreObjects(objects, world, created))
+	{
+		// 이번에 만든 객체만 삭제 예정으로 표시한다. 원래 있던 객체는 건드리지 않는다. 이미 표시된 자손은 다시 표시해도 된다.
+		for (GameObject* object : created)
+		{
+			world.DestroyGameObject(object);
+		}
+		return false;
+	}
+
+	outCreatedObjects = std::move(created);
+	return true;
+}
+
+std::unordered_map<ObjectID, ObjectID> RegenerateObjectIDs(std::vector<GameObjectSnapshot>& objects)
+{
+	// 1) 객체마다 새 ID를 뽑아 짝 표에 적고 자기 ID를 바꾼다.
+	std::unordered_map<ObjectID, ObjectID> newIDs;
+	newIDs.reserve(objects.size());
+	for (GameObjectSnapshot& data : objects)
+	{
+		const ObjectID newID = ObjectID::Generate();
+		newIDs.emplace(data.objectID, newID);
+		data.objectID = newID;
+	}
+
+	// 짝 표에 있으면 새 ID로 바꾼다. 없으면(무효 ID나 목록 밖) 그대로 둔다.
+	const auto replace = [&newIDs](ObjectID& objectID)
+	{
+		const auto found = newIDs.find(objectID);
+		if (found != newIDs.end())
+		{
+			objectID = found->second;
+		}
+	};
+
+	// 2) 모든 새 ID가 정해졌으니 자식 목록과 컴포넌트 참조 안의 옛 ID를 바꾼다.
+	for (GameObjectSnapshot& data : objects)
+	{
+		for (ObjectID& childObjectID : data.childObjectIDs)
+		{
+			replace(childObjectID);
+		}
+
+		for (ComponentSnapshot& component : data.components)
+		{
+			for (std::pair<std::string, ComponentFieldValue>& field : component.fields)
+			{
+				ForEachComponentReference(field.second, [&replace](ComponentReference& reference) { replace(reference.objectID); });
+			}
+		}
+	}
+	return newIDs;
+}
+
 bool RestoreWorld(const SceneSnapshot& snapshot, World& world)
 {
 	// 이미 있는 객체는 호출자의 것이므로 건드리지 않고 거절한다.
@@ -379,14 +473,20 @@ bool RestoreWorld(const SceneSnapshot& snapshot, World& world)
 		Log::Write(LogLevel::Error, "Snapshot", "Restore target world is not empty");
 		return false;
 	}
-	if (RestoreObjects(snapshot, world)) { return true; }
 
-	// 실패하면 이번에 만든 객체를 모두 지워 빈 World로 되돌린다. 삭제 요청은 표시만 하므로 순회 중에도 된다.
-	// 활성 카메라는 마지막 단계에서만 지정하므로 지정되지 않은 상태다.
-	for (const std::unique_ptr<GameObject>& object : world.GetGameObjects())
+	std::vector<GameObject*> created;
+	if (RestoreGameObjects(snapshot.objects, world, created))
 	{
-		world.DestroyGameObject(object.get());
+		if (RestoreActiveCamera(snapshot.activeCameraObjectID, world)) { return true; }
+
+		// 객체는 만들었지만 카메라를 정하지 못했으면 만든 객체를 지운다. 활성 카메라는 정해지지 않은 상태다.
+		for (GameObject* object : created)
+		{
+			world.DestroyGameObject(object);
+		}
 	}
+
+	// 실패하면 빈 World로 되돌린다는 계약을 지키려고 삭제 예정 객체를 바로 처리한다. 처음에 비어 있었으므로 이번에 만든 객체뿐이다.
 	world.DestroyPendingGameObjects();
 	return false;
 }
