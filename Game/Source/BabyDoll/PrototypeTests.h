@@ -12,6 +12,8 @@
 #include "PoseAnimatorComponent.h"
 #include "AssetManager.h"
 #include "Component/AnimationComponent.h"
+#include "Component/StaticMeshComponent.h"
+#include "Renderer/Material.h"
 #include "Component/CameraComponent.h"
 
 #include "Component/BoxColliderComponent.h"
@@ -313,6 +315,27 @@ namespace PrototypeTests
 				const ProximityLightComponent* copiedLamp = clone ? clone->GetComponent<ProximityLightComponent>() : nullptr;
 				check(copiedLamp && copiedLamp->GetDarkRadius() == 500.0f && copiedLamp->GetBaseIntensity() == 3.0f, "registered game fields survive snapshot restoration");
 			}
+			GameObject* lens = original.CreateGameObject("Lamp lens", {});
+			StaticMeshComponent* lensMesh = static_cast<StaticMeshComponent*>(lens->AddComponent(std::make_unique<StaticMeshComponent>()));
+			std::array<std::shared_ptr<const Material>, 3> materials;
+			for (int level = 0; level < 3; ++level) { materials[level] = std::make_shared<const Material>("Lamp test", "", MaterialParameters{}); }
+			check(lamp->BindEmissiveVisual(*lens, materials) && lensMesh->GetMaterial() == materials[2], "lamp lens binds with its lit material");
+			lamp->Step({}, 0.05f, true);
+			check(lensMesh->GetMaterial() == materials[1] && std::abs(lampObject->GetComponent<PointLightComponent>()->GetIntensity() - 0.36f) < 0.001f,
+				"lamp emission and point light enter the same dim flicker phase");
+			lamp->Step({}, 0.1f, true);
+			check(lensMesh->GetMaterial() == materials[2] && lampObject->GetComponent<PointLightComponent>()->GetIntensity() == 3.0f,
+				"lamp emission and point light brighten on the same tick");
+			lamp->Step({}, 0.3f, true);
+			check(lensMesh->GetMaterial() == materials[0] && lampObject->GetComponent<PointLightComponent>()->GetIntensity() == 0.0f,
+				"lamp emission and point light extinguish together");
+			lamp->Reset();
+			check(lensMesh->GetMaterial() == materials[2] && lampObject->GetComponent<PointLightComponent>()->GetIntensity() == 3.0f,
+				"checkpoint lamp reset immediately restores both outputs");
+			original.DestroyGameObject(lens);
+			original.DestroyPendingGameObjects();
+			lamp->Step({}, 0.05f, true);
+			check(!lamp->IsDark(), "removed lamp meshes do not leave dangling component pointers");
 		}
 		RunEscapeScenarioTests(check);
 		std::printf("BabyDoll: %d failure(s)\n", failures);

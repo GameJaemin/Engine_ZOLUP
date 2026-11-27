@@ -145,9 +145,23 @@ bool BabyDollApplication::BuildRoom()
 	sun->SetColor({ 0.85f, 0.80f, 0.75f });
 	sun->SetIntensity(1.6f);
 	lighting->GetComponent<TransformComponent>()->SetRotation({ 55.0f, -30.0f, 0.0f });
+	// 재질과 발광 텍스처는 처음 한 번 만들고 모든 전등이 상태별로 공유한다.
+	std::array<std::array<std::shared_ptr<const Material>, 3>, 2> lampMaterials;
+	const char* materialPaths[2][3]{
+		{ "LampOff", "LampWarmDim", "LampWarmOn" },
+		{ "LampOff", "LampCoolDim", "LampCoolOn" }
+	};
+	for (int color = 0; color < 2; ++color)
+	{
+		for (int level = 0; level < 3; ++level)
+		{
+			lampMaterials[color][level] = AssetManager::Get().LoadMaterial(std::string("Game/Content/BabyDoll/Materials/") + materialPaths[color][level] + ".material.json");
+			if (!lampMaterials[color][level]) { return false; }
+		}
+	}
 	for (int index = 0; index < 9; ++index)
 	{
-		const Vector3 point{ (index % 3 - 1) * 1500.0f, 420.0f, (index / 3 - 1) * 1100.0f };
+		const Vector3 point{ (index % 3 - 1) * 1500.0f, 550.0f, (index / 3 - 1) * 1100.0f };
 		GameObject* lightObject = world->CreateGameObject("Gallery lamp", {});
 		if (!lightObject) { return false; }
 		lightObject->GetComponent<TransformComponent>()->SetPosition(point);
@@ -160,7 +174,9 @@ bool BabyDollApplication::BuildRoom()
 		proximity->SetFlickerTime(config.lampFlickerTime);
 		proximity->SetBaseIntensity(config.lampIntensity);
 		lamps.push_back(proximity);
-		Box("Lamp housing", point, { 110.0f, 16.0f, 110.0f }, brass);
+		if (!Box("Lamp housing", { 0.0f, 41.0f, 0.0f }, { 150.0f, 18.0f, 90.0f }, { 0.09f, 0.1f, 0.12f }, lightObject)) { return false; }
+		GameObject* diffuser = Box("Emissive lamp diffuser", { 0.0f, 29.0f, 0.0f }, { 130.0f, 6.0f, 70.0f }, {}, lightObject, false);
+		if (!diffuser || !proximity->BindEmissiveVisual(*diffuser, lampMaterials[index % 2])) { return false; }
 	}
 	for (const PrototypeObstacle& wall : layout.Partitions())
 	{

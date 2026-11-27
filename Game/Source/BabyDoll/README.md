@@ -223,3 +223,15 @@ caughtFadeStart + caughtFadeTime + 0.1 <= caughtDuration 조건으로 완전 암
 공격 포즈에서 머리가 움직여 가슴이 화면을 가리지 않도록 PoseAnimatorComponent::TryGetNodeWorldPosition으로 SCISSORMAN의 Head2 뼈(없으면 Head)의 월드 위치를 읽고 그 위 12cm를 조준한다. 이 위치는 CaughtCameraComponent에 값으로 전달한다. 머리 노드가 없으면 caughtFaceHeight를 사용한다. Debug 빌드와 자동 검사 82개를 통과했으며, 머리 계층/월드 변환과 포즈 추적도 검사했다.
 
 최종 실행 검증에서 Head2 얼굴 클로즈업, HUD/CCTV 숨김, 암전, 입구 체크포인트 복귀를 확인했다. 연출 중 일시정지되면 검은 화면에서도 Esc 재개 안내를 표시한다. 메뉴의 Developer tools > Preview jumpscare로 재확인할 수 있다.
+
+## 발광 전등과 라이트 동기화
+
+천장 높이 600cm 밑에 전등 9개를 배치한다. 각 전등은 어두운 하우징, 발광 커버 메시, 아래쪽을 비추는 PointLight, ProximityLightComponent로 구성된다. 따뜻한 색과 차가운 색을 번갈아 사용한다. 발광은 실제 emissiveTexture를 사용하는 재질이며, 주변 조명은 PointLight가 담당한다. 발광 재질 자체가 주변을 조명하는 GI나 번짐 효과를 새로 구현한 것은 아니다.
+
+ProximityLightComponent::Step의 단일 깜빡임 결과를 PointLight 강도와 커버 재질에 함께 적용한다. 켜짐(100%)/약광(12%)/소등(0%)을 같은 틱에 전환한다. 근접 0.6초 후 꺼지고 반경을 벗어나거나 기능을 끄면 복구하는 기존 규칙은 유지한다. Reset도 두 출력을 즉시 복구한다.
+
+BindEmissiveVisual(visual, materials)로 발광 메시 계층을 연결하며, materials는 소등/약광/점등 순서다. 컴포넌트는 메시를 ObjectID로 조회하므로 메시를 제거해도 포인터가 남지 않는다. 재질과 텍스처는 초기 로딩 때 공유하고 상태 변경 시에만 교체한다. 발광 커버를 제거하면 기존 라이트 제어는 그대로 동작한다. 이 런타임 메시 연결은 전체 게임 저장/복제 시 재연결할 대상이며, 아직 해당 참조까지 직렬화하지 않는다.
+
+Game/Content/BabyDoll/Materials의 LampWarmOn/Dim, LampCoolOn/Dim, LampOff.material.json과 대응 PNG가 전등 외형을 담당한다. Tools/AssetPipeline/BuildLampMaterials.py는 외부 패키지 없이 선형 색상(약광은 0.12배)을 sRGB PNG로 변환해 재생성한다. 소등 재질에는 발광 텍스처가 없다. 색을 바꾸면 BuildRoom의 PointLight 색도 함께 맞춘다. 위치·크기는 BuildRoom에서, 깜빡임 반경/시간/라이트 강도는 기존 Prototype.json의 lamp 설정에서 조정한다.
+
+검증: 전체 재빌드 및 자동 검사 88개 통과. 실제 실행에서 점등된 발광 커버와 몬스터 접근 시 커버/주변 라이트의 동시 소등을 확인했다. Pull 이전 오브젝트의 Model/Material 형식이 남아 전체 재빌드했으며, 이 환경의 PDB 불일치는 빌드 프로세스에 _CL_=/Z7을 지정해 우회했다. 공용 프로젝트 설정은 변경하지 않았다.
