@@ -13,6 +13,7 @@
 #include <unordered_map>
 #include <vector>
 
+class AudioSystem;
 class CameraComponent;
 class GameObject;
 struct Prefab;
@@ -65,6 +66,17 @@ public:
 private:
 	// 충돌 컴포넌트가 소멸 중에도 바디를 해제할 수 있도록 gameObjects보다 먼저 선언한다.
 	JoltPhysicsScene physicsScene;
+
+	// 오디오
+public:
+	/** 이 월드의 컴포넌트가 쓸 AudioSystem을 지정한다. 비소유이며 nullptr는 해제다. 대상은 월드보다 오래 살아 있어야 한다. */
+	void SetAudioSystem(AudioSystem* newAudioSystem) { audioSystem = newAudioSystem; }
+
+	/** 지정한 AudioSystem을 빌려준다. 지정하지 않았으면 nullptr이다. */
+	AudioSystem* GetAudioSystem() { return audioSystem; }
+
+private:
+	AudioSystem* audioSystem = nullptr;
 
 	// 카메라
 public:

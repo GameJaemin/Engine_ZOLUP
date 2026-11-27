@@ -289,6 +289,7 @@ int Engine::RunFrameLoop(IApplication& application)
 		const float deltaSeconds = frameTimer.Tick();
 		elapsedSeconds += deltaSeconds;
 		application.OnUpdate(windowsApplication.GetInputState(), deltaSeconds);
+		audioSystem.Update();
 
 		if (runsGuiFrame)
 		{

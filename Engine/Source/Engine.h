@@ -56,6 +56,9 @@ public:
 	 */
 	void SetCursorVisible(bool visible);
 
+	/** 엔진이 소유한 오디오 시스템을 빌려준다. OnInitialize부터 OnShutdown까지 메인 스레드에서 사용한다. */
+	AudioSystem& GetAudioSystem() { return audioSystem; }
+
 private:
 	/**
 	 * 엔진 컴포넌트 타입, Jolt 및 오디오를 초기화한 뒤 창, (enableGui면 ImGui), DataHub와 렌더러를 준비하고 방향광 섀도 맵을 등록한다.

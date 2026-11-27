@@ -41,6 +41,7 @@
     <ClCompile Include="Engine\Source\Audio\AudioClipLoader.cpp" />
     <ClCompile Include="Engine\Source\Audio\AudioSystem.cpp" />
     <ClCompile Include="Engine\Source\Audio\MiniaudioImplementation.cpp" />
+    <ClCompile Include="Engine\Source\Audio\PlayingSound.cpp" />
     <ClCompile Include="Engine\Source\Physics\JoltBroadPhaseLayers.cpp">
       <PreprocessorDefinitions>JPH_OBJECT_STREAM;JPH_FLOATING_POINT_EXCEPTIONS_ENABLED;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
@@ -118,6 +119,8 @@
     <ClInclude Include="Engine\Source\Audio\AudioClip.h" />
     <ClInclude Include="Engine\Source\Audio\AudioClipLoader.h" />
     <ClInclude Include="Engine\Source\Audio\AudioSystem.h" />
+    <ClInclude Include="Engine\Source\Audio\PlayingSound.h" />
+    <ClInclude Include="Engine\Source\Audio\SoundID.h" />
     <ClInclude Include="Engine\Source\Physics\JoltBroadPhaseLayers.h" />
     <ClInclude Include="Engine\Source\Physics\JoltObjectLayers.h" />
     <ClInclude Include="Engine\Source\Physics\JoltPhysicsScene.h" />

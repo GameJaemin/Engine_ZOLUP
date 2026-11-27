@@ -160,6 +160,9 @@
     <ClCompile Include="Engine\Source\Audio\MiniaudioImplementation.cpp">
       <Filter>Engine\Source\Audio</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Source\Audio\PlayingSound.cpp">
+      <Filter>Engine\Source\Audio</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Source\Physics\JoltBroadPhaseLayers.cpp">
       <Filter>Engine\Source\Physics</Filter>
     </ClCompile>
@@ -424,6 +427,12 @@
       <Filter>Engine\Source\Audio</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Audio\AudioSystem.h">
+      <Filter>Engine\Source\Audio</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Audio\PlayingSound.h">
+      <Filter>Engine\Source\Audio</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Source\Audio\SoundID.h">
       <Filter>Engine\Source\Audio</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Source\Physics\JoltBroadPhaseLayers.h">
